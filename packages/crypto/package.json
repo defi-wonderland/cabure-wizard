@@ -33,11 +33,11 @@
     "snarkjs": "0.7.5"
   },
   "devDependencies": {
-    "esbuild": "^0.24.0",
-    "typescript": "^5.7.0",
-    "vitest": "^3.0.0",
-    "@types/node": "^22.0.0",
-    "@types/snarkjs": "^0.7.8"
+    "esbuild": "0.25.12",
+    "typescript": "5.9.3",
+    "vitest": "3.2.4",
+    "@types/node": "22.19.11",
+    "@types/snarkjs": "0.7.9"
   },
   "license": "MIT"
 }
