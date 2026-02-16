@@ -101,3 +101,7 @@ Operator scaffolds → deploys coordinator + frontend separately → contributor
 ## Brebaje Alignment
 
 Nico Serrano's Brebaje (github.com/p0tion-tools/brebaje) is a complementary p0tion rebuild. Caburé focuses on wizard + CLI contributor; future merge is possible but not decided.
+
+## Commits
+- Always use commitlint convention.
+- NEVER add coauthors.
