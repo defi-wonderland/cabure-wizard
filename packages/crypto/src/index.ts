@@ -5,4 +5,5 @@ export { verify, verifyChain } from "./verify.js";
 export { generateEntropy } from "./entropy.js";
 export { applyBeacon } from "./beacon.js";
 export { exportVerificationKey } from "./exportVerificationKey.js";
+export { RequestType, ResponseType } from "./worker/index.js";
 export type { WorkerRequest, WorkerResponse } from "./worker/index.js";

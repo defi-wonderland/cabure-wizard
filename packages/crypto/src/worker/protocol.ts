@@ -1,32 +1,44 @@
+export enum RequestType {
+  Contribute = "contribute",
+  GenerateEntropy = "generateEntropy",
+}
+
+export enum ResponseType {
+  Result = "result",
+  Entropy = "entropy",
+  Error = "error",
+  Progress = "progress",
+}
+
 /** Messages sent TO the worker */
 export type WorkerRequest =
   | {
-      type: "contribute";
+      type: RequestType.Contribute;
       prevZkey: Uint8Array;
       entropy: Uint8Array;
       name?: string;
     }
   | {
-      type: "generateEntropy";
+      type: RequestType.GenerateEntropy;
     };
 
 /** Messages sent FROM the worker */
 export type WorkerResponse =
   | {
-      type: "result";
+      type: ResponseType.Result;
       newZkey: Uint8Array;
       hash: string;
     }
   | {
-      type: "entropy";
+      type: ResponseType.Entropy;
       data: Uint8Array;
     }
   | {
-      type: "error";
+      type: ResponseType.Error;
       message: string;
     }
   | {
-      type: "progress";
+      type: ResponseType.Progress;
       stage: string;
       percent: number;
     };

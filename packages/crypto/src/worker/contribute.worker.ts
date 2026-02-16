@@ -11,7 +11,12 @@
  *           | { type: 'progress', stage: string, percent: number }
  */
 
-import type { WorkerRequest, WorkerResponse } from "./protocol.js";
+import {
+  RequestType,
+  ResponseType,
+  type WorkerRequest,
+  type WorkerResponse,
+} from "./protocol.js";
 
 function post(msg: WorkerResponse, transfer?: Transferable[]) {
   self.postMessage(msg, { transfer: transfer ?? [] });
@@ -52,7 +57,10 @@ async function browserContribute(
   );
 
   // Extract the result from the mem output
-  const zkey = (newFile as any).data as Uint8Array;
+  const zkey = (newFile as { type: "mem"; data?: Uint8Array }).data;
+  if (!zkey) {
+    throw new Error("snarkjs contribute produced no output data");
+  }
   const hex = Array.from(hashBytes)
     .map((b: number) => b.toString(16).padStart(2, "0"))
     .join("");
@@ -65,8 +73,8 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
 
   try {
     switch (msg.type) {
-      case "contribute": {
-        post({ type: "progress", stage: "computing", percent: 0 });
+      case RequestType.Contribute: {
+        post({ type: ResponseType.Progress, stage: "computing", percent: 0 });
 
         const result = await browserContribute(
           msg.prevZkey,
@@ -74,12 +82,12 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
           msg.name ?? "contributor",
         );
 
-        post({ type: "progress", stage: "done", percent: 100 });
+        post({ type: ResponseType.Progress, stage: "done", percent: 100 });
 
         // Transfer the zkey buffer to avoid copying
         post(
           {
-            type: "result",
+            type: ResponseType.Result,
             newZkey: result.zkey,
             hash: result.hash,
           },
@@ -91,15 +99,15 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
         break;
       }
 
-      case "generateEntropy": {
+      case RequestType.GenerateEntropy: {
         const data = new Uint8Array(64);
         crypto.getRandomValues(data);
-        post({ type: "entropy", data }, [data.buffer]);
+        post({ type: ResponseType.Entropy, data }, [data.buffer]);
         break;
       }
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    post({ type: "error", message });
+    post({ type: ResponseType.Error, message });
   }
 };
