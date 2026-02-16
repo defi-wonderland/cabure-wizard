@@ -64,7 +64,7 @@ describe("verify", () => {
     expect(valid).toBe(true);
   });
 
-  it("rejects a tampered zkey", async () => {
+  it("returns false for a tampered zkey", async () => {
     const genesis = await generateInitialZkey(ptau, r1cs);
     const entropy = new Uint8Array(32).fill(42);
     const { zkey } = await contribute(genesis, entropy);
@@ -75,14 +75,15 @@ describe("verify", () => {
     tampered[mid] ^= 0xff;
     tampered[mid + 1] ^= 0xff;
 
-    // Tampered zkey should either fail verification or throw
-    try {
-      const valid = await verify(r1cs, ptau, tampered);
-      expect(valid).toBe(false);
-    } catch {
-      // Throwing is also acceptable for corrupted data
-      expect(true).toBe(true);
-    }
+    const valid = await verify(r1cs, ptau, tampered);
+    expect(valid).toBe(false);
+  });
+
+  it("throws on a completely invalid zkey", async () => {
+    const garbage = new Uint8Array(64).fill(0xde);
+    await expect(verify(r1cs, ptau, garbage)).rejects.toThrow(
+      /invalid/i,
+    );
   });
 });
 
