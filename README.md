@@ -14,19 +14,19 @@ Open-source CLI wizard and toolkit for running Groth16 Phase 2 trusted setup cer
 
 Cabure uses a **separated architecture** where generated projects have three independent parts:
 
-- **Coordinator** -- Stateless serverless function (not coupled to any framework). Manages queue, verifies contributions, tracks ceremony state.
-- **Frontend** -- Static site with zero server dependencies. Contributors interact through the browser, providing entropy via mouse movement/clicks.
-- **Crypto** -- All cryptographic operations imported from `@cabure/crypto`. Runs in a Web Worker (browser) or natively (CLI).
+- **Coordinator** - Stateless serverless function (not coupled to any framework). Manages queue, verifies contributions, tracks ceremony state.
+- **Frontend** - Static site with zero server dependencies. Contributors interact through the browser, providing entropy via mouse movement/clicks.
+- **Crypto** - All cryptographic operations imported from `@cabure/crypto`. Runs in a Web Worker (browser) or natively (CLI).
 
 **Storage is IPFS-first**: ceremony state is stored as content-addressed JSON, zkeys are pinned to IPFS. S3 is supported as an alternative.
 
 ## Ceremony Flow
 
-1. **Scaffold** -- Operator runs `npx create-cabure-ceremony` and answers 7 prompts (ceremony name, circuits, target contributions, tiers, storage, branding, deploy target)
-2. **Deploy** -- Coordinator and frontend are deployed independently (Vercel, AWS, Docker, or manual)
-3. **Contribute** -- Contributors visit the frontend or use `@cabure/cli`. Each contribution: download current zkey, collect entropy (mouse/click required in browser), compute in Web Worker or CLI, upload result
-4. **Verify** -- Each contribution is verified with BN254 pairing checks. A SHA-256 hash chain links all contributions from genesis
-5. **Finalize** -- When target is reached, operator applies a drand Quicknet beacon to produce the final parameters
+1. **Scaffold** - Operator runs `npx create-cabure-ceremony` and answers 7 prompts (ceremony name, circuits, target contributions, tiers, storage, branding, deploy target)
+2. **Deploy** - Coordinator and frontend are deployed independently (Vercel, AWS, Docker, or manual)
+3. **Contribute** - Contributors visit the frontend or use `@cabure/cli`. Each contribution: download current zkey, collect entropy (mouse/click required in browser), compute in Web Worker or CLI, upload result
+4. **Verify** - Each contribution is verified with BN254 pairing checks. A SHA-256 hash chain links all contributions from genesis
+5. **Finalize** - When target is reached, operator applies a drand Quicknet beacon to produce the final parameters
 
 ## `@cabure/crypto` API
 

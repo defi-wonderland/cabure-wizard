@@ -1,0 +1,15 @@
+{
+  "name": "create-cabure-ceremony",
+  "version": "0.1.0",
+  "description": "CLI wizard that scaffolds a fully deployable ceremony project",
+  "type": "module",
+  "bin": {
+    "create-cabure-ceremony": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "echo 'not yet implemented'",
+    "test": "echo 'not yet implemented'",
+    "clean": "rm -rf dist"
+  },
+  "license": "MIT"
+}
