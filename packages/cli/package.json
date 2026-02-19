@@ -1,5 +1,5 @@
 {
-  "name": "@cabure/cli",
+  "name": "@wonderland/cabure-cli",
   "version": "0.1.0",
   "description": "CLI contributor tool for headless/VM environments",
   "type": "module",
