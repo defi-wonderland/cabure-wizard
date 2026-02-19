@@ -13,7 +13,7 @@ Explain in plain terms:
 
 Walk through each package and who owns it:
 
-**`@cabure/crypto`** (Lumi)
+**`@wonderland/cabure-crypto`** (Lumi)
 - The cryptographic engine. Typed exports for every ceremony operation: generate initial zkey, contribute, verify, verify chain, generate entropy, apply beacon.
 - Uses snarkjs 0.7.5 under the hood with in-memory I/O (`Uint8Array` in, `{ type: "mem" }` out).
 - Includes a WASM build for browser Web Workers.
@@ -21,7 +21,7 @@ Walk through each package and who owns it:
 
 **`create-cabure-ceremony`** (Ardy)
 - The CLI wizard. Asks 7 questions, scaffolds a complete ceremony project.
-- Generated project has three independent parts: stateless coordinator (serverless), static frontend (6-screen ceremony flow), and crypto layer (imports from `@cabure/crypto`).
+- Generated project has three independent parts: stateless coordinator (serverless), static frontend (6-screen ceremony flow), and crypto layer (imports from `@wonderland/cabure-crypto`).
 - The generated code is yours — edit freely. Only the crypto layer is a dependency.
 
 **`@cabure/cli`** (Ardy)
@@ -38,7 +38,7 @@ Present the separated architecture:
 my-ceremony/
 ├── coordinator/     ← Stateless serverless function (Cloudflare Worker / Vercel Edge / Docker)
 ├── frontend/        ← Static site (IPFS / Vercel / GitHub Pages)
-├── crypto/          ← Imports from @cabure/crypto
+├── crypto/          ← Imports from @wonderland/cabure-crypto
 ├── ceremony.config.json
 ├── circuits/
 ├── deploy/

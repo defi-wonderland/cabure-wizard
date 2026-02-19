@@ -7,7 +7,7 @@ Read `CLAUDE.md` at the project root first, then guide the QA engineer through t
 Caburé is a Groth16 Phase 2 trusted setup ceremony toolkit. Your job is to make sure the full ceremony flow works end-to-end — from `npx create-cabure-ceremony` all the way to a finalized zkey with a drand beacon applied.
 
 Three packages to test:
-- `@cabure/crypto` — the cryptographic primitives (Lumi built this)
+- `@wonderland/cabure-crypto` — the cryptographic primitives (Lumi built this)
 - `create-cabure-ceremony` — the CLI wizard + generated project (Ardy built this)
 - `@cabure/cli` — the headless CLI contributor tool (Ardy built this)
 
