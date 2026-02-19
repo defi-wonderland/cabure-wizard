@@ -42,6 +42,17 @@ await build({
   external: ["snarkjs"],
 });
 
+// Protocol bundle (browser target)
+await build({
+  entryPoints: ["src/worker/protocol.ts"],
+  bundle: true,
+  format: "esm",
+  platform: "neutral",
+  target: "es2022",
+  outfile: "dist/worker/protocol.js",
+  sourcemap: true,
+});
+
 // Copy .d.ts → .d.cts for CJS consumers
 copyFileSync("dist/esm/index.d.ts", "dist/cjs/index.d.cts");
 

@@ -19,6 +19,16 @@
     },
     "./worker": {
       "default": "./dist/worker/contribute.worker.js"
+    },
+    "./protocol": {
+      "import": {
+        "types": "./dist/esm/worker/protocol.d.ts",
+        "default": "./dist/worker/protocol.js"
+      },
+      "require": {
+        "types": "./dist/esm/worker/protocol.d.ts",
+        "default": "./dist/worker/protocol.js"
+      }
     }
   },
   "files": [
