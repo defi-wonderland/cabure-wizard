@@ -17,8 +17,8 @@ jobs:
           node-version: 20
           cache: pnpm
       - run: pnpm install
-      - run: pnpm --filter @cabure/crypto build
-      - run: pnpm --filter @cabure/crypto test
+      - run: pnpm --filter @wonderland/cabure-crypto build
+      - run: pnpm --filter @wonderland/cabure-crypto test
 
   create-cabure-ceremony:
     needs: [crypto]
@@ -45,5 +45,5 @@ jobs:
           node-version: 20
           cache: pnpm
       - run: pnpm install
-      - run: pnpm --filter @cabure/cli build
-      - run: pnpm --filter @cabure/cli test
+      - run: pnpm --filter @wonderland/cabure-cli build
+      - run: pnpm --filter @wonderland/cabure-cli test

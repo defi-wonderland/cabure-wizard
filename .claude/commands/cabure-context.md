@@ -7,9 +7,9 @@ Load the Caburé project context for the current development session.
 **You're working on Caburé** — a Groth16 Phase 2 trusted setup ceremony toolkit.
 
 Three packages:
-- `@cabure/crypto` — ceremony primitives (Lumi)
+- `@wonderland/cabure-crypto` — ceremony primitives (Lumi)
 - `create-cabure-ceremony` — CLI wizard (Ardy)
-- `@cabure/cli` — headless contributor tool (Ardy)
+- `@wonderland/cabure-cli` — headless contributor tool (Ardy)
 
 Key conventions:
 - Separated architecture (coordinator / frontend / crypto)

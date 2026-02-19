@@ -13,7 +13,7 @@ Explain in plain terms:
 
 Walk through each package and who owns it:
 
-**`@cabure/crypto`** (Lumi)
+**`@wonderland/cabure-crypto`** (Lumi)
 - The cryptographic engine. Typed exports for every ceremony operation: generate initial zkey, contribute, verify, verify chain, generate entropy, apply beacon.
 - Uses snarkjs 0.7.5 under the hood with in-memory I/O (`Uint8Array` in, `{ type: "mem" }` out).
 - Includes a WASM build for browser Web Workers.
@@ -21,12 +21,12 @@ Walk through each package and who owns it:
 
 **`create-cabure-ceremony`** (Ardy)
 - The CLI wizard. Asks 7 questions, scaffolds a complete ceremony project.
-- Generated project has three independent parts: stateless coordinator (serverless), static frontend (6-screen ceremony flow), and crypto layer (imports from `@cabure/crypto`).
+- Generated project has three independent parts: stateless coordinator (serverless), static frontend (6-screen ceremony flow), and crypto layer (imports from `@wonderland/cabure-crypto`).
 - The generated code is yours — edit freely. Only the crypto layer is a dependency.
 
-**`@cabure/cli`** (Ardy)
+**`@wonderland/cabure-cli`** (Ardy)
 - Headless CLI contributor tool for VMs and servers.
-- URL-based discovery: `npx @cabure/cli contribute https://ceremony.example.com`
+- URL-based discovery: `npx @wonderland/cabure-cli contribute https://ceremony.example.com`
 - GitHub OAuth device flow for auth without a browser redirect.
 - Streaming support for large circuits (>100 MB zkeys).
 
@@ -38,7 +38,7 @@ Present the separated architecture:
 my-ceremony/
 ├── coordinator/     ← Stateless serverless function (Cloudflare Worker / Vercel Edge / Docker)
 ├── frontend/        ← Static site (IPFS / Vercel / GitHub Pages)
-├── crypto/          ← Imports from @cabure/crypto
+├── crypto/          ← Imports from @wonderland/cabure-crypto
 ├── ceremony.config.json
 ├── circuits/
 ├── deploy/
@@ -57,7 +57,7 @@ Key points:
 Walk through the lifecycle:
 1. Operator runs `npx create-cabure-ceremony`, answers prompts, deploys
 2. Contributors visit the frontend → GitHub OAuth → join queue → collect entropy → compute contribution in Web Worker → upload
-3. Or contributors use `npx @cabure/cli contribute <url>` from the terminal
+3. Or contributors use `npx @wonderland/cabure-cli contribute <url>` from the terminal
 4. Coordinator verifies each contribution, updates IPFS state, maintains SHA-256 chain hash
 5. When target contributions reached, operator applies drand Quicknet beacon to finalize
 6. Final zkey is ready for production use
@@ -73,7 +73,7 @@ Point them to the other Claude Code commands available:
 ## 7. Key Resources
 
 - **Notion Idea Draft** — central planning document with scope, tasks, and team assignments
-- **Notion Tech Design** — detailed technical specification for create-cabure-ceremony and @cabure/cli
+- **Notion Tech Design** — detailed technical specification for create-cabure-ceremony and @wonderland/cabure-cli
 - **Linear project** — issue tracking across 6 milestones
 - **Brebaje** (github.com/p0tion-tools/brebaje) — Nico Serrano's complementary p0tion rebuild, potential future merge
 
