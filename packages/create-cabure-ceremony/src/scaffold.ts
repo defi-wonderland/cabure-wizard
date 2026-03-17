@@ -115,7 +115,12 @@ async function assertOutputDirectoryIsWritable(
       );
     }
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+    if (
+      error &&
+      typeof error === "object" &&
+      "code" in error &&
+      (error as NodeJS.ErrnoException).code === "ENOENT"
+    ) {
       return;
     }
 

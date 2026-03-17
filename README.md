@@ -66,7 +66,7 @@ Package-specific usage and local `npx` testing guide:
 
 Running `npx create-cabure-ceremony` produces:
 
-```
+```text
 my-ceremony/
 ├── app/                  # Next.js app routes and UI
 ├── lib/
