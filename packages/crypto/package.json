@@ -26,8 +26,8 @@
         "default": "./dist/worker/protocol.js"
       },
       "require": {
-        "types": "./dist/esm/worker/protocol.d.ts",
-        "default": "./dist/worker/protocol.js"
+        "types": "./dist/worker/protocol.d.cts",
+        "default": "./dist/worker/protocol.cjs"
       }
     }
   },
