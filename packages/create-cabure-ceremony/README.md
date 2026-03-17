@@ -6,7 +6,7 @@ CLI wizard that scaffolds a deploy-ready ceremony app in one command.
 
 - A single Next.js app scaffold
 - `ceremony.config.ts` with initial ceremony settings
-- Empty `circuits/` directory (you copy `.r1cs` and `.wasm` files manually)
+- `circuits/` directory — populated automatically with `.r1cs` files when you provide a circuit path in prompt #4, otherwise empty (copy files manually)
 - API route stubs under `app/api/ceremony/*`
 - Minimal `vercel.json`
 

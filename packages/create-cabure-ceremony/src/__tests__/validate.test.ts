@@ -44,6 +44,12 @@ describe("validate helpers", () => {
     expect(toProjectDirectoryName("Privacy Pools v2")).toBe("privacy-pools-v2");
   });
 
+  test("toProjectDirectoryName throws for non-alphanumeric input", () => {
+    expect(() => toProjectDirectoryName("!!!")).toThrowError(
+      "Project name must contain at least one alphanumeric character.",
+    );
+  });
+
   test("validateExistingPath accepts directories", async () => {
     const directory = await mkdtemp(
       path.join(tmpdir(), "cabure-validate-dir-"),
@@ -52,6 +58,15 @@ describe("validate helpers", () => {
       validateExistingPath(directory, "Circuit artifacts"),
     ).resolves.toBe(directory);
     await rm(directory, { recursive: true, force: true });
+  });
+
+  test("validateExistingPath rejects blank/whitespace inputs", async () => {
+    await expect(validateExistingPath("", "Test")).rejects.toThrow(
+      "path is required",
+    );
+    await expect(validateExistingPath("   ", "Test")).rejects.toThrow(
+      "path is required",
+    );
   });
 
   test("validateExistingPath rejects file paths", async () => {

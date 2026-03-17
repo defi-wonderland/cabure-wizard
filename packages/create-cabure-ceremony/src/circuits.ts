@@ -1,6 +1,20 @@
 import { mkdir, readdir, copyFile } from "node:fs/promises";
 import path from "node:path";
 
+/**
+ * Discovers `.r1cs` files recursively in sourceDirectory and copies them into
+ * targetDirectory with case-insensitive deduplication. Colliding names are
+ * suffixed with _2, _3, etc.
+ *
+ * @param sourceDirectory - Directory to scan recursively for `.r1cs` files
+ * @param targetDirectory - Destination directory (created if missing)
+ * @returns Sorted array of copied filenames (basenames only)
+ * @throws {Error} On filesystem errors (read, write, mkdir)
+ *
+ * @example
+ * const names = await copyR1csCircuitsFromPath("./my-circuits", "./out");
+ * // names: ["circuit.r1cs", "Other_2.r1cs"] if Other.r1cs existed in target
+ */
 export async function copyR1csCircuitsFromPath(
   sourceDirectory: string,
   targetDirectory: string,
@@ -12,8 +26,21 @@ export async function copyR1csCircuitsFromPath(
 
   await mkdir(targetDirectory, { recursive: true });
 
-  const copiedFilenames: string[] = [];
   const usedFilenames = new Set<string>();
+  try {
+    const existingEntries = await readdir(targetDirectory, {
+      withFileTypes: true,
+    });
+    for (const entry of existingEntries) {
+      if (entry.isFile()) {
+        usedFilenames.add(entry.name.toLowerCase());
+      }
+    }
+  } catch {
+    // Directory may be newly created or inaccessible; proceed with empty set
+  }
+
+  const copiedFilenames: string[] = [];
 
   for (const filePath of r1csFiles) {
     const basename = path.basename(filePath);
@@ -49,8 +76,9 @@ function getUniqueFilename(
   initialFilename: string,
   usedFilenames: Set<string>,
 ): string {
-  if (!usedFilenames.has(initialFilename)) {
-    usedFilenames.add(initialFilename);
+  const lowerInitial = initialFilename.toLowerCase();
+  if (!usedFilenames.has(lowerInitial)) {
+    usedFilenames.add(lowerInitial);
     return initialFilename;
   }
 
@@ -58,11 +86,14 @@ function getUniqueFilename(
   const stem = path.basename(initialFilename, ext);
 
   let attempt = 2;
-  while (usedFilenames.has(`${stem}_${attempt}${ext}`)) {
+  let finalName: string;
+  let lowerFinal: string;
+  do {
+    finalName = `${stem}_${attempt}${ext}`;
+    lowerFinal = finalName.toLowerCase();
     attempt += 1;
-  }
+  } while (usedFilenames.has(lowerFinal));
 
-  const finalName = `${stem}_${attempt}${ext}`;
-  usedFilenames.add(finalName);
+  usedFilenames.add(lowerFinal);
   return finalName;
 }

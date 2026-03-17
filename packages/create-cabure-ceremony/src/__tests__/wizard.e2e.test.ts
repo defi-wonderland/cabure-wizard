@@ -1,9 +1,8 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
 import { copyR1csCircuitsFromPath } from "../circuits.js";
-import { scaffoldProject } from "../scaffold.js";
 
 const createdDirectories: string[] = [];
 
@@ -16,52 +15,35 @@ afterEach(async () => {
   }
 });
 
-// Skipped until we add the template files
-describe.skip("wizard scaffold e2e", () => {
-  test("creates a Next.js ceremony project with config and copied circuits", async () => {
+describe("wizard scaffold e2e", () => {
+  test("copies circuit artifacts into generated project directory", async () => {
     const outputDirectory = await mkFixtureDirectory("cabure-generated-");
     const sourceDirectory = await mkFixtureDirectory("cabure-source-");
 
     await createCircuit(sourceDirectory, "deposit");
     await createCircuit(sourceDirectory, "withdraw");
 
-    await scaffoldProject({
-      outputDirectory,
-      projectName: "Privacy Pools v2",
-      projectSlug: "privacy-pools-v2",
-      targetContributions: 500,
-      endDate: "2026-03-27",
-      tiers: {
-        core: [],
-        popular: [],
-        all: [],
-      },
-      stateManifestBlobUrl: "",
-      circuits: [],
-    });
+    const circuitsDirectory = path.join(outputDirectory, "circuits");
+    await mkdir(circuitsDirectory, { recursive: true });
 
-    await copyR1csCircuitsFromPath(
+    const copiedFilenames = await copyR1csCircuitsFromPath(
       sourceDirectory,
-      path.join(outputDirectory, "circuits"),
+      circuitsDirectory,
     );
 
-    const generatedPackageJson = await readFile(
-      path.join(outputDirectory, "package.json"),
+    expect(copiedFilenames).toEqual(["deposit.r1cs", "withdraw.r1cs"]);
+
+    const copiedDeposit = await readFile(
+      path.join(circuitsDirectory, "deposit.r1cs"),
       "utf8",
     );
-    const generatedConfig = await readFile(
-      path.join(outputDirectory, "ceremony.config.ts"),
-      "utf8",
-    );
-    const copiedR1cs = await readFile(
-      path.join(outputDirectory, "circuits", "deposit.r1cs"),
+    const copiedWithdraw = await readFile(
+      path.join(circuitsDirectory, "withdraw.r1cs"),
       "utf8",
     );
 
-    expect(generatedPackageJson).toContain('"next": "16.1.6"');
-    expect(generatedConfig).toContain("Privacy Pools v2");
-    expect(generatedConfig).toContain("circuits: []");
-    expect(copiedR1cs).toBe("deposit-r1cs");
+    expect(copiedDeposit).toBe("deposit-r1cs");
+    expect(copiedWithdraw).toBe("withdraw-r1cs");
   });
 });
 

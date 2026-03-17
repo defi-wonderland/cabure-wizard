@@ -5,6 +5,13 @@ import { stat } from "node:fs/promises";
 
 const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
 
+/**
+ * Validates and trims a project name.
+ *
+ * @param value - User-provided project name.
+ * @returns The trimmed project name.
+ * @throws Error if name is empty or longer than 80 characters.
+ */
 export function validateProjectName(value: string): string {
   const trimmed = value.trim();
 
@@ -19,14 +26,36 @@ export function validateProjectName(value: string): string {
   return trimmed;
 }
 
+/**
+ * Converts a project name to a directory-safe slug.
+ *
+ * @param projectName - Project name to slugify.
+ * @returns Lowercase, hyphenated slug (max 64 chars).
+ * @throws Error if the result would be empty (no alphanumeric characters).
+ */
 export function toProjectDirectoryName(projectName: string): string {
-  return projectName
+  const slug = projectName
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 64);
+
+  if (!slug) {
+    throw new Error(
+      "Project name must contain at least one alphanumeric character.",
+    );
+  }
+
+  return slug;
 }
 
+/**
+ * Validates target contributions count.
+ *
+ * @param value - Number of target contributions.
+ * @returns The validated value.
+ * @throws Error if not a positive integer.
+ */
 export function validateTargetContributions(value: number): number {
   if (!Number.isInteger(value) || value <= 0) {
     throw new Error("Target contributions must be a positive integer.");
@@ -35,6 +64,13 @@ export function validateTargetContributions(value: number): number {
   return value;
 }
 
+/**
+ * Validates an optional end date in YYYY-MM-DD format.
+ *
+ * @param value - Date string (blank allowed).
+ * @returns Trimmed date string or null if blank.
+ * @throws Error if format is invalid or date is not a valid calendar date.
+ */
 export function validateEndDate(value: string): string | null {
   const trimmed = value.trim();
   if (!trimmed) {
@@ -59,14 +95,27 @@ export function validateEndDate(value: string): string | null {
   return trimmed;
 }
 
+/**
+ * Validates that a path exists, is readable, and is a directory.
+ *
+ * @param inputPath - Path to validate.
+ * @param label - Label for error messages (e.g. "Circuit artifacts").
+ * @returns The resolved absolute path.
+ * @throws Error if path is blank, does not exist, is not readable, or not a directory.
+ *
+ * @example
+ * const dir = await validateExistingPath("./circuits", "Circuit");
+ */
 export async function validateExistingPath(
   inputPath: string,
   label: string,
 ): Promise<string> {
-  const resolvedPath = path.resolve(inputPath.trim());
-  if (!resolvedPath) {
+  const trimmed = inputPath?.trim() ?? "";
+  if (!trimmed) {
     throw new Error(`${label} path is required.`);
   }
+
+  const resolvedPath = path.resolve(trimmed);
 
   try {
     await access(resolvedPath, constants.R_OK);

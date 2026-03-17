@@ -20,6 +20,17 @@ const TARGET_OPTIONS = [
   { id: "custom", label: "Custom value" },
 ];
 
+/**
+ * Runs the interactive wizard prompts, collecting project name, target contributions,
+ * end date, and optional circuit path.
+ *
+ * @param context - Optional I/O streams for prompts (defaults to stdin/stdout)
+ * @returns Promise resolving to WizardAnswers with all collected values
+ *
+ * @example
+ * const answers = await askWizardQuestions();
+ * console.log(answers.projectName);
+ */
 export async function askWizardQuestions(
   context: PromptContext = {},
 ): Promise<WizardAnswers> {
@@ -43,12 +54,25 @@ export async function askWizardQuestions(
       validateEndDate,
     );
 
-    const circuitPathRaw = await rl.question(
-      "4) Circuit artifacts path (optional, press enter to skip): ",
-    );
-    const circuitArtifactsPath = circuitPathRaw.trim()
-      ? await validateExistingPath(circuitPathRaw, "Circuit artifacts")
-      : null;
+    let circuitArtifactsPath: string | null = null;
+    for (;;) {
+      const circuitPathRaw = await rl.question(
+        "4) Circuit artifacts path (optional, press enter to skip): ",
+      );
+      const trimmed = circuitPathRaw.trim();
+      if (!trimmed) {
+        break;
+      }
+      try {
+        circuitArtifactsPath = await validateExistingPath(
+          trimmed,
+          "Circuit artifacts",
+        );
+        break;
+      } catch (error) {
+        rl.write(`${toMessage(error)}\n`);
+      }
+    }
 
     return {
       projectName,
