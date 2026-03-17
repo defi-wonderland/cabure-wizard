@@ -27,17 +27,13 @@ export async function copyR1csCircuitsFromPath(
   await mkdir(targetDirectory, { recursive: true });
 
   const usedFilenames = new Set<string>();
-  try {
-    const existingEntries = await readdir(targetDirectory, {
-      withFileTypes: true,
-    });
-    for (const entry of existingEntries) {
-      if (entry.isFile()) {
-        usedFilenames.add(entry.name.toLowerCase());
-      }
+  const existingEntries = await readdir(targetDirectory, {
+    withFileTypes: true,
+  });
+  for (const entry of existingEntries) {
+    if (entry.isFile()) {
+      usedFilenames.add(entry.name.toLowerCase());
     }
-  } catch {
-    // Directory may be newly created or inaccessible; proceed with empty set
   }
 
   const copiedFilenames: string[] = [];
