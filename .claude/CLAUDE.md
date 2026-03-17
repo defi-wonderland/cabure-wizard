@@ -10,26 +10,26 @@ Caburé is an open-source CLI wizard and toolkit for running Groth16 Phase 2 tru
 
 | Package | Purpose |
 |---------|---------|
-| `@wonderland/cabure-crypto` | Published npm package — typed exports for all Groth16 Phase 2 ceremony operations |
+| `@defi-wonderland/cabure-crypto` | Published npm package — typed exports for all Groth16 Phase 2 ceremony operations |
 | `create-cabure-ceremony` | CLI wizard that scaffolds a fully deployable ceremony project |
-| `@wonderland/cabure-cli` | CLI contributor tool for headless/VM environments |
+| `@defi-wonderland/cabure-cli` | CLI contributor tool for headless/VM environments |
 
-**Naming**: Always use these exact names. Never use `elixir-wizard`, `elixir-ceremony`, `@wonderland/elixir-wizard`, `@cabure/crypto`, or `@cabure/cli` — those are outdated.
+**Naming**: Always use these exact names. Never use `elixir-wizard`, `elixir-ceremony`, `@defi-wonderland/elixir-wizard`, `@cabure/crypto`, or `@cabure/cli` — those are outdated.
 
 ## Architecture Constraints (non-negotiable)
 
-1. **`@wonderland/cabure-crypto` is a published dependency** — shared across wizard, frontend, CLI. Never embed or vendor it.
+1. **`@defi-wonderland/cabure-crypto` is a published dependency** — shared across wizard, frontend, CLI. Never embed or vendor it.
 2. **Separated architecture** — Generated projects have three independent parts:
    - `coordinator/` — Stateless serverless function (NOT Next.js API routes)
    - `frontend/` — Static site, zero server dependencies
-   - `crypto/` — Imports from `@wonderland/cabure-crypto`
+   - `crypto/` — Imports from `@defi-wonderland/cabure-crypto`
 3. **IPFS-first storage** — Ceremony state as content-addressed JSON, zkeys pinned to IPFS. S3 is an alternative, not the default.
 4. **Interactive tier assignment** — Wizard asks "Do you want contribution tiers? (Y/n)", operator configures interactively. Not automatic by count.
 5. **User interaction required for entropy** — Minimum threshold of mouse movement/click entropy. Passive CSPRNG alone is insufficient.
 6. **GitHub OAuth device flow** for CLI — Enables headless/VM auth without browser redirect.
 7. **Target contribution options**: 100 / 500 / 1,000 / custom.
 
-## @wonderland/cabure-crypto API
+## @defi-wonderland/cabure-crypto API
 
 Uses snarkjs 0.7.5 in-memory I/O pattern: `Uint8Array` in, `{ type: "mem" }` output ref. Includes a WASM build of `contribute()` for browser Web Workers.
 
@@ -50,7 +50,7 @@ applyBeacon(zkeyIn: Uint8Array, beaconHash: string): Promise
 my-ceremony/
 ├── coordinator/     # Stateless serverless function
 ├── frontend/        # Static site
-├── crypto/          # Imports from @wonderland/cabure-crypto
+├── crypto/          # Imports from @defi-wonderland/cabure-crypto
 ├── ceremony.config.json
 ├── circuits/
 ├── deploy/
@@ -96,7 +96,7 @@ Operator scaffolds → deploys coordinator + frontend separately → contributor
 
 - Team: **Internal / Public Goods** (key: BES)
 - Project: **Caburé** (target: Mar 27, 2026)
-- 6 milestones: Idea Draft, Tech Design, @wonderland/cabure-crypto Development, create-cabure-ceremony Development, CLI Contributor Development, QA
+- 6 milestones: Idea Draft, Tech Design, @defi-wonderland/cabure-crypto Development, create-cabure-ceremony Development, CLI Contributor Development, QA
 
 ## Brebaje Alignment
 

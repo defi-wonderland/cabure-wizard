@@ -40,18 +40,18 @@ jobs:
           node-version: 20.x
           cache: "pnpm"
           registry-url: "https://npm.pkg.github.com"
-          scope: "@wonderland"
+          scope: "@defi-wonderland"
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
       - name: Build crypto package
         run: |
-          pnpm --filter @wonderland/cabure-crypto clean
-          pnpm --filter @wonderland/cabure-crypto build
+          pnpm --filter @defi-wonderland/cabure-crypto clean
+          pnpm --filter @defi-wonderland/cabure-crypto build
 
       - name: Run tests
-        run: pnpm --filter @wonderland/cabure-crypto test
+        run: pnpm --filter @defi-wonderland/cabure-crypto test
 
       - name: Generate pre-release version
         id: version
@@ -98,6 +98,6 @@ jobs:
           echo ""
           echo "  Consumers need a .npmrc with:"
           echo ""
-          echo "    @wonderland:registry=https://npm.pkg.github.com/"
+          echo "    @defi-wonderland:registry=https://npm.pkg.github.com/"
           echo ""
           echo "══════════════════════════════════════════════════════════════"

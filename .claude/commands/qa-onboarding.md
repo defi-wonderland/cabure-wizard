@@ -7,16 +7,16 @@ Read `CLAUDE.md` at the project root first, then guide the QA engineer through t
 Caburé is a Groth16 Phase 2 trusted setup ceremony toolkit. Your job is to make sure the full ceremony flow works end-to-end — from `npx create-cabure-ceremony` all the way to a finalized zkey with a drand beacon applied.
 
 Three packages to test:
-- `@wonderland/cabure-crypto` — the cryptographic primitives (Lumi built this)
+- `@defi-wonderland/cabure-crypto` — the cryptographic primitives (Lumi built this)
 - `create-cabure-ceremony` — the CLI wizard + generated project (Ardy built this)
-- `@wonderland/cabure-cli` — the headless CLI contributor tool (Ardy built this)
+- `@defi-wonderland/cabure-cli` — the headless CLI contributor tool (Ardy built this)
 
 ## 2. Architecture You Need to Know
 
 Walk through the separated architecture at a testing level:
 - **coordinator/** — stateless serverless function. Test: queue management, contribution verification, IPFS state consistency, auth flows, timeout handling
 - **frontend/** — static site with 6 screens. Test: entropy collection, Web Worker computation, browser compatibility, screen flow, error states
-- **`@wonderland/cabure-cli`** — headless contributor. Test: device flow auth, streaming for large circuits, progress reporting, error recovery
+- **`@defi-wonderland/cabure-cli`** — headless contributor. Test: device flow auth, streaming for large circuits, progress reporting, error recovery
 
 Key things to watch for:
 - Coordinator is stateless — every request reads/writes IPFS. Race conditions are possible.
@@ -67,7 +67,7 @@ npm run dev
 # Frontend: localhost:3000, Coordinator: localhost:3001
 
 # 3. Test CLI contributor against local coordinator
-npx @wonderland/cabure-cli contribute http://localhost:3001
+npx @defi-wonderland/cabure-cli contribute http://localhost:3001
 ```
 
 For the toy circuit, use the smallest possible r1cs file to keep iteration fast. Save the production-size circuits for BES-1358 performance testing.
