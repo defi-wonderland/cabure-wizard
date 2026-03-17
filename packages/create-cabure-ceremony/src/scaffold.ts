@@ -130,7 +130,6 @@ function renderCeremonyConfig(context: ScaffoldContext): string {
   return `export interface CeremonyCircuitConfig {
   id: string;
   r1csFilename: string;
-  wasmFilename: string;
   initialZkeyBlobPath: string;
   initialZkeyBlobUrl: string;
 }

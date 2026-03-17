@@ -17,7 +17,6 @@ Current wizard prompts:
 3. End date (optional `YYYY-MM-DD`)
 4. Circuit artifacts path (optional)
    - If provided, `.r1cs` files are discovered and copied into generated `circuits/`
-   - Copy matching `.wasm` files manually into `circuits/`
    - If skipped, `circuits/` remains empty
 
 ## Usage
@@ -30,7 +29,7 @@ After generation:
 
 ```bash
 cd <generated-project-slug>
-# optional: copy your .r1cs and .wasm files into ./circuits if you skipped prompt #4
+# optional: copy your .r1cs files into ./circuits if you skipped prompt #4
 # update ceremony.config.ts with your circuit IDs and filenames
 npm install
 npm run dev

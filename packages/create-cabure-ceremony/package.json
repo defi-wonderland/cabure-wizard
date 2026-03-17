@@ -14,7 +14,7 @@
     "build": "tsc -p tsconfig.json",
     "test": "vitest run",
     "test:e2e": "vitest run src/__tests__/wizard.e2e.test.ts",
-    "format": "prettier --write --ignore-unknown \"src/**/*.ts\" \"templates/**/*\"",
+    "format": "prettier --write --ignore-unknown \"src/**/*.ts\"",
     "clean": "rm -rf dist"
   },
   "dependencies": {},

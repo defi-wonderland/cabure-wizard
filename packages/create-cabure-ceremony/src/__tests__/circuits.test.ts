@@ -27,7 +27,7 @@ describe("copyR1csCircuitsFromPath", () => {
       "withdraw",
     );
     await writeFile(
-      path.join(sourceDirectory, "nested", "ignore.wasm"),
+      path.join(sourceDirectory, "nested", "ignore.txt"),
       "ignore",
     );
 

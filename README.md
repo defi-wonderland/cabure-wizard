@@ -23,7 +23,7 @@ Cabure uses a **separated architecture** where generated projects have three ind
 ## Ceremony Flow
 
 1. **Scaffold** - Operator runs `npx create-cabure-ceremony` and answers prompts (project name, target contributions, optional end date, optional circuit path)
-2. **Configure artifacts** - If a circuit path was provided, `.r1cs` files are copied automatically; copy matching `.wasm` files into `circuits/` manually. Otherwise, copy both `.r1cs` and `.wasm` files into `circuits/` and update `ceremony.config.ts`
+2. **Configure artifacts** - If a circuit path was provided, `.r1cs` files are copied automatically. Otherwise, copy your `.r1cs` files into `circuits/` and update `ceremony.config.ts`
 3. **Deploy** - Import the generated app into Vercel (or deploy manually)
 4. **Contribute** - Contributors visit the frontend or use `@wonderland/cabure-cli`. Each contribution: download current zkey, collect entropy (mouse/click required in browser), compute in Web Worker or CLI, upload result
 5. **Verify** - Each contribution is verified with BN254 pairing checks. A SHA-256 hash chain links all contributions from genesis

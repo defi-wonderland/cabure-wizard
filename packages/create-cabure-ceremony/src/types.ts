@@ -31,14 +31,12 @@ export interface CircuitTierConfig {
  *
  * @property id - Unique circuit identifier (derived from filename stem)
  * @property r1csFilename - Filename of the R1CS constraint file in circuits/
- * @property wasmFilename - Filename of the WASM witness generator in circuits/
  * @property initialZkeyBlobPath - Storage path for the genesis zkey blob
  * @property initialZkeyBlobUrl - Public URL for downloading the genesis zkey
  */
 export interface GeneratedCircuitConfig {
   id: string;
   r1csFilename: string;
-  wasmFilename: string;
   initialZkeyBlobPath: string;
   initialZkeyBlobUrl: string;
 }
