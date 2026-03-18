@@ -6,10 +6,23 @@
   "bin": {
     "create-cabure-ceremony": "./dist/index.js"
   },
+  "files": [
+    "dist",
+    "templates"
+  ],
   "scripts": {
-    "build": "echo 'not yet implemented'",
-    "test": "echo 'not yet implemented'",
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "test:e2e": "vitest run src/__tests__/wizard.e2e.test.ts",
+    "format": "prettier --write --ignore-unknown \"src/**/*.ts\"",
     "clean": "rm -rf dist"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@types/node": "22.19.11",
+    "prettier": "3.6.2",
+    "typescript": "5.9.3",
+    "vitest": "3.2.4"
   },
   "license": "MIT"
 }
