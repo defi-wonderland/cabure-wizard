@@ -4,11 +4,11 @@ Open-source CLI wizard and toolkit for running Groth16 Phase 2 trusted setup cer
 
 ## Packages
 
-| Package                          | Description                                                                                          |
-| -------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| `@defi-wonderland/cabure-crypto` | Typed exports for all Groth16 Phase 2 ceremony operations (snarkjs 0.7.5 wrapper with in-memory I/O) |
-| `create-cabure-ceremony`         | CLI wizard that scaffolds a fully deployable ceremony project                                        |
-| `@defi-wonderland/cabure-cli`    | CLI contributor tool for headless/VM environments (GitHub OAuth device flow)                         |
+| Package                     | Description                                                                                          |
+| --------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `@wonderland/cabure-crypto` | Typed exports for all Groth16 Phase 2 ceremony operations (snarkjs 0.7.5 wrapper with in-memory I/O) |
+| `create-cabure-ceremony`    | CLI wizard that scaffolds a fully deployable ceremony project                                        |
+| `@wonderland/cabure-cli`    | CLI contributor tool for headless/VM environments (GitHub OAuth device flow)                         |
 
 ## Architecture
 
@@ -16,7 +16,7 @@ Cabure uses a **separated architecture** where generated projects have three ind
 
 - **Coordinator** - Stateless serverless function (not coupled to any framework). Manages queue, verifies contributions, tracks ceremony state.
 - **Frontend** - Static site with zero server dependencies. Contributors interact through the browser, providing entropy via mouse movement/clicks.
-- **Crypto** - All cryptographic operations imported from `@defi-wonderland/cabure-crypto`. Runs in a Web Worker (browser) or natively (CLI).
+- **Crypto** - All cryptographic operations imported from `@wonderland/cabure-crypto`. Runs in a Web Worker (browser) or natively (CLI).
 
 **Storage is IPFS-first**: ceremony state is stored as content-addressed JSON, zkeys are pinned to IPFS. S3 is supported as an alternative.
 
@@ -29,7 +29,7 @@ Cabure uses a **separated architecture** where generated projects have three ind
 5. **Verify** - Each contribution is verified with BN254 pairing checks. A SHA-256 hash chain links all contributions from genesis
 6. **Finalize** - When target is reached, operator applies a drand Quicknet beacon to produce the final parameters
 
-## `@defi-wonderland/cabure-crypto` API
+## `@wonderland/cabure-crypto` API
 
 All functions use the snarkjs in-memory I/O pattern: `Uint8Array` in, `{ type: "mem" }` output.
 
@@ -86,7 +86,7 @@ my-ceremony/
 ### Setup
 
 ```bash
-git clone https://github.com/defi-wonderland/cabure-wizard.git
+git clone https://github.com/wonderland/cabure-wizard.git
 cd cabure-wizard
 pnpm install
 ```
@@ -98,7 +98,7 @@ pnpm install
 pnpm build
 
 # Build a specific package
-pnpm --filter @defi-wonderland/cabure-crypto build
+pnpm --filter @wonderland/cabure-crypto build
 ```
 
 ### Test
@@ -108,7 +108,7 @@ pnpm --filter @defi-wonderland/cabure-crypto build
 pnpm test
 
 # Run tests for a specific package
-pnpm --filter @defi-wonderland/cabure-crypto test
+pnpm --filter @wonderland/cabure-crypto test
 ```
 
 ## Contributing

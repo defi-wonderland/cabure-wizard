@@ -7,18 +7,21 @@ Read `CLAUDE.md` at the project root first, then guide the QA engineer through t
 Caburé is a Groth16 Phase 2 trusted setup ceremony toolkit. Your job is to make sure the full ceremony flow works end-to-end — from `npx create-cabure-ceremony` all the way to a finalized zkey with a drand beacon applied.
 
 Three packages to test:
-- `@defi-wonderland/cabure-crypto` — the cryptographic primitives (Lumi built this)
+
+- `@wonderland/cabure-crypto` — the cryptographic primitives (Lumi built this)
 - `create-cabure-ceremony` — the CLI wizard + generated project (Ardy built this)
-- `@defi-wonderland/cabure-cli` — the headless CLI contributor tool (Ardy built this)
+- `@wonderland/cabure-cli` — the headless CLI contributor tool (Ardy built this)
 
 ## 2. Architecture You Need to Know
 
 Walk through the separated architecture at a testing level:
+
 - **coordinator/** — stateless serverless function. Test: queue management, contribution verification, IPFS state consistency, auth flows, timeout handling
 - **frontend/** — static site with 6 screens. Test: entropy collection, Web Worker computation, browser compatibility, screen flow, error states
-- **`@defi-wonderland/cabure-cli`** — headless contributor. Test: device flow auth, streaming for large circuits, progress reporting, error recovery
+- **`@wonderland/cabure-cli`** — headless contributor. Test: device flow auth, streaming for large circuits, progress reporting, error recovery
 
 Key things to watch for:
+
 - Coordinator is stateless — every request reads/writes IPFS. Race conditions are possible.
 - Entropy requires user interaction (mouse/clicks). The frontend should NOT let you proceed without enough entropy.
 - IPFS-first storage — test what happens when IPFS is slow, down, or returns stale data.
@@ -55,6 +58,7 @@ Check Linear for QA issues. Use the Linear MCP to list issues in the Caburé pro
 ## 4. Test Environment Setup
 
 Guide them through getting a local test environment running:
+
 ```bash
 # 1. Scaffold a test ceremony
 npx create-cabure-ceremony
@@ -67,7 +71,7 @@ npm run dev
 # Frontend: localhost:3000, Coordinator: localhost:3001
 
 # 3. Test CLI contributor against local coordinator
-npx @defi-wonderland/cabure-cli contribute http://localhost:3001
+npx @wonderland/cabure-cli contribute http://localhost:3001
 ```
 
 For the toy circuit, use the smallest possible r1cs file to keep iteration fast. Save the production-size circuits for BES-1358 performance testing.
@@ -75,12 +79,14 @@ For the toy circuit, use the smallest possible r1cs file to keep iteration fast.
 ## 5. What to Prioritize
 
 Testing window is Mar 16 – Mar 27 (2 weeks). Suggested order:
+
 1. **Week 1 (Mar 16–20):** BES-1356 (e2e) + BES-1357 (browser/CLI) — get the happy path solid first
 2. **Week 2 (Mar 23–27):** BES-1358 (security/perf) + BES-1359 (final sign-off) — break things, then certify
 
 ## 6. Questions
 
 Ask the QA engineer:
+
 1. Do you have a toy circuit (.r1cs) available for testing? If not, Lumi can provide one.
 2. Are you set up with IPFS locally (e.g. Pinata account or local IPFS node)?
 3. Any specific areas you're concerned about?

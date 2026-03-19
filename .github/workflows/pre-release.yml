@@ -1,16 +1,6 @@
 name: Crypto Pre-Release
 
 on:
-  pull_request:
-    branches: [dev]
-    paths:
-      - "packages/crypto/**"
-      - ".github/workflows/pre-release.yml"
-  push:
-    branches: [dev]
-    paths:
-      - "packages/crypto/**"
-      - ".github/workflows/pre-release.yml"
   workflow_dispatch:
 
 concurrency:
