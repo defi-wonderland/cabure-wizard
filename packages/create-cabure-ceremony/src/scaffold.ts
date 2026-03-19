@@ -11,6 +11,7 @@ const TEMPLATES_DIRECTORY = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "../templates",
 );
+const CIRCUITS_DIRECTORY = "circuits";
 
 export async function scaffoldProject(context: ScaffoldContext): Promise<void> {
   await assertTemplatesDirectoryAvailable(TEMPLATES_DIRECTORY);
@@ -133,6 +134,10 @@ async function assertOutputDirectoryIsWritable(
 }
 
 function renderCircuitEntry(circuit: GeneratedCircuitConfig): string {
+  const r1csPath = JSON.stringify(
+    `${CIRCUITS_DIRECTORY}/${circuit.artifacts.r1csPath}`,
+  );
+
   return `    {
       id: ${JSON.stringify(circuit.id)},
       label: ${JSON.stringify(circuit.label)},
@@ -140,7 +145,7 @@ function renderCircuitEntry(circuit: GeneratedCircuitConfig): string {
       constraints: ${JSON.stringify(circuit.constraints)},
       targetContributions: ${circuit.targetContributions},
       artifacts: {
-        r1csPath: \`\${CIRCUITS_DIR}/${circuit.artifacts.r1csPath}\`,
+        r1csPath: ${r1csPath},
         ptauPath: PTAU_PATH,
       },
     }`;
@@ -160,10 +165,6 @@ function renderTierEntry(tier: GeneratedTierConfig): string {
 function renderCeremonyConfig(context: ScaffoldContext): string {
   const circuitEntries = context.circuits.map(renderCircuitEntry).join(",\n");
   const tierEntries = context.tiers.map(renderTierEntry).join(",\n");
-  const totalTarget = context.circuits.reduce(
-    (sum, c) => sum + c.targetContributions,
-    0,
-  );
 
   return `import { defaultCopy } from "./src/copy";
 
@@ -195,7 +196,7 @@ export function getClientConfig(): ClientCeremonyConfig {
   };
 }
 
-const CIRCUITS_DIR = "circuits";
+const CIRCUITS_DIR = ${JSON.stringify(CIRCUITS_DIRECTORY)};
 const PTAU_PATH = \`\${CIRCUITS_DIR}/pot_final.ptau\`;
 
 export const ceremonyConfig: CeremonyConfig = {
@@ -203,7 +204,7 @@ export const ceremonyConfig: CeremonyConfig = {
   slug: ${JSON.stringify(context.projectSlug)},
   description:
     "Contribute your randomness to strengthen the ceremony and improve system security.",
-  targetContributions: ${totalTarget || context.targetContributions},
+  targetContributions: ${context.targetContributions},
   endDate: ${context.endDate ? JSON.stringify(context.endDate) : "null"},
   queueTimeoutSeconds: 300,
   verifyContributions: false,

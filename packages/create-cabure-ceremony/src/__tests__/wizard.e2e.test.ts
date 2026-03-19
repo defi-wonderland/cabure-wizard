@@ -145,10 +145,55 @@ describe("wizard scaffold e2e", async () => {
 
       expect(generatedConfig).toContain("Privacy Pools v2");
       expect(generatedConfig).toContain('"deposit"');
-      expect(generatedConfig).toContain("targetContributions: 500");
+      expect(generatedConfig).toMatch(
+        /export const ceremonyConfig: CeremonyConfig = \{[\s\S]*?\n  targetContributions: 500,\n  endDate:/,
+      );
       expect(generatedConfig).toContain('id: "core"');
       expect(generatedConfig).toContain('id: "all"');
       expect(copiedR1cs).toBe("deposit-r1cs");
+    },
+  );
+
+  test.skipIf(!hasTemplates)(
+    "serializes circuit filenames safely in generated config",
+    async () => {
+      const outputDirectory = await mkFixtureDirectory("cabure-generated-");
+      const unsafeFilename = "weird `${process.env.INJECT}`.r1cs";
+
+      await scaffoldProject({
+        outputDirectory,
+        projectName: "Unsafe Filename",
+        projectSlug: "unsafe-filename",
+        targetContributions: 100,
+        endDate: null,
+        tiers: [],
+        stateManifestBlobUrl: "",
+        circuits: [
+          {
+            id: "weird-circuit",
+            label: "Weird Circuit",
+            description: "Weird circuit.",
+            constraints: "unknown",
+            targetContributions: 100,
+            artifacts: {
+              r1csPath: unsafeFilename,
+              ptauPath: "pot_final.ptau",
+            },
+          },
+        ],
+      });
+
+      const generatedConfig = await readFile(
+        path.join(outputDirectory, "ceremony.config.ts"),
+        "utf8",
+      );
+
+      expect(generatedConfig).toContain(
+        `r1csPath: ${JSON.stringify(`circuits/${unsafeFilename}`)}`,
+      );
+      expect(generatedConfig).not.toContain(
+        `r1csPath: \`\${CIRCUITS_DIR}/${unsafeFilename}\``,
+      );
     },
   );
 });

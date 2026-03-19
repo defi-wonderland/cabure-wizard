@@ -22,6 +22,7 @@ async function main(): Promise<void> {
   }
 
   const outputDirectory = path.resolve(process.cwd(), projectSlug);
+  const circuitsDirectory = path.join(outputDirectory, "circuits");
 
   let r1csFilenames: string[] = [];
   if (answers.circuitArtifactsPath) {
@@ -45,9 +46,9 @@ async function main(): Promise<void> {
     stateManifestBlobUrl: "",
   });
 
+  await mkdir(circuitsDirectory, { recursive: true });
+
   if (answers.circuitArtifactsPath) {
-    const circuitsDirectory = path.join(outputDirectory, "circuits");
-    await mkdir(circuitsDirectory, { recursive: true });
     await copyR1csCircuitsFromPath(
       answers.circuitArtifactsPath,
       circuitsDirectory,
@@ -103,7 +104,9 @@ function buildTierConfigs(
     return [];
   }
 
-  const allIds = circuits.map((c) => c.id);
+  const allIds = [...circuits]
+    .sort((left, right) => left.id.localeCompare(right.id, "en"))
+    .map((c) => c.id);
   const coreIds = allIds.slice(0, 1);
   const popularIds = allIds.slice(0, Math.max(1, Math.ceil(allIds.length / 2)));
 
