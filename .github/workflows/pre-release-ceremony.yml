@@ -1,0 +1,93 @@
+name: Ceremony Pre-Release
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  pre-release:
+    name: Publish Ceremony Pre-Release
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.x
+          cache: "pnpm"
+          registry-url: "https://npm.pkg.github.com"
+          scope: "@defi-wonderland"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: |
+          pnpm --filter @defi-wonderland/create-cabure-ceremony clean
+          pnpm --filter @defi-wonderland/create-cabure-ceremony build
+
+      - name: Run tests
+        run: pnpm --filter @defi-wonderland/create-cabure-ceremony test
+
+      - name: Generate pre-release version
+        id: version
+        working-directory: packages/create-cabure-ceremony
+        run: |
+          BASE_VERSION=$(node -p "require('./package.json').version")
+          PKG_NAME=$(node -p "require('./package.json').name")
+          SHORT_SHA=$(git rev-parse --short HEAD)
+          TIMESTAMP=$(date +%Y%m%d%H%M%S)
+          PRERELEASE_VERSION="${BASE_VERSION}-pre.${SHORT_SHA}.${TIMESTAMP}"
+
+          echo "version=${PRERELEASE_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "pkg-name=${PKG_NAME}" >> "$GITHUB_OUTPUT"
+
+          echo "Package: ${PKG_NAME}"
+          echo "Pre-release version: ${PRERELEASE_VERSION}"
+
+      - name: Set pre-release version
+        working-directory: packages/create-cabure-ceremony
+        run: npm pkg set "version=${{ steps.version.outputs.version }}"
+
+      - name: Publish to GitHub Packages
+        working-directory: packages/create-cabure-ceremony
+        run: npm publish --tag pre
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Summary
+        run: |
+          echo ""
+          echo "══════════════════════════════════════════════════════════════"
+          echo "  Ceremony pre-release published to GitHub Packages!"
+          echo "══════════════════════════════════════════════════════════════"
+          echo ""
+          echo "  Version: ${{ steps.version.outputs.pkg-name }}@${{ steps.version.outputs.version }}"
+          echo ""
+          echo "  Install:"
+          echo ""
+          echo "    npm install ${{ steps.version.outputs.pkg-name }}@${{ steps.version.outputs.version }}"
+          echo ""
+          echo "  Or in package.json:"
+          echo ""
+          echo '    "${{ steps.version.outputs.pkg-name }}": "${{ steps.version.outputs.version }}"'
+          echo ""
+          echo "  Consumers need a .npmrc with:"
+          echo ""
+          echo "    @defi-wonderland:registry=https://npm.pkg.github.com/"
+          echo ""
+          echo "══════════════════════════════════════════════════════════════"
