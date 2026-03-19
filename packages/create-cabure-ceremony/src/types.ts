@@ -13,32 +13,34 @@ export interface WizardAnswers {
   circuitArtifactsPath: string | null;
 }
 
+export type TierId = "core" | "popular" | "all";
+
 /**
- * Grouping of circuit IDs into performance/security tiers.
- *
- * @property core - Circuit IDs always included in contributions
- * @property popular - Circuit IDs included in the standard contribution flow
- * @property all - Complete list of circuit IDs in the ceremony
+ * Tier grouping shown on the tier selection screen.
+ * Each tier maps to a subset of circuit IDs and an estimated time.
  */
-export interface CircuitTierConfig {
-  core: string[];
-  popular: string[];
-  all: string[];
+export interface GeneratedTierConfig {
+  id: TierId;
+  label: string;
+  description: string;
+  estimatedMinutes: number;
+  circuitIds: string[];
 }
 
 /**
  * Configuration for a single circuit in the generated ceremony project.
- *
- * @property id - Unique circuit identifier (derived from filename stem)
- * @property r1csFilename - Filename of the R1CS constraint file in circuits/
- * @property initialZkeyBlobPath - Storage path for the genesis zkey blob
- * @property initialZkeyBlobUrl - Public URL for downloading the genesis zkey
+ * Matches the CeremonyCircuitConfig shape expected by the ceremony-ui templates.
  */
 export interface GeneratedCircuitConfig {
   id: string;
-  r1csFilename: string;
-  initialZkeyBlobPath: string;
-  initialZkeyBlobUrl: string;
+  label: string;
+  description: string;
+  constraints: string;
+  targetContributions: number;
+  artifacts: {
+    r1csPath: string;
+    ptauPath: string;
+  };
 }
 
 /**
@@ -47,10 +49,10 @@ export interface GeneratedCircuitConfig {
  * @property outputDirectory - Absolute path where the project will be generated
  * @property projectName - Human-readable project name
  * @property projectSlug - URL-safe kebab-case project identifier
- * @property targetContributions - Target number of contributions
+ * @property targetContributions - Per-circuit target (applied uniformly by wizard)
  * @property endDate - Optional deadline (YYYY-MM-DD) or null
  * @property circuits - List of circuit configurations to embed in ceremony.config.ts
- * @property tiers - Circuit tier groupings
+ * @property tiers - Tier definitions generated from circuit discovery
  * @property stateManifestBlobUrl - URL for the ceremony state manifest blob
  */
 export interface ScaffoldContext {
@@ -60,6 +62,6 @@ export interface ScaffoldContext {
   targetContributions: number;
   endDate: string | null;
   circuits: GeneratedCircuitConfig[];
-  tiers: CircuitTierConfig;
+  tiers: GeneratedTierConfig[];
   stateManifestBlobUrl: string;
 }

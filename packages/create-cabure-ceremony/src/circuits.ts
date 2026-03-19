@@ -2,6 +2,26 @@ import { mkdir, readdir, copyFile } from "node:fs/promises";
 import path from "node:path";
 
 /**
+ * Discovers `.r1cs` files recursively without copying. Returns de-duplicated
+ * basenames in sorted order, suitable for building circuit configs before
+ * the output directory exists.
+ */
+export async function discoverR1csFilenames(
+  sourceDirectory: string,
+): Promise<string[]> {
+  const discoveredFiles = await listFilesRecursively(sourceDirectory);
+  const r1csFiles = discoveredFiles
+    .filter((filePath) => filePath.endsWith(".r1cs"))
+    .sort((a, b) => a.localeCompare(b));
+
+  const usedFilenames = new Set<string>();
+  return r1csFiles.map((filePath) => {
+    const basename = path.basename(filePath);
+    return getUniqueFilename(basename, usedFilenames);
+  });
+}
+
+/**
  * Discovers `.r1cs` files recursively in sourceDirectory and copies them into
  * targetDirectory with case-insensitive deduplication. Colliding names are
  * suffixed with _2, _3, etc.
