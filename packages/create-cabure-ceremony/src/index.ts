@@ -3,10 +3,12 @@
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
+
 import { askWizardQuestions } from "./prompts.js";
-import { copyR1csCircuitsFromPath } from "./circuits.js";
+import { copyR1csCircuitsFromPath, discoverR1csFilenames } from "./circuits.js";
 import { scaffoldProject } from "./scaffold.js";
 import { toProjectDirectoryName } from "./validate.js";
+import type { GeneratedCircuitConfig, GeneratedTierConfig } from "./types.js";
 
 async function main(): Promise<void> {
   printHeader();
@@ -20,11 +22,17 @@ async function main(): Promise<void> {
   }
 
   const outputDirectory = path.resolve(process.cwd(), projectSlug);
-  const tiers = {
-    core: [],
-    popular: [],
-    all: [],
-  };
+
+  let r1csFilenames: string[] = [];
+  if (answers.circuitArtifactsPath) {
+    r1csFilenames = await discoverR1csFilenames(answers.circuitArtifactsPath);
+  }
+
+  const circuits = buildCircuitConfigs(
+    r1csFilenames,
+    answers.targetContributions,
+  );
+  const tiers = buildTierConfigs(circuits);
 
   await scaffoldProject({
     outputDirectory,
@@ -32,16 +40,15 @@ async function main(): Promise<void> {
     projectSlug,
     targetContributions: answers.targetContributions,
     endDate: answers.endDate,
-    circuits: [],
+    circuits,
     tiers,
     stateManifestBlobUrl: "",
   });
-  const circuitsDirectory = path.join(outputDirectory, "circuits");
-  await mkdir(circuitsDirectory, { recursive: true });
 
-  let copiedR1csFiles: string[] = [];
   if (answers.circuitArtifactsPath) {
-    copiedR1csFiles = await copyR1csCircuitsFromPath(
+    const circuitsDirectory = path.join(outputDirectory, "circuits");
+    await mkdir(circuitsDirectory, { recursive: true });
+    await copyR1csCircuitsFromPath(
       answers.circuitArtifactsPath,
       circuitsDirectory,
     );
@@ -50,8 +57,79 @@ async function main(): Promise<void> {
   printSummary({
     projectName: answers.projectName,
     outputDirectory,
-    copiedR1csCount: copiedR1csFiles.length,
+    copiedR1csCount: r1csFilenames.length,
   });
+}
+
+function circuitIdFromFilename(filename: string): string {
+  return path.basename(filename, ".r1cs");
+}
+
+function toTitleCase(id: string): string {
+  return id.replace(/[_-]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function buildCircuitConfigs(
+  r1csFilenames: string[],
+  targetContributions: number,
+): GeneratedCircuitConfig[] {
+  return r1csFilenames.map((filename) => {
+    const id = circuitIdFromFilename(filename);
+    return {
+      id,
+      label: toTitleCase(id),
+      description: `${toTitleCase(id)} circuit.`,
+      constraints: "unknown",
+      targetContributions,
+      artifacts: {
+        r1csPath: filename,
+        ptauPath: "pot_final.ptau",
+      },
+    };
+  });
+}
+
+/**
+ * Auto-generates tier configs from discovered circuits.
+ *
+ * With one circuit all tiers contain that circuit. With multiple circuits the
+ * first circuit is "core", the first half is "popular", and all circuits form
+ * the "all" tier.
+ */
+function buildTierConfigs(
+  circuits: GeneratedCircuitConfig[],
+): GeneratedTierConfig[] {
+  if (circuits.length === 0) {
+    return [];
+  }
+
+  const allIds = circuits.map((c) => c.id);
+  const coreIds = allIds.slice(0, 1);
+  const popularIds = allIds.slice(0, Math.max(1, Math.ceil(allIds.length / 2)));
+
+  return [
+    {
+      id: "core" as const,
+      label: "Required",
+      description: "The essential circuit. Maximum contributor diversity.",
+      estimatedMinutes: Math.max(1, coreIds.length),
+      circuitIds: coreIds,
+    },
+    {
+      id: "popular" as const,
+      label: "Recommended",
+      description: "Most popular circuits. Good balance of time and coverage.",
+      estimatedMinutes: Math.max(1, popularIds.length),
+      circuitIds: popularIds,
+    },
+    {
+      id: "all" as const,
+      label: "Power User",
+      description: "Full contribution. Every circuit covered.",
+      estimatedMinutes: Math.max(1, allIds.length),
+      circuitIds: allIds,
+    },
+  ];
 }
 
 function printHeader(): void {
@@ -80,12 +158,31 @@ function printSummary(options: {
     );
   }
   process.stdout.write("Next steps:\n");
-  process.stdout.write(`1. cd ${options.outputDirectory}\n`);
-  process.stdout.write("2. Ensure your .r1cs files are in ./circuits\n");
-  process.stdout.write("3. Update ceremony.config.ts with circuit metadata\n");
-  process.stdout.write("4. npm install\n");
-  process.stdout.write("5. npm run dev\n");
-  process.stdout.write("6. Import the repo into Vercel and deploy.\n\n");
+  let step = 1;
+  process.stdout.write(`${step++}. cd ${options.outputDirectory}\n`);
+  if (options.copiedR1csCount === 0) {
+    process.stdout.write(`${step++}. Add your .r1cs files into ./circuits\n`);
+  }
+  process.stdout.write(
+    `${step++}. Add your Powers of Tau (.ptau) file into ./circuits\n`,
+  );
+  process.stdout.write(
+    `${step++}. Update ptauPath in ceremony.config.ts to match your .ptau filename\n`,
+  );
+  if (options.copiedR1csCount === 0) {
+    process.stdout.write(
+      `${step++}. Update ceremony.config.ts with circuit and tier metadata\n`,
+    );
+  } else {
+    process.stdout.write(
+      `${step++}. Review ceremony.config.ts (circuits and tiers auto-configured)\n`,
+    );
+  }
+  process.stdout.write(`${step++}. npm install\n`);
+  process.stdout.write(`${step++}. npm run dev\n`);
+  process.stdout.write(
+    `${step++}. Import the repo into Vercel and deploy.\n\n`,
+  );
 }
 
 void main().catch((error: unknown) => {

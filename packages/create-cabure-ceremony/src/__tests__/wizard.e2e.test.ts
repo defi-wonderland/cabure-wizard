@@ -89,13 +89,44 @@ describe("wizard scaffold e2e", async () => {
         projectSlug: "privacy-pools-v2",
         targetContributions: 500,
         endDate: "2026-03-27",
-        tiers: {
-          core: [],
-          popular: [],
-          all: [],
-        },
+        tiers: [
+          {
+            id: "core",
+            label: "Required",
+            description: "Essential circuits.",
+            estimatedMinutes: 1,
+            circuitIds: ["deposit"],
+          },
+          {
+            id: "all",
+            label: "Power User",
+            description: "All circuits.",
+            estimatedMinutes: 2,
+            circuitIds: ["deposit", "withdraw"],
+          },
+        ],
         stateManifestBlobUrl: "",
-        circuits: [],
+        circuits: [
+          {
+            id: "deposit",
+            label: "Deposit",
+            description: "Deposit circuit.",
+            constraints: "unknown",
+            targetContributions: 500,
+            artifacts: { r1csPath: "deposit.r1cs", ptauPath: "pot_final.ptau" },
+          },
+          {
+            id: "withdraw",
+            label: "Withdraw",
+            description: "Withdraw circuit.",
+            constraints: "unknown",
+            targetContributions: 500,
+            artifacts: {
+              r1csPath: "withdraw.r1cs",
+              ptauPath: "pot_final.ptau",
+            },
+          },
+        ],
       });
 
       await copyR1csCircuitsFromPath(
@@ -113,7 +144,10 @@ describe("wizard scaffold e2e", async () => {
       );
 
       expect(generatedConfig).toContain("Privacy Pools v2");
-      expect(generatedConfig).toContain("circuits: []");
+      expect(generatedConfig).toContain('"deposit"');
+      expect(generatedConfig).toContain("targetContributions: 500");
+      expect(generatedConfig).toContain('id: "core"');
+      expect(generatedConfig).toContain('id: "all"');
       expect(copiedR1cs).toBe("deposit-r1cs");
     },
   );

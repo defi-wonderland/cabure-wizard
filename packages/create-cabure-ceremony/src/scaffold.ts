@@ -1,7 +1,11 @@
 import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import type { ScaffoldContext } from "./types.js";
+import type {
+  GeneratedCircuitConfig,
+  GeneratedTierConfig,
+  ScaffoldContext,
+} from "./types.js";
 
 const TEMPLATES_DIRECTORY = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -128,37 +132,99 @@ async function assertOutputDirectoryIsWritable(
   }
 }
 
-function renderCeremonyConfig(context: ScaffoldContext): string {
-  const circuitsJson = JSON.stringify(context.circuits, null, 2);
-  const tiersJson = JSON.stringify(context.tiers, null, 2);
-
-  return `export interface CeremonyCircuitConfig {
-  id: string;
-  r1csFilename: string;
-  initialZkeyBlobPath: string;
-  initialZkeyBlobUrl: string;
+function renderCircuitEntry(circuit: GeneratedCircuitConfig): string {
+  return `    {
+      id: ${JSON.stringify(circuit.id)},
+      label: ${JSON.stringify(circuit.label)},
+      description: ${JSON.stringify(circuit.description)},
+      constraints: ${JSON.stringify(circuit.constraints)},
+      targetContributions: ${circuit.targetContributions},
+      artifacts: {
+        r1csPath: \`\${CIRCUITS_DIR}/${circuit.artifacts.r1csPath}\`,
+        ptauPath: PTAU_PATH,
+      },
+    }`;
 }
 
-export interface CeremonyConfig {
-  name: string;
-  targetContributions: number;
-  endDate: string | null;
-  stateManifestBlobUrl: string;
-  circuits: CeremonyCircuitConfig[];
-  tiers: {
-    core: string[];
-    popular: string[];
-    all: string[];
+function renderTierEntry(tier: GeneratedTierConfig): string {
+  const ids = tier.circuitIds.map((id) => JSON.stringify(id)).join(", ");
+  return `    {
+      id: ${JSON.stringify(tier.id)},
+      label: ${JSON.stringify(tier.label)},
+      description: ${JSON.stringify(tier.description)},
+      estimatedMinutes: ${tier.estimatedMinutes},
+      circuitIds: [${ids}],
+    }`;
+}
+
+function renderCeremonyConfig(context: ScaffoldContext): string {
+  const circuitEntries = context.circuits.map(renderCircuitEntry).join(",\n");
+  const tierEntries = context.tiers.map(renderTierEntry).join(",\n");
+  const totalTarget = context.circuits.reduce(
+    (sum, c) => sum + c.targetContributions,
+    0,
+  );
+
+  return `import { defaultCopy } from "./src/copy";
+
+export type {
+  CeremonyCircuitConfig,
+  CeremonyConfig,
+  CeremonyCopy,
+  CeremonyTierConfig,
+  CircuitArtifactsConfig,
+  ClientCeremonyConfig,
+  ClientCircuitConfig,
+  TierId,
+} from "./src/types/ceremony";
+
+import type {
+  CeremonyConfig,
+  ClientCeremonyConfig,
+} from "./src/types/ceremony";
+
+export function getCeremonyConfig(): CeremonyConfig {
+  return ceremonyConfig;
+}
+
+export function getClientConfig(): ClientCeremonyConfig {
+  const { circuits, ...rest } = ceremonyConfig;
+  return {
+    ...rest,
+    circuits: circuits.map(({ artifacts, ...circuit }) => circuit),
   };
 }
 
+const CIRCUITS_DIR = "circuits";
+const PTAU_PATH = \`\${CIRCUITS_DIR}/pot_final.ptau\`;
+
 export const ceremonyConfig: CeremonyConfig = {
   name: ${JSON.stringify(context.projectName)},
-  targetContributions: ${context.targetContributions},
+  slug: ${JSON.stringify(context.projectSlug)},
+  description:
+    "Contribute your randomness to strengthen the ceremony and improve system security.",
+  targetContributions: ${totalTarget || context.targetContributions},
   endDate: ${context.endDate ? JSON.stringify(context.endDate) : "null"},
-  stateManifestBlobUrl: ${JSON.stringify(context.stateManifestBlobUrl)},
-  circuits: ${circuitsJson},
-  tiers: ${tiersJson}
+  queueTimeoutSeconds: 300,
+  verifyContributions: false,
+  tiersEnabled: ${context.tiers.length > 0},
+  tiers: [
+${tierEntries}
+  ],
+  circuits: [
+${circuitEntries}
+  ],
+  branding: {
+    shortName: ${JSON.stringify(context.projectSlug.slice(0, 2).toUpperCase())},
+    accentColor: "#95C23A",
+  },
+  storage: {
+    manifestPath: "ceremony:manifest",
+    circuitStatePrefix: "ceremony:circuits",
+    receiptsPath: "ceremony:receipts",
+    zkeyPrefix: ${JSON.stringify(`${context.projectSlug}/zkeys`)},
+  },
+  copy: defaultCopy,
 };
 `;
 }
