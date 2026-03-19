@@ -81,7 +81,7 @@ Testing window is Mar 16 – Mar 27 (2 weeks). Suggested order:
 ## 6. Questions
 
 Ask the QA engineer:
-1. Do you have a toy circuit (.r1cs + .wasm) available for testing? If not, Lumi can provide one.
+1. Do you have a toy circuit (.r1cs) available for testing? If not, Lumi can provide one.
 2. Are you set up with IPFS locally (e.g. Pinata account or local IPFS node)?
 3. Any specific areas you're concerned about?
 
