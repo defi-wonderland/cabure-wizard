@@ -14,7 +14,7 @@ export function toDisplayPath(
     return ".";
   }
 
-  if (relativePath.startsWith("..")) {
+  if (relativePath.startsWith("..") || path.isAbsolute(relativePath)) {
     return relativePath;
   }
 
