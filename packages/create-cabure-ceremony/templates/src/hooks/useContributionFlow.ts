@@ -247,7 +247,10 @@ export function useContributionFlow(options: {
     setQueueError(null);
   }, [queueQuery.data, currentCircuitId, updateCircuitRun]);
 
-  // Trigger contribution when at position 1
+  // Trigger contribution when at position 1.
+  // isPending is intentionally omitted from deps: including it would cause
+  // infinite retries on failure (isPending true→false re-fires the effect
+  // while position is still 1). On success, currentCircuitId advances.
   useEffect(() => {
     if (
       queueQuery.data?.position === 1 &&
@@ -257,9 +260,12 @@ export function useContributionFlow(options: {
     ) {
       contributeMutation.mutate(currentCircuitId);
     }
-  }, [queueQuery.data?.position, currentCircuitId, finalizeReady, contributeMutation.isPending]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [queueQuery.data?.position, currentCircuitId, finalizeReady]);
 
-  // Handle "not in queue" errors by rejoining
+  // Handle "not in queue" errors by rejoining.
+  // isPending is intentionally omitted: including it would cause infinite
+  // rejoin attempts when the rejoin itself fails with the error still present.
   useEffect(() => {
     const msg = queueQuery.error?.message ?? "";
     if (
@@ -271,7 +277,8 @@ export function useContributionFlow(options: {
     } else if (queueQuery.error && !msg.toLowerCase().includes("not in queue")) {
       setQueueError(msg);
     }
-  }, [queueQuery.error, finalizeReady, rejoinMutation.isPending]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [queueQuery.error, finalizeReady]);
 
   // --- Actions (same public API) ---
 
