@@ -1,0 +1,2 @@
+//npm.pkg.github.com/:_authToken=${GITHUB_TOKEN}
+@defi-wonderland:registry=https://npm.pkg.github.com/
