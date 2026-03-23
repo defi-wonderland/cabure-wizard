@@ -135,6 +135,13 @@ export async function GET(request: NextRequest) {
   }
 
   const config = getCeremonyConfig();
+  const knownCircuit = config.circuits.find((c) => c.id === circuitId);
+  if (!knownCircuit) {
+    return NextResponse.json(
+      { error: `Circuit not found: ${circuitId}` },
+      { status: 404 },
+    );
+  }
   const circuit = await getCircuitState(circuitId);
 
   const now = Date.now();

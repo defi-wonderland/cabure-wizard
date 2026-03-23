@@ -122,6 +122,16 @@ export function useEntropyCollector() {
     [isReady, recordSample, addEntropy],
   );
 
+  /** Records a keyboard event entropy sample (10 bits). */
+  const recordKeyPress = useCallback(
+    (keyCode: number) => {
+      if (isReady) return;
+      recordSample({ x: keyCode, y: 0, dx: 0, dy: 0, typeCode: 3 });
+      addEntropy(10);
+    },
+    [isReady, recordSample, addEntropy],
+  );
+
   /** Mixes collected bytes with CSPRNG output via SHA-256 into a 64-byte seed. */
   const buildSeed = useCallback(async (): Promise<Uint8Array> => {
     const seed = await buildEntropySeed(entropyBytesRef.current);
@@ -135,6 +145,7 @@ export function useEntropyCollector() {
     areaRef,
     handleMouseMove,
     recordClick,
+    recordKeyPress,
     buildSeed,
   };
 }

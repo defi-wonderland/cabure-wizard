@@ -1,6 +1,9 @@
+import { createWriteStream } from "node:fs";
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 
 import * as snarkjs from "snarkjs";
 
@@ -31,10 +34,20 @@ interface CircuitInfo {
   nConstraints: number;
 }
 
+const MAX_PTAU_DEGREE = 28;
+
 function requiredDegree(maxConstraints: number): number {
   if (maxConstraints <= 0) return 1;
   const k = Math.ceil(Math.log2(maxConstraints + 1));
-  return Math.max(1, Math.min(k, 28));
+  if (k > MAX_PTAU_DEGREE) {
+    throw new Error(
+      `Circuit constraints (${maxConstraints.toLocaleString("en-US")}) require ptau degree ${k}, ` +
+        `but the maximum available PPoT file is degree ${MAX_PTAU_DEGREE} (2^${MAX_PTAU_DEGREE} = ` +
+        `${Math.pow(2, MAX_PTAU_DEGREE).toLocaleString("en-US")} points). ` +
+        "Use a circuit with fewer constraints or provide a custom ptau file.",
+    );
+  }
+  return Math.max(1, k);
 }
 
 function ptauUrl(degree: number): string {
@@ -88,12 +101,22 @@ async function downloadPtau(url: string, dest: string): Promise<number> {
     console.log(`  Size: ${formatBytes(contentLength)}`);
   }
 
-  const buffer = Buffer.from(await response.arrayBuffer());
+  if (!response.body) {
+    throw new Error("Response body is empty");
+  }
 
   await mkdir(path.dirname(dest), { recursive: true });
-  await writeFile(dest, buffer);
 
-  return buffer.length;
+  const nodeStream = Readable.fromWeb(response.body as import("node:stream/web").ReadableStream);
+  const fileStream = createWriteStream(dest);
+  await pipeline(nodeStream, fileStream);
+
+  const fileStat = await stat(dest);
+  return fileStat.size;
+}
+
+function escapeRegExp(str: string): string {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 async function updateConfigConstraints(
@@ -111,7 +134,7 @@ async function updateConfigConstraints(
   let updated = content;
   for (const circuit of circuits) {
     const pattern = new RegExp(
-      `(id:\\s*"${circuit.id}"[\\s\\S]*?constraints:\\s*)"[^"]*"`,
+      `(id:\\s*"${escapeRegExp(circuit.id)}"[\\s\\S]*?constraints:\\s*)"[^"]*"`,
     );
     updated = updated.replace(
       pattern,

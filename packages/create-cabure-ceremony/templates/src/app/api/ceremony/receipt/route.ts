@@ -14,8 +14,14 @@ export async function GET(request: NextRequest) {
     );
   }
 
+  if (!/^\d+$/.test(indexRaw)) {
+    return NextResponse.json(
+      { error: "contributionIndex must be a positive integer" },
+      { status: 400 },
+    );
+  }
   const contributionIndex = Number.parseInt(indexRaw, 10);
-  if (!Number.isInteger(contributionIndex) || contributionIndex <= 0) {
+  if (contributionIndex <= 0) {
     return NextResponse.json(
       { error: "contributionIndex must be a positive integer" },
       { status: 400 },

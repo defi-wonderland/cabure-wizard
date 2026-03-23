@@ -28,6 +28,7 @@ export function EntropyScreen({
     areaRef,
     handleMouseMove,
     recordClick,
+    recordKeyPress,
     buildSeed,
   } = useEntropyCollector();
 
@@ -57,6 +58,14 @@ export function EntropyScreen({
     [isReady, areaRef, recordClick],
   );
 
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLDivElement>) => {
+      if (isReady || e.repeat) return;
+      recordKeyPress(e.keyCode);
+    },
+    [isReady, recordKeyPress],
+  );
+
   const handleSubmit = useCallback(async () => {
     if (!isReady || isSubmitting) return;
     setIsSubmitting(true);
@@ -70,8 +79,12 @@ export function EntropyScreen({
     <div className={styles.container}>
       <div
         ref={areaRef}
+        role="application"
+        tabIndex={0}
+        aria-label={copy.entropy.topBarTitle}
         onMouseMove={handleMouseMove}
         onClick={handleClick}
+        onKeyDown={handleKeyDown}
         className={styles.interactiveArea}
       >
         {ripples.map((r) => (

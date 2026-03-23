@@ -47,8 +47,9 @@ export function VerifyScreen({
       </div>
 
       <div className={styles.inputGroup}>
-        <label className="label">{copy.verify.label}</label>
+        <label htmlFor="receipt-input" className="label">{copy.verify.label}</label>
         <textarea
+          id="receipt-input"
           value={input}
           onChange={(event) => setInput(event.target.value)}
           placeholder={copy.verify.placeholder}

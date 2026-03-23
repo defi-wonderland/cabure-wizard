@@ -17,11 +17,15 @@ export function useReceiptActions(options: {
   const receiptPayload =
     receipts.length > 0 ? JSON.stringify(receipts, null, 2) : "";
 
-  const handleCopy = () => {
+  const handleCopy = async () => {
     if (!receiptPayload) return;
-    navigator.clipboard.writeText(receiptPayload);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    try {
+      await navigator.clipboard.writeText(receiptPayload);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      /* clipboard write can fail in insecure contexts */
+    }
   };
 
   const handleCopyItem = (hash: string) => {

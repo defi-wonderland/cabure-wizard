@@ -61,14 +61,16 @@ export async function runContribution(options: {
       reject(new Error(event.message));
     };
 
+    const prevZkeyCopy = options.prevZkey.slice();
+    const entropyCopy = options.entropy.slice();
     worker.postMessage(
       {
         type: RequestType.Contribute,
-        prevZkey: options.prevZkey,
-        entropy: options.entropy,
+        prevZkey: prevZkeyCopy,
+        entropy: entropyCopy,
         name: options.name,
       },
-      [options.prevZkey.buffer, options.entropy.buffer],
+      [prevZkeyCopy.buffer, entropyCopy.buffer],
     );
   });
 }

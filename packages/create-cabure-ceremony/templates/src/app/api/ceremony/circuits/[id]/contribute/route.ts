@@ -88,92 +88,88 @@ export async function POST(
     );
   }
 
-  let circuit = await getCircuitState(id);
-  const allCircuits = await getAllCircuitStates();
+  try {
+    let circuit = await getCircuitState(id);
+    const allCircuits = await getAllCircuitStates();
 
-  if (!isCeremonyActive(manifest, allCircuits)) {
-    await releaseLock(lockKey, lockToken);
-    await deleteBinary(blobUrl).catch(() => {});
-    return NextResponse.json(
-      { error: "Ceremony is not active" },
-      { status: 403 },
-    );
-  }
-
-  circuit.queue = pruneExpiredEntries(
-    circuit.queue,
-    config.queueTimeoutSeconds,
-  );
-
-  if (circuit.queue[0]?.participantId !== participantId) {
-    await releaseLock(lockKey, lockToken);
-    await deleteBinary(blobUrl).catch(() => {});
-    return NextResponse.json(
-      { error: "Not at front of the queue" },
-      { status: 409 },
-    );
-  }
-
-  const circuitConfig = config.circuits.find((c) => c.id === id);
-  if (!circuitConfig) {
-    await releaseLock(lockKey, lockToken);
-    await deleteBinary(blobUrl).catch(() => {});
-    return NextResponse.json(
-      { error: `Unknown circuit: ${id}` },
-      { status: 404 },
-    );
-  }
-
-  if (config.verifyContributions) {
-    const [r1cs, ptau] = await Promise.all([
-      readCircuitBytes(circuitConfig.artifacts.r1csPath),
-      readCircuitBytes(circuitConfig.artifacts.ptauPath),
-    ]);
-
-    const isValid = await verify(r1cs, ptau, body);
-    if (!isValid) {
-      await releaseLock(lockKey, lockToken);
+    if (!isCeremonyActive(manifest, allCircuits)) {
       await deleteBinary(blobUrl).catch(() => {});
       return NextResponse.json(
-        { error: "Invalid contribution: verification failed" },
-        { status: 400 },
+        { error: "Ceremony is not active" },
+        { status: 403 },
       );
     }
-  }
 
-  const computedHash = `0x${createHash("sha256").update(body).digest("hex")}`;
-  const contributionIndex = circuit.totalContributions + 1;
-  const timestamp = Date.now();
-  const chainHash = computeChainHash({
-    previousChainHash: circuit.chainHash,
-    contributionHash: computedHash,
-    participantId,
-    timestamp,
-  });
+    circuit.queue = pruneExpiredEntries(
+      circuit.queue,
+      config.queueTimeoutSeconds,
+    );
 
-  const zkeyPath = `${config.storage.zkeyPrefix}/${id}/current.zkey`;
-  const stored = await putBinary(zkeyPath, body);
+    if (circuit.queue[0]?.participantId !== participantId) {
+      await deleteBinary(blobUrl).catch(() => {});
+      return NextResponse.json(
+        { error: "Not at front of the queue" },
+        { status: 409 },
+      );
+    }
 
-  await deleteBinary(blobUrl).catch(() => {});
+    const circuitConfig = config.circuits.find((c) => c.id === id);
+    if (!circuitConfig) {
+      await deleteBinary(blobUrl).catch(() => {});
+      return NextResponse.json(
+        { error: `Unknown circuit: ${id}` },
+        { status: 404 },
+      );
+    }
 
-  circuit.totalContributions += 1;
-  circuit.latestContributionHash = computedHash;
-  circuit.chainHash = chainHash;
-  circuit.queue.shift();
-  circuit.currentZkeyPath = stored.pathname;
-  circuit.currentZkeyUrl = stored.url;
+    if (config.verifyContributions) {
+      const [r1cs, ptau] = await Promise.all([
+        readCircuitBytes(circuitConfig.artifacts.r1csPath),
+        readCircuitBytes(circuitConfig.artifacts.ptauPath),
+      ]);
 
-  const receipt: ContributionReceipt = {
-    circuitId: id,
-    participantId,
-    contributionIndex,
-    contributionHash: computedHash,
-    chainHash,
-    timestamp,
-    serverComputedContributionHash: computedHash,
-  };
+      const isValid = await verify(r1cs, ptau, body);
+      if (!isValid) {
+        await deleteBinary(blobUrl).catch(() => {});
+        return NextResponse.json(
+          { error: "Invalid contribution: verification failed" },
+          { status: 400 },
+        );
+      }
+    }
 
-  try {
+    const computedHash = `0x${createHash("sha256").update(body).digest("hex")}`;
+    const contributionIndex = circuit.totalContributions + 1;
+    const timestamp = Date.now();
+    const chainHash = computeChainHash({
+      previousChainHash: circuit.chainHash,
+      contributionHash: computedHash,
+      participantId,
+      timestamp,
+    });
+
+    const zkeyPath = `${config.storage.zkeyPrefix}/${id}/current.zkey`;
+    const stored = await putBinary(zkeyPath, body);
+
+    await deleteBinary(blobUrl).catch(() => {});
+
+    circuit.totalContributions += 1;
+    circuit.latestContributionHash = computedHash;
+    circuit.chainHash = chainHash;
+    circuit.queue.shift();
+    circuit.currentZkeyPath = stored.pathname;
+    circuit.currentZkeyUrl = stored.url;
+
+    const receipt: ContributionReceipt = {
+      circuitId: id,
+      participantId,
+      contributionIndex,
+      contributionHash: computedHash,
+      chainHash,
+      timestamp,
+      serverComputedContributionHash: computedHash,
+    };
+
     await Promise.all([
       setJson(circuitStatePath(config.storage.circuitStatePrefix, id), circuit),
       listPush(config.storage.receiptsPath, receipt),

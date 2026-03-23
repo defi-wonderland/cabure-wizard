@@ -108,7 +108,7 @@ export default function CeremonyPage() {
       if (
         !receipt?.circuitId ||
         !receipt.participantId ||
-        !receipt.contributionIndex
+        receipt.contributionIndex == null
       ) {
         throw new Error(config.copy.verify.invalidReceipt);
       }
@@ -133,7 +133,7 @@ export default function CeremonyPage() {
         {!isFullScreen && (
           <Header
             step={step}
-            onLogoClick={() => setStep("landing")}
+            onLogoClick={step === "progress" ? handleCancelContribution : () => setStep("landing")}
           />
         )}
 

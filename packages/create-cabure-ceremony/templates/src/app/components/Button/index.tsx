@@ -23,6 +23,7 @@ export function Button({
 }) {
   return (
     <button
+      type="button"
       className={cn(styles.button, SIZE_MAP[size], styles[variant], className)}
       {...props}
     >

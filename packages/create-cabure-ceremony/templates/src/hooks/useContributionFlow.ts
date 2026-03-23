@@ -257,7 +257,7 @@ export function useContributionFlow(options: {
     ) {
       contributeMutation.mutate(currentCircuitId);
     }
-  }, [queueQuery.data?.position, currentCircuitId, finalizeReady]);
+  }, [queueQuery.data?.position, currentCircuitId, finalizeReady, contributeMutation.isPending]);
 
   // Handle "not in queue" errors by rejoining
   useEffect(() => {
@@ -271,7 +271,7 @@ export function useContributionFlow(options: {
     } else if (queueQuery.error && !msg.toLowerCase().includes("not in queue")) {
       setQueueError(msg);
     }
-  }, [queueQuery.error, finalizeReady]);
+  }, [queueQuery.error, finalizeReady, rejoinMutation.isPending]);
 
   // --- Actions (same public API) ---
 
