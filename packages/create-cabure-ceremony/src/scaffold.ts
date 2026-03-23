@@ -1,6 +1,8 @@
 import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+
+import { toDisplayPath } from "./display-path.js";
 import type {
   GeneratedCircuitConfig,
   GeneratedTierConfig,
@@ -42,12 +44,12 @@ export async function scaffoldProject(context: ScaffoldContext): Promise<void> {
 async function assertTemplatesDirectoryAvailable(
   templatesDirectory: string,
 ): Promise<void> {
+  const displayPath = toDisplayPath(templatesDirectory);
+
   try {
     const templateStats = await stat(templatesDirectory);
     if (!templateStats.isDirectory()) {
-      throw new Error(
-        `Template path is not a directory: ${templatesDirectory}`,
-      );
+      throw new Error(`Template path is not a directory: ${displayPath}`);
     }
   } catch (error) {
     if (
@@ -57,7 +59,7 @@ async function assertTemplatesDirectoryAvailable(
       (error as NodeJS.ErrnoException).code === "ENOENT"
     ) {
       throw new Error(
-        `Templates directory is missing: ${templatesDirectory}. Ensure templates are committed and available before running the wizard.`,
+        `Templates directory is missing: ${displayPath}. Ensure templates are committed and available before running the wizard.`,
       );
     }
 
@@ -105,18 +107,20 @@ function applyReplacements(
 async function assertOutputDirectoryIsWritable(
   outputDirectory: string,
 ): Promise<void> {
+  const displayPath = toDisplayPath(outputDirectory);
+
   try {
     const outputStats = await stat(outputDirectory);
     if (!outputStats.isDirectory()) {
       throw new Error(
-        `Output path exists and is not a directory: ${outputDirectory}`,
+        `Output path exists and is not a directory: ${displayPath}`,
       );
     }
 
     const entries = await readdir(outputDirectory);
     if (entries.length > 0) {
       throw new Error(
-        `Output directory already exists and is not empty: ${outputDirectory}`,
+        `Output directory already exists and is not empty: ${displayPath}`,
       );
     }
   } catch (error) {

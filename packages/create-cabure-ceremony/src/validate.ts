@@ -1,7 +1,8 @@
-import { access } from "node:fs/promises";
-import path from "node:path";
 import { constants } from "node:fs";
-import { stat } from "node:fs/promises";
+import { access, stat } from "node:fs/promises";
+import path from "node:path";
+
+import { toDisplayPath } from "./display-path.js";
 
 const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -116,13 +117,14 @@ export async function validateExistingPath(
   }
 
   const resolvedPath = path.resolve(trimmed);
+  const displayPath = toDisplayPath(resolvedPath);
 
   try {
     await access(resolvedPath, constants.R_OK);
 
     const stats = await stat(resolvedPath);
     if (!stats.isDirectory()) {
-      throw new Error(`${label} path must be a directory: ${resolvedPath}`);
+      throw new Error(`${label} path must be a directory: ${displayPath}`);
     }
 
     return resolvedPath;
@@ -135,7 +137,7 @@ export async function validateExistingPath(
     }
 
     throw new Error(
-      `${label} path does not exist or is not readable: ${resolvedPath}`,
+      `${label} path does not exist or is not readable: ${displayPath}`,
     );
   }
 }

@@ -6,7 +6,10 @@ import process from "node:process";
 
 import { askWizardQuestions } from "./prompts.js";
 import { copyR1csCircuitsFromPath, discoverR1csFilenames } from "./circuits.js";
+import { initializeGitRepository } from "./git.js";
 import { scaffoldProject } from "./scaffold.js";
+import { renderSummary } from "./summary.js";
+import type { SummaryOptions } from "./summary.js";
 import { toProjectDirectoryName } from "./validate.js";
 import type { GeneratedCircuitConfig, GeneratedTierConfig } from "./types.js";
 
@@ -55,10 +58,13 @@ async function main(): Promise<void> {
     );
   }
 
+  const gitInitialized = await initializeGitRepository(outputDirectory);
+
   printSummary({
     projectName: answers.projectName,
     outputDirectory,
     copiedR1csCount: r1csFilenames.length,
+    gitInitialized,
   });
 }
 
@@ -142,50 +148,8 @@ function printHeader(): void {
   );
 }
 
-function printSummary(options: {
-  projectName: string;
-  outputDirectory: string;
-  copiedR1csCount: number;
-}): void {
-  process.stdout.write("\nCeremony project created successfully.\n");
-  process.stdout.write(`Project: ${options.projectName}\n`);
-  process.stdout.write(`Output: ${options.outputDirectory}\n`);
-  if (options.copiedR1csCount > 0) {
-    process.stdout.write(
-      `Copied circuits: ${options.copiedR1csCount} .r1cs files\n\n`,
-    );
-  } else {
-    process.stdout.write("Copied circuits: none\n");
-    process.stdout.write(
-      "Add your .r1cs files into ./circuits (inside the generated project).\n\n",
-    );
-  }
-  process.stdout.write("Next steps:\n");
-  let step = 1;
-  process.stdout.write(`${step++}. cd ${options.outputDirectory}\n`);
-  if (options.copiedR1csCount === 0) {
-    process.stdout.write(`${step++}. Add your .r1cs files into ./circuits\n`);
-  }
-  process.stdout.write(
-    `${step++}. Add your Powers of Tau (.ptau) file into ./circuits\n`,
-  );
-  process.stdout.write(
-    `${step++}. Update ptauPath in ceremony.config.ts to match your .ptau filename\n`,
-  );
-  if (options.copiedR1csCount === 0) {
-    process.stdout.write(
-      `${step++}. Update ceremony.config.ts with circuit and tier metadata\n`,
-    );
-  } else {
-    process.stdout.write(
-      `${step++}. Review ceremony.config.ts (circuits and tiers auto-configured)\n`,
-    );
-  }
-  process.stdout.write(`${step++}. npm install\n`);
-  process.stdout.write(`${step++}. npm run dev\n`);
-  process.stdout.write(
-    `${step++}. Import the repo into Vercel and deploy.\n\n`,
-  );
+function printSummary(options: SummaryOptions): void {
+  process.stdout.write(renderSummary(options));
 }
 
 void main().catch((error: unknown) => {
