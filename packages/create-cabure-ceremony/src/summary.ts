@@ -42,24 +42,21 @@ export function renderSummary(options: SummaryOptions): string {
 
   lines.push("", `${DETAIL_PADDING}Next steps:`);
 
-  const steps = [`cd ${outputPath}`];
+  const steps = [`cd ${outputPath}`, "npm install"];
   if (options.copiedR1csCount === 0) {
     steps.push("Add your .r1cs files into ./circuits");
+    steps.push("Update ./ceremony.config.ts with circuit and tier metadata");
   }
-  steps.push("Add your Powers of Tau (.ptau) file into ./circuits");
   steps.push(
-    "Update ptauPath in ./ceremony.config.ts to match your .ptau filename",
+    "npm run setup:ptau (downloads the correct PPoT .ptau and updates config)",
   );
 
-  if (options.copiedR1csCount === 0) {
-    steps.push("Update ./ceremony.config.ts with circuit and tier metadata");
-  } else {
+  if (options.copiedR1csCount > 0) {
     steps.push(
       "Review ./ceremony.config.ts (circuits and tiers auto-configured)",
     );
   }
 
-  steps.push("npm install");
   steps.push("npm run dev");
   steps.push(
     "Review env vars and deployment settings before importing into Vercel.",

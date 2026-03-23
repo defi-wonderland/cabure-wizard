@@ -18,6 +18,8 @@ describe("summary output", () => {
     expect(summary).toContain("  Output: ./privacy-pools-v2");
     expect(summary).toContain("  Git: initialized");
     expect(summary).toContain("    1. cd ./privacy-pools-v2");
+    expect(summary).toContain("    2. npm install");
+    expect(summary).toContain("npm run setup:ptau");
     expect(summary).toContain(
       "Review env vars and deployment settings before importing into Vercel.",
     );
@@ -39,9 +41,10 @@ describe("summary output", () => {
     expect(summary).toContain(
       "  Add your .r1cs files into ./privacy-pools-v2/circuits later.",
     );
-    expect(summary).toContain("    2. Add your .r1cs files into ./circuits");
+    expect(summary).toContain("    3. Add your .r1cs files into ./circuits");
     expect(summary).toContain(
       "Update ./ceremony.config.ts with circuit and tier metadata",
     );
+    expect(summary).toContain("npm run setup:ptau");
   });
 });
