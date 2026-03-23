@@ -1,22 +1,23 @@
 # create-cabure-ceremony
 
-CLI wizard that scaffolds a deploy-ready ceremony app in one command.
+CLI wizard that scaffolds a deploy-ready Groth16 Phase 2 trusted setup ceremony app in one command.
 
-## What it generates today
+## What it generates
 
-- A single Next.js app scaffold
-- `ceremony.config.ts` with initial ceremony settings
-- `circuits/` directory — populated automatically with `.r1cs` files when you provide a circuit path in prompt #4, otherwise empty (copy files manually)
+- A single Next.js app (frontend + API routes)
+- `ceremony.config.ts` with ceremony settings (name, circuits, tiers, dates, UI copy)
+- `circuits/` directory — populated automatically with `.r1cs` files when you provide a circuit path in prompt #4, otherwise empty for manual setup
 - API route stubs under `app/api/ceremony/*`
-- Minimal `vercel.json`
+- Operator scripts: `setup:ptau`, `init:ceremony`, `finalize:ceremony`, `reset:ceremony`
+- Minimal `vercel.json` and `.env.example`
 
-Current wizard prompts:
+### Wizard prompts
 
 1. Project name
 2. Target contributions (`100`, `500`, `1000`, or custom)
 3. End date (optional `YYYY-MM-DD`)
 4. Circuit artifacts path (optional)
-   - If provided, `.r1cs` files are discovered and copied into generated `circuits/`
+   - If provided, `.r1cs` files are discovered and copied into `circuits/`
    - If skipped, `circuits/` remains empty
 
 ## Usage
@@ -29,11 +30,26 @@ After generation:
 
 ```bash
 cd <generated-project-slug>
-# optional: copy your .r1cs files into ./circuits if you skipped prompt #4
-# update ceremony.config.ts with your circuit IDs and filenames
 npm install
+
+# If you skipped prompt #4, copy your .r1cs files into ./circuits first
+npm run setup:ptau          # downloads the correct PPoT .ptau and updates config
+
+# Configure .env (see generated README for full details)
+npm run init:ceremony       # generate genesis zkey and upload to storage
 npm run dev
 ```
+
+### Key scripts in generated project
+
+| Script                      | Description                                                            |
+| --------------------------- | ---------------------------------------------------------------------- |
+| `npm run setup:ptau`        | Detect circuit constraints, download the correct PPoT ptau, and verify |
+| `npm run init:ceremony`     | Generate genesis zkey, upload to Blob, write manifest to KV            |
+| `npm run finalize:ceremony` | Apply beacon (Ethereum RANDAO by default), verify zkeys, write outputs |
+| `npm run reset:ceremony`    | Wipe all KV keys and Blob zkeys for a fresh start                      |
+
+Finalization uses the RANDAO reveal from the latest finalized Ethereum beacon chain slot by default for public verifiability. See the generated project README for advanced beacon options.
 
 ## Local development (inside this monorepo)
 
