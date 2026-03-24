@@ -4,11 +4,11 @@ Read `CLAUDE.md` at the project root first, then guide the QA engineer through t
 
 ## 1. What You're Testing
 
-Caburé is a Groth16 Phase 2 trusted setup ceremony toolkit. Your job is to make sure the full ceremony flow works end-to-end — from `npx create-cabure-ceremony` all the way to a finalized zkey with a drand beacon applied.
+Caburé is a Groth16 Phase 2 trusted setup ceremony toolkit. Your job is to make sure the full ceremony flow works end-to-end — from `npx @wonderland/create-cabure-ceremony` all the way to a finalized zkey with a drand beacon applied.
 
 Three packages to test:
 - `@wonderland/cabure-crypto` — the cryptographic primitives (Lumi built this)
-- `create-cabure-ceremony` — the CLI wizard + generated project (Ardy built this)
+- `@wonderland/create-cabure-ceremony` — the CLI wizard + generated project (Ardy built this)
 - `@wonderland/cabure-cli` — the headless CLI contributor tool (Ardy built this)
 
 ## 2. Architecture You Need to Know
@@ -48,7 +48,7 @@ Check Linear for QA issues. Use the Linear MCP to list issues in the Caburé pro
   - Many contributors (simulate 50+ concurrent queue entries)
 
 - **BES-1359** (Urgent, due Mar 27) — Final sign-off
-  - Complete ceremony from `npx create-cabure-ceremony` to finalized zkey
+  - Complete ceremony from `npx @wonderland/create-cabure-ceremony` to finalized zkey
   - Every screen works, every API route works, chain hash is valid, beacon is applied
   - This is the gate — nothing ships without your sign-off
 
@@ -57,7 +57,7 @@ Check Linear for QA issues. Use the Linear MCP to list issues in the Caburé pro
 Guide them through getting a local test environment running:
 ```bash
 # 1. Scaffold a test ceremony
-npx create-cabure-ceremony
+npx @wonderland/create-cabure-ceremony
 # Use: "QA Test Ceremony", 10 contributions, IPFS, no tiers
 
 # 2. Start locally

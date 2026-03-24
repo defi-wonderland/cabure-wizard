@@ -7,7 +7,7 @@ Open-source CLI wizard and toolkit for running Groth16 Phase 2 trusted setup cer
 | Package | Description |
 |---------|-------------|
 | `@wonderland/cabure-crypto` | Typed exports for all Groth16 Phase 2 ceremony operations (snarkjs 0.7.5 wrapper with in-memory I/O) |
-| `create-cabure-ceremony` | CLI wizard that scaffolds a fully deployable ceremony project |
+| `@wonderland/create-cabure-ceremony` | CLI wizard that scaffolds a fully deployable ceremony project |
 | `@wonderland/cabure-cli` | CLI contributor tool for headless/VM environments (GitHub OAuth device flow) |
 
 ## Architecture
@@ -22,7 +22,7 @@ Cabure uses a **separated architecture** where generated projects have three ind
 
 ## Ceremony Flow
 
-1. **Scaffold** - Operator runs `npx create-cabure-ceremony` and answers prompts (project name, target contributions, optional end date, optional circuit path)
+1. **Scaffold** - Operator runs `npx @wonderland/create-cabure-ceremony` and answers prompts (project name, target contributions, optional end date, optional circuit path)
 2. **Configure artifacts** - If a circuit path was provided, `.r1cs` files are copied automatically. Otherwise, copy your `.r1cs` files into `circuits/` and update `ceremony.config.ts`
 3. **Deploy** - Import the generated app into Vercel (or deploy manually)
 4. **Contribute** - Contributors visit the frontend or use `@wonderland/cabure-cli`. Each contribution: download current zkey, collect entropy (mouse/click required in browser), compute in Web Worker or CLI, upload result
@@ -56,7 +56,7 @@ applyBeacon(zkey: Uint8Array, beaconHash: string): Promise<Uint8Array>
 exportVerificationKey(zkey: Uint8Array): Promise<object>
 ```
 
-## create-cabure-ceremony docs
+## @wonderland/create-cabure-ceremony docs
 
 Package-specific usage and local `npx` testing guide:
 
@@ -64,7 +64,7 @@ Package-specific usage and local `npx` testing guide:
 
 ## Generated Project Structure
 
-Running `npx create-cabure-ceremony` produces:
+Running `npx @wonderland/create-cabure-ceremony` produces:
 
 ```text
 my-ceremony/

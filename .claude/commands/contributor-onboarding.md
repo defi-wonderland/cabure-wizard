@@ -6,7 +6,7 @@ Read `CLAUDE.md` at the project root first, then guide them through these steps:
 
 Explain in plain terms:
 - Groth16 is a type of zero-knowledge proof. Before a Groth16 circuit can be used in production, it needs a "trusted setup ceremony" where many people contribute randomness. The more contributors, the stronger the security guarantee — as long as ONE participant was honest, the ceremony is secure.
-- Caburé is the toolkit that makes running these ceremonies easy. An operator runs one command (`npx create-cabure-ceremony`) and gets a fully deployable ceremony project. Contributors visit a website or use a CLI tool to participate.
+- Caburé is the toolkit that makes running these ceremonies easy. An operator runs one command (`npx @wonderland/create-cabure-ceremony`) and gets a fully deployable ceremony project. Contributors visit a website or use a CLI tool to participate.
 - It replaces p0tion + DefinitelySetup, which are in maintenance mode and had significant UX and infrastructure issues.
 
 ## 2. The Three Packages
@@ -19,7 +19,7 @@ Walk through each package and who owns it:
 - Includes a WASM build for browser Web Workers.
 - This is a published npm package — shared by the wizard, frontend, and CLI.
 
-**`create-cabure-ceremony`** (Ardy)
+**`@wonderland/create-cabure-ceremony`** (Ardy)
 - The CLI wizard. Asks 7 questions, scaffolds a complete ceremony project.
 - Generated project has three independent parts: stateless coordinator (serverless), static frontend (6-screen ceremony flow), and crypto layer (imports from `@wonderland/cabure-crypto`).
 - The generated code is yours — edit freely. Only the crypto layer is a dependency.
@@ -55,7 +55,7 @@ Key points:
 ## 4. How a Ceremony Works
 
 Walk through the lifecycle:
-1. Operator runs `npx create-cabure-ceremony`, answers prompts, deploys
+1. Operator runs `npx @wonderland/create-cabure-ceremony`, answers prompts, deploys
 2. Contributors visit the frontend → GitHub OAuth → join queue → collect entropy → compute contribution in Web Worker → upload
 3. Or contributors use `npx @wonderland/cabure-cli contribute <url>` from the terminal
 4. Coordinator verifies each contribution, updates IPFS state, maintains SHA-256 chain hash
@@ -73,7 +73,7 @@ Point them to the other Claude Code commands available:
 ## 7. Key Resources
 
 - **Notion Idea Draft** — central planning document with scope, tasks, and team assignments
-- **Notion Tech Design** — detailed technical specification for create-cabure-ceremony and @wonderland/cabure-cli
+- **Notion Tech Design** — detailed technical specification for @wonderland/create-cabure-ceremony and @wonderland/cabure-cli
 - **Linear project** — issue tracking across 6 milestones
 - **Brebaje** (github.com/p0tion-tools/brebaje) — Nico Serrano's complementary p0tion rebuild, potential future merge
 
