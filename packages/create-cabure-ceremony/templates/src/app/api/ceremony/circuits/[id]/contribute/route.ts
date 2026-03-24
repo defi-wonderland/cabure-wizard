@@ -147,14 +147,6 @@ export async function POST(
 
     const computedHash = `0x${createHash("sha256").update(body).digest("hex")}`;
 
-    if (clientHash && clientHash !== computedHash) {
-      await deleteBinary(blobUrl).catch(() => {});
-      return NextResponse.json(
-        { error: "Contribution hash mismatch: client and server hashes differ" },
-        { status: 400 },
-      );
-    }
-
     const contributionIndex = circuit.totalContributions + 1;
     const timestamp = Date.now();
     const chainHash = computeChainHash({

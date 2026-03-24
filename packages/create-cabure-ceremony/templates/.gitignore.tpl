@@ -7,3 +7,4 @@ next-env.d.ts
 .env
 .vercel
 .npmrc
+output/
