@@ -20,7 +20,7 @@ Caburé is an open-source CLI wizard and toolkit for running Groth16 Phase 2 tru
 
 1. **`@wonderland/cabure-crypto` is a published dependency** — shared across wizard, frontend, CLI. Never embed or vendor it.
 2. **Separated architecture** — Generated projects have three independent parts:
-   - `coordinator/` — Stateless serverless function (NOT Next.js API routes)
+   - `coordinator/` — Next.js API routes (Vercel) or standalone serverless function
    - `frontend/` — Static site, zero server dependencies
    - `crypto/` — Imports from `@wonderland/cabure-crypto`
 3. **IPFS-first storage** — Ceremony state as content-addressed JSON, zkeys pinned to IPFS. S3 is an alternative, not the default.
@@ -69,7 +69,7 @@ Stateless serverless function with IPFS-backed state (content-addressed JSON, ne
 | `POST /contribute/:id` | Upload contribution + proof |
 | `GET /verify/:id` | Verify a specific contribution |
 | `GET /chain` | Full contribution chain with SHA-256 hashes |
-| `POST /finalize` | Apply drand beacon (operator only) |
+| `POST /finalize` | Apply beacon (operator only) |
 
 ## Wizard Prompts (7 questions)
 
@@ -83,14 +83,14 @@ Stateless serverless function with IPFS-backed state (content-addressed JSON, ne
 
 ## Ceremony Flow
 
-Operator scaffolds → deploys coordinator + frontend separately → contributors visit frontend or use CLI → each contribution: download zkey → collect entropy → compute in Web Worker/CLI → upload → verify → when target reached, operator applies drand Quicknet beacon to finalize.
+Operator scaffolds → deploys coordinator + frontend separately → contributors visit frontend or use CLI → each contribution: download zkey → collect entropy → compute in Web Worker/CLI → upload → verify → when target reached, operator applies Ethereum RANDAO beacon to finalize.
 
 ## Verification
 
 - BN254 pairing checks per contribution
 - SHA-256 hash chain from genesis to latest
 - Public audit endpoint for any contribution
-- drand Quicknet beacon for finalization randomness
+- Ethereum RANDAO beacon for finalization randomness (drand Quicknet also supported)
 
 ## Linear Project
 
