@@ -27,12 +27,17 @@ import {
 
 const BLOB_HOST_SUFFIX = ".public.blob.vercel-storage.com";
 
-function isVercelBlobUrl(url: string): boolean {
+function isValidPendingBlobUrl(url: string, circuitId: string): boolean {
   try {
     const parsed = new URL(url);
-    return (
-      parsed.protocol === "https:" && parsed.hostname.endsWith(BLOB_HOST_SUFFIX)
-    );
+    if (
+      parsed.protocol !== "https:" ||
+      !parsed.hostname.endsWith(BLOB_HOST_SUFFIX)
+    ) {
+      return false;
+    }
+    const expectedPrefix = `/contributions/${circuitId}/`;
+    return parsed.pathname.startsWith(expectedPrefix);
   } catch {
     return false;
   }
@@ -63,7 +68,7 @@ export async function POST(
       ? rawClientHash
       : null;
 
-  if (!blobUrl || !isVercelBlobUrl(blobUrl)) {
+  if (!blobUrl || !isValidPendingBlobUrl(blobUrl, id)) {
     return NextResponse.json(
       { error: "Missing or invalid blobUrl" },
       { status: 400 },
