@@ -50,10 +50,18 @@ export async function POST(
   }
   const participantId = session.participantId;
 
-  const { blobUrl, contributionHash: clientHash } = (await request.json()) as {
-    blobUrl: string;
-    contributionHash?: string;
-  };
+  const { blobUrl, contributionHash: rawClientHash } =
+    (await request.json()) as {
+      blobUrl: string;
+      contributionHash?: unknown;
+    };
+
+  const clientHash =
+    typeof rawClientHash === "string" &&
+    rawClientHash.length <= 256 &&
+    /^0x[0-9a-fA-F]+$/.test(rawClientHash)
+      ? rawClientHash
+      : null;
 
   if (!blobUrl || !isVercelBlobUrl(blobUrl)) {
     return NextResponse.json(
@@ -172,10 +180,10 @@ export async function POST(
       circuitId: id,
       participantId,
       contributionIndex,
-      contributionHash: clientHash ?? computedHash,
+      contributionHash: computedHash,
+      clientContributionHash: clientHash,
       chainHash,
       timestamp,
-      serverComputedContributionHash: computedHash,
     };
 
     await Promise.all([

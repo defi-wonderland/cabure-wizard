@@ -56,9 +56,9 @@ interface ContributionReceipt {
   participantId: string;
   contributionIndex: number;
   contributionHash: string;
+  clientContributionHash: string | null;
   chainHash: string;
   timestamp: number;
-  serverComputedContributionHash: string;
 }
 
 const OUTPUT_DIR = path.resolve(process.cwd(), "output");

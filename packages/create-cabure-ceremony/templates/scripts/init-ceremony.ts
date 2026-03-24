@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 
@@ -62,10 +62,9 @@ function sha256hex(data: Uint8Array): string {
 }
 
 async function readArtifact(relativePath: string): Promise<Uint8Array> {
-  const { readFile: rf } = await import("node:fs/promises");
   const fullPath = path.resolve(process.cwd(), relativePath);
   try {
-    const data = await rf(fullPath);
+    const data = await readFile(fullPath);
     return new Uint8Array(data);
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code;
