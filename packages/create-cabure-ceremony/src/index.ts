@@ -142,7 +142,7 @@ function buildTierConfigs(
 }
 
 function printHeader(): void {
-  process.stdout.write("\ncreate-cabure-ceremony\n");
+  process.stdout.write("\n@wonderland/create-cabure-ceremony\n");
   process.stdout.write(
     "Generate a deploy-ready ceremony project with one command.\n\n",
   );

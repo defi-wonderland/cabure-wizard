@@ -1,4 +1,4 @@
-# create-cabure-ceremony
+# @wonderland/create-cabure-ceremony
 
 CLI wizard that scaffolds a deploy-ready Groth16 Phase 2 trusted setup ceremony app in one command.
 
@@ -23,7 +23,7 @@ CLI wizard that scaffolds a deploy-ready Groth16 Phase 2 trusted setup ceremony 
 ## Usage
 
 ```bash
-npx create-cabure-ceremony
+npx @wonderland/create-cabure-ceremony
 ```
 
 After generation:
@@ -56,6 +56,6 @@ Finalization uses the RANDAO reveal from the latest finalized Ethereum beacon ch
 From repository root:
 
 ```bash
-pnpm --filter create-cabure-ceremony build
-pnpm --filter create-cabure-ceremony test
+pnpm --filter @wonderland/create-cabure-ceremony build
+pnpm --filter @wonderland/create-cabure-ceremony test
 ```

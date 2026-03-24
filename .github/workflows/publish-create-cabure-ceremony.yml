@@ -1,4 +1,4 @@
-name: Publish Cabure Crypto Package
+name: Publish Create Cabure Ceremony Package
 
 on:
   workflow_call:
@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: packages/crypto
+        working-directory: packages/create-cabure-ceremony
 
     steps:
       - name: Check out repository
@@ -56,7 +56,7 @@ jobs:
 
       - name: Build
         working-directory: .
-        run: pnpm --filter @wonderland/cabure-crypto build
+        run: pnpm --filter @wonderland/create-cabure-ceremony build
 
       - name: Update version (dev branch)
         if: github.ref == 'refs/heads/dev'

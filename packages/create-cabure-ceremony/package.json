@@ -1,5 +1,5 @@
 {
-  "name": "create-cabure-ceremony",
+  "name": "@wonderland/create-cabure-ceremony",
   "version": "0.1.0",
   "description": "CLI wizard that scaffolds a fully deployable ceremony project",
   "type": "module",

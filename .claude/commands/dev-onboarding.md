@@ -4,7 +4,7 @@ Read `CLAUDE.md` at the project root first, then guide the developer through the
 
 ## 1. Project Overview
 
-Explain Caburé in 3 sentences: what it is (Groth16 Phase 2 trusted setup toolkit), what it replaces (p0tion + DefinitelySetup), and the three packages (`@wonderland/cabure-crypto`, `create-cabure-ceremony`, `@wonderland/cabure-cli`).
+Explain Caburé in 3 sentences: what it is (Groth16 Phase 2 trusted setup toolkit), what it replaces (p0tion + DefinitelySetup), and the three packages (`@wonderland/cabure-crypto`, `@wonderland/create-cabure-ceremony`, `@wonderland/cabure-cli`).
 
 ## 2. Architecture Walkthrough
 
@@ -18,7 +18,7 @@ Emphasize: the coordinator is NOT Next.js API routes. The frontend is NOT server
 ## 3. Key Conventions
 
 Walk through naming, patterns, and decisions the dev MUST follow:
-- Package names: `@wonderland/cabure-crypto`, `create-cabure-ceremony`, `@wonderland/cabure-cli` — never use `elixir-wizard`
+- Package names: `@wonderland/cabure-crypto`, `@wonderland/create-cabure-ceremony`, `@wonderland/cabure-cli` — never use `elixir-wizard`
 - snarkjs 0.7.5 in-memory I/O: `Uint8Array` in, `{ type: "mem" }` output ref
 - IPFS-first storage (S3 is the alternative, not the default)
 - Interactive tier assignment (wizard asks Y/n, not automatic)
@@ -29,7 +29,7 @@ Walk through naming, patterns, and decisions the dev MUST follow:
 ## 4. Your Assignments
 
 Check Linear for the developer's assigned issues. Use the Linear MCP to list issues in the Caburé project filtered by assignee. Present them grouped by milestone:
-- **create-cabure-ceremony Development** (BES-1347 through BES-1354)
+- **@wonderland/create-cabure-ceremony Development** (BES-1347 through BES-1354)
 - **CLI Contributor Development** (BES-1355)
 
 For each issue, show the identifier, title, priority, and current status. Highlight which ones are urgent or high priority.
@@ -37,8 +37,8 @@ For each issue, show the identifier, title, priority, and current status. Highli
 ## 5. Getting Started
 
 Suggest a practical first step based on the developer's assignments:
-- If starting create-cabure-ceremony: begin with BES-1347 (coordinator state schema + IPFS) since everything else depends on it
-- If starting CLI contributor: begin with BES-1355 after create-cabure-ceremony is further along
+- If starting @wonderland/create-cabure-ceremony: begin with BES-1347 (coordinator state schema + IPFS) since everything else depends on it
+- If starting CLI contributor: begin with BES-1355 after @wonderland/create-cabure-ceremony is further along
 - Remind them about BES-1346 (handoff walkthrough with Lumi) — they should understand `@wonderland/cabure-crypto` exports before building
 
 ## 6. Questions

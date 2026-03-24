@@ -11,7 +11,7 @@ Caburé is an open-source CLI wizard and toolkit for running Groth16 Phase 2 tru
 | Package | Purpose |
 |---------|---------|
 | `@wonderland/cabure-crypto` | Published npm package — typed exports for all Groth16 Phase 2 ceremony operations |
-| `create-cabure-ceremony` | CLI wizard that scaffolds a fully deployable ceremony project |
+| `@wonderland/create-cabure-ceremony` | CLI wizard that scaffolds a fully deployable ceremony project |
 | `@wonderland/cabure-cli` | CLI contributor tool for headless/VM environments |
 
 **Naming**: Always use these exact names. Never use `elixir-wizard`, `elixir-ceremony`, `@wonderland/elixir-wizard`, `@cabure/crypto`, or `@cabure/cli` — those are outdated.
@@ -44,7 +44,7 @@ applyBeacon(zkeyIn: Uint8Array, beaconHash: string): Promise
 
 ## Generated Project Structure
 
-`npx create-cabure-ceremony` outputs:
+`npx @wonderland/create-cabure-ceremony` outputs:
 
 ```
 my-ceremony/
@@ -96,7 +96,7 @@ Operator scaffolds → deploys coordinator + frontend separately → contributor
 
 - Team: **Internal / Public Goods** (key: BES)
 - Project: **Caburé** (target: Mar 27, 2026)
-- 6 milestones: Idea Draft, Tech Design, @wonderland/cabure-crypto Development, create-cabure-ceremony Development, CLI Contributor Development, QA
+- 6 milestones: Idea Draft, Tech Design, @wonderland/cabure-crypto Development, @wonderland/create-cabure-ceremony Development, CLI Contributor Development, QA
 
 ## Brebaje Alignment
 

@@ -8,7 +8,7 @@ Load the Caburé project context for the current development session.
 
 Three packages:
 - `@wonderland/cabure-crypto` — ceremony primitives (Lumi)
-- `create-cabure-ceremony` — CLI wizard (Ardy)
+- `@wonderland/create-cabure-ceremony` — CLI wizard (Ardy)
 - `@wonderland/cabure-cli` — headless contributor tool (Ardy)
 
 Key conventions:
