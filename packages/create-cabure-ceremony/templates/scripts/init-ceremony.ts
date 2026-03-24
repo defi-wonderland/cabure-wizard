@@ -165,7 +165,7 @@ async function main() {
     const circuitState: CircuitState = {
       id: circuit.id,
       totalContributions: 0,
-      latestContributionHash: null,
+      latestContributionHash: genesisHash,
       chainHash: GENESIS_CHAIN_HASH,
       queue: [],
       currentZkeyPath: zkeyUpload.pathname,

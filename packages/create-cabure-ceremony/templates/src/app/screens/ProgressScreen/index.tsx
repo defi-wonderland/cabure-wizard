@@ -113,8 +113,8 @@ export function ProgressScreen({
                       className={cn(
                         styles.phaseDot,
                         isActive && styles.phaseDotActive,
-                        !isActive && barProgress > [15, 85, 100][i] && styles.phaseDotDone,
-                        !isActive && barProgress <= [15, 85, 100][i] && styles.phaseDotPending,
+                        !isActive && isDone && styles.phaseDotDone,
+                        !isActive && !isDone && styles.phaseDotPending,
                       )}
                     />
                     <span
