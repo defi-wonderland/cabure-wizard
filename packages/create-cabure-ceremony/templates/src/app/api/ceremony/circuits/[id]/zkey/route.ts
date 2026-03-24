@@ -13,6 +13,7 @@ export async function GET(
     return NextResponse.json({
       url: circuit.currentZkeyUrl,
       contributionIndex: nextIndex,
+      hash: circuit.latestContributionHash ?? null,
     });
   }
 

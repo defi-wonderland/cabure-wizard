@@ -55,7 +55,6 @@ export interface CeremonyCopy {
     };
     authNote: string;
     githubCta: string;
-    walletCta: string;
     beginCta: string;
     endedSubtitle: string;
     endedDescription: string;

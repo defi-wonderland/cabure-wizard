@@ -48,7 +48,7 @@ export default function CeremonyPage() {
     active: step === "progress",
   });
 
-  const handleAuth = (method: "github" | "wallet") => {
+  const handleAuth = (method: "github") => {
     if (status && !status.isActive) return;
     authenticate(method);
   };
@@ -75,6 +75,7 @@ export default function CeremonyPage() {
   };
 
   const resetFlow = () => {
+    entropySeed?.fill(0);
     setEntropySeed(null);
     contribution.reset();
     setStep("landing");
@@ -82,6 +83,7 @@ export default function CeremonyPage() {
 
   const handleCancelContribution = () => {
     contribution.cancel();
+    entropySeed?.fill(0);
     setEntropySeed(null);
     setStep("landing");
   };

@@ -40,6 +40,7 @@ export interface ReceiptResponse {
 export interface ZkeyInfo {
   url: string;
   contributionIndex: number;
+  hash: string | null;
 }
 
 async function apiFetch<T>(input: RequestInfo | URL, init?: RequestInit): Promise<T> {

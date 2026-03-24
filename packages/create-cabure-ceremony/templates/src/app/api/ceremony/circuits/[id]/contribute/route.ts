@@ -50,7 +50,10 @@ export async function POST(
   }
   const participantId = session.participantId;
 
-  const { blobUrl } = (await request.json()) as { blobUrl: string };
+  const { blobUrl, contributionHash: clientHash } = (await request.json()) as {
+    blobUrl: string;
+    contributionHash?: string;
+  };
 
   if (!blobUrl || !isVercelBlobUrl(blobUrl)) {
     return NextResponse.json(
@@ -122,6 +125,10 @@ export async function POST(
       );
     }
 
+    // Per-contribution verification is opt-in: loading r1cs + ptau and running
+    // pairing checks can easily exceed serverless timeouts for large circuits.
+    // The finalize script verifies the full contribution chain before applying
+    // the beacon, so integrity is guaranteed before finalization.
     if (config.verifyContributions) {
       const [r1cs, ptau] = await Promise.all([
         readCircuitBytes(circuitConfig.artifacts.r1csPath),
@@ -139,6 +146,15 @@ export async function POST(
     }
 
     const computedHash = `0x${createHash("sha256").update(body).digest("hex")}`;
+
+    if (clientHash && clientHash !== computedHash) {
+      await deleteBinary(blobUrl).catch(() => {});
+      return NextResponse.json(
+        { error: "Contribution hash mismatch: client and server hashes differ" },
+        { status: 400 },
+      );
+    }
+
     const contributionIndex = circuit.totalContributions + 1;
     const timestamp = Date.now();
     const chainHash = computeChainHash({
@@ -164,7 +180,7 @@ export async function POST(
       circuitId: id,
       participantId,
       contributionIndex,
-      contributionHash: computedHash,
+      contributionHash: clientHash ?? computedHash,
       chainHash,
       timestamp,
       serverComputedContributionHash: computedHash,

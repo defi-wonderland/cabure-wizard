@@ -12,7 +12,7 @@ import {
 } from "@/lib/ceremony-state";
 import { getCeremonyConfig, type TierId } from "@/lib/ceremony-config";
 import { authOptions } from "@/lib/auth";
-import { setJson } from "@/lib/kv-store";
+import { acquireLock, releaseLock, setJson } from "@/lib/kv-store";
 
 type QueuePosition = {
   participantId: string;
@@ -81,38 +81,52 @@ export async function POST(request: NextRequest) {
   const now = Date.now();
   const positions: QueuePosition[] = [];
   for (const circuitId of resolvedIds) {
-    const circuit = await getCircuitState(circuitId);
-    const key = circuitStatePath(config.storage.circuitStatePrefix, circuitId);
-
-    const pruned = pruneExpiredEntries(
-      circuit.queue,
-      config.queueTimeoutSeconds,
-      now,
-    );
-    const prunedCount = circuit.queue.length - pruned.length;
-    circuit.queue = pruned;
-
-    let index = circuit.queue.findIndex(
-      (entry) => entry.participantId === participantId,
-    );
-
-    if (index === -1) {
-      circuit.queue.push({
-        participantId,
-        joinedAt: now,
-      });
-      index = circuit.queue.length - 1;
-      await setJson(key, circuit);
-    } else if (prunedCount > 0) {
-      await setJson(key, circuit);
+    const lockKey = `${config.storage.manifestPath}:lock:${circuitId}`;
+    const lockToken = crypto.randomUUID();
+    const locked = await acquireLock(lockKey, lockToken);
+    if (!locked) {
+      return NextResponse.json(
+        { error: "Circuit queue busy. Please retry." },
+        { status: 409 },
+      );
     }
 
-    positions.push({
-      participantId,
-      circuitId,
-      position: index + 1,
-      estimatedWaitSeconds: (index + 1) * 60,
-    });
+    try {
+      const circuit = await getCircuitState(circuitId);
+      const key = circuitStatePath(config.storage.circuitStatePrefix, circuitId);
+
+      const pruned = pruneExpiredEntries(
+        circuit.queue,
+        config.queueTimeoutSeconds,
+        now,
+      );
+      const prunedCount = circuit.queue.length - pruned.length;
+      circuit.queue = pruned;
+
+      let index = circuit.queue.findIndex(
+        (entry) => entry.participantId === participantId,
+      );
+
+      if (index === -1) {
+        circuit.queue.push({
+          participantId,
+          joinedAt: now,
+        });
+        index = circuit.queue.length - 1;
+        await setJson(key, circuit);
+      } else if (prunedCount > 0) {
+        await setJson(key, circuit);
+      }
+
+      positions.push({
+        participantId,
+        circuitId,
+        position: index + 1,
+        estimatedWaitSeconds: (index + 1) * 60,
+      });
+    } finally {
+      await releaseLock(lockKey, lockToken);
+    }
   }
 
   return NextResponse.json({ positions });

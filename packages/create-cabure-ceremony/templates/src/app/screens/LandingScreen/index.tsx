@@ -13,7 +13,7 @@ export function LandingScreen({
   onBegin,
   onVerify,
 }: {
-  onAuth: (method: "github" | "wallet") => void;
+  onAuth: (method: "github") => void;
   onBegin: () => void;
   onVerify: () => void;
 }) {
@@ -82,9 +82,6 @@ export function LandingScreen({
           <div className={styles.authButtons}>
             <Button onClick={() => onAuth("github")}>
               {copy.landing.githubCta}
-            </Button>
-            <Button variant="secondary" onClick={() => onAuth("wallet")}>
-              {copy.landing.walletCta}
             </Button>
           </div>
         </>

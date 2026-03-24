@@ -18,7 +18,7 @@ import type {
 } from "@/app/screens/ProgressScreen";
 import type { ClientCircuitConfig } from "@/lib/ceremony-config";
 import { runContribution } from "@/lib/worker-client";
-import { deriveEntropy } from "@/utils/entropy";
+import { deriveEntropy, sha256 } from "@/utils/entropy";
 
 export interface ContributionFlowState {
   circuitRuns: CircuitRunItem[];
@@ -123,6 +123,16 @@ export function useContributionFlow(options: {
         throw new Error("Failed to download zkey.");
       }
       const zkey = new Uint8Array(await zkeyResponse.arrayBuffer());
+
+      if (zkeyInfo.hash) {
+        const digest = await sha256(zkey);
+        const hex = `0x${Array.from(digest).map((b) => b.toString(16).padStart(2, "0")).join("")}`;
+        if (hex !== zkeyInfo.hash) {
+          throw new Error(
+            "Zkey integrity check failed: downloaded file does not match expected hash.",
+          );
+        }
+      }
 
       setContributionProgress(15);
       setContributionPhase("computing");
@@ -325,6 +335,7 @@ export function useContributionFlow(options: {
   };
 
   const cancel = () => {
+    entropySeed?.fill(0);
     contributionAbortRef.current?.abort();
     contributeMutation.reset();
     resetState();

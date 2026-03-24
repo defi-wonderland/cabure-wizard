@@ -24,9 +24,8 @@ export const defaultCopy: CeremonyCopy = {
       progressLabel: "Progress",
     },
     authNote:
-      "Choose GitHub or a wallet signature to verify your identity and join the queue.",
+      "Sign in with GitHub to verify your identity and join the queue.",
     githubCta: "CONTINUE WITH GITHUB",
-    walletCta: "CONTINUE WITH WALLET",
     beginCta: "BEGIN CONTRIBUTION",
     endedSubtitle: "This ceremony has concluded",
     endedDescription:

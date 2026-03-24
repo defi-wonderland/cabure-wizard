@@ -11,7 +11,7 @@ export async function buildEntropySeed(extraBytes: number[]): Promise<Uint8Array
   crypto.getRandomValues(csprng);
 
   if (extraBytes.length === 0) {
-    return csprng;
+    throw new Error("User interaction entropy required");
   }
 
   const extra = new Uint8Array(extraBytes);

@@ -2,7 +2,7 @@
 
 import { useSession, signIn } from "next-auth/react";
 
-export type AuthMethod = "github" | "wallet";
+export type AuthMethod = "github";
 
 export function useParticipant() {
   const { data: session, status } = useSession();
@@ -11,10 +11,8 @@ export function useParticipant() {
   const participantName = session?.participantName ?? "";
   const isAuthenticated = status === "authenticated";
 
-  const authenticate = (method: AuthMethod) => {
-    if (method === "github") {
-      void signIn("github");
-    }
+  const authenticate = (_method: AuthMethod) => {
+    void signIn("github");
   };
 
   return {
