@@ -266,6 +266,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       expiresAt,
     });
   } finally {
-    await releaseLock(lockKey, lockToken);
+    try {
+      await releaseLock(lockKey, lockToken);
+    } catch {
+      // Lock TTL will expire; don't override the already-computed response.
+    }
   }
 }
