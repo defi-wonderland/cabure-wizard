@@ -19,27 +19,48 @@ Caburé is an open-source CLI wizard and toolkit for running Groth16 Phase 2 tru
 ## Architecture Constraints (non-negotiable)
 
 1. **`@wonderland/cabure-crypto` is a published dependency** — shared across wizard, frontend, CLI. Never embed or vendor it.
-2. **Separated architecture** — Generated projects have three independent parts:
-   - `coordinator/` — Next.js API routes (Vercel) or standalone serverless function
-   - `frontend/` — Static site, zero server dependencies
-   - `crypto/` — Imports from `@wonderland/cabure-crypto`
-3. **IPFS-first storage** — Ceremony state as content-addressed JSON, zkeys pinned to IPFS. S3 is an alternative, not the default.
-4. **Interactive tier assignment** — Wizard asks "Do you want contribution tiers? (Y/n)", operator configures interactively. Not automatic by count.
-5. **User interaction required for entropy** — Minimum threshold of mouse movement/click entropy. Passive CSPRNG alone is insufficient.
-6. **GitHub OAuth device flow** for CLI — Enables headless/VM auth without browser redirect.
-7. **Target contribution options**: 100 / 500 / 1,000 / custom.
+2. **Single Next.js application** — Generated projects are a single Next.js app containing both the UI and API routes:
+   - `src/app/api/ceremony/` — API routes managing queue, contributions, verification, receipts
+   - `src/app/screens/` — Participant-facing screens (Landing, Entropy, Tier, Progress, Complete, Verify)
+   - `src/hooks/` — Contribution flow, entropy collection, ceremony status
+   - `src/lib/` — Server utilities (auth, blob storage, KV, ceremony state)
+3. **Vercel-first storage** — Zkey files stored in Vercel Blob, ceremony state and receipts in Upstash Redis (Vercel KV). No IPFS.
+4. **User interaction required for entropy** — Minimum threshold of mouse movement/click entropy. Passive CSPRNG alone is insufficient.
+5. **GitHub OAuth device flow** for CLI — Enables headless/VM auth without browser redirect.
+6. **Target contribution options**: 100 (default) / 500 / 1,000 / custom.
 
 ## @wonderland/cabure-crypto API
 
-Uses snarkjs 0.7.5 in-memory I/O pattern: `Uint8Array` in, `{ type: "mem" }` output ref. Includes a WASM build of `contribute()` for browser Web Workers.
+All functions accept `Uint8Array` inputs. snarkjs file I/O is handled internally via temp directories.
 
 ```typescript
-generateInitialZkey(r1csPath: string): Promise
-contribute(zkeyIn: Uint8Array, entropy: Uint8Array): Promise
-verify(zkeyIn: Uint8Array, contribution: Contribution): Promise
-verifyChain(zkeys: Uint8Array[]): Promise
-generateEntropy(sources: EntropySource[]): Promise
-applyBeacon(zkeyIn: Uint8Array, beaconHash: string): Promise
+generateInitialZkey(ptau: Uint8Array, r1cs: Uint8Array): Promise<Uint8Array>
+
+contribute(
+  prevZkey: Uint8Array,
+  entropy: Uint8Array,
+  name?: string,
+): Promise<ContributionResult>
+// ContributionResult = { zkey: Uint8Array; hash: string }
+
+verify(r1cs: Uint8Array, ptau: Uint8Array, zkey: Uint8Array): Promise<boolean>
+
+verifyChain(
+  r1cs: Uint8Array,
+  ptau: Uint8Array,
+  initialZkey: Uint8Array,
+  contributions: Uint8Array[],
+): Promise<boolean>
+
+generateEntropy(sources?: EntropySource[]): Promise<Uint8Array>
+
+applyBeacon(
+  zkey: Uint8Array,
+  beaconHash: string,
+  numIterationsExp?: number,
+): Promise<Uint8Array>
+
+exportVerificationKey(zkey: Uint8Array): Promise<object>
 ```
 
 ## Generated Project Structure
@@ -48,49 +69,71 @@ applyBeacon(zkeyIn: Uint8Array, beaconHash: string): Promise
 
 ```
 my-ceremony/
-├── coordinator/     # Stateless serverless function
-├── frontend/        # Static site
-├── crypto/          # Imports from @wonderland/cabure-crypto
-├── ceremony.config.json
-├── circuits/
-├── deploy/
+├── src/
+│   ├── app/
+│   │   ├── api/ceremony/       # API routes
+│   │   │   ├── status/         # GET ceremony status
+│   │   │   ├── queue/          # POST join queue
+│   │   │   ├── circuits/[id]/  # zkey download, upload, contribute
+│   │   │   └── receipt/        # GET contribution receipt
+│   │   ├── screens/            # Landing, Entropy, Tier, Progress, Complete, Verify
+│   │   └── components/         # Header, Button, ScreenWrapper, ErrorBoundary
+│   ├── hooks/                  # useContributionFlow, useEntropyCollector, etc.
+│   ├── lib/                    # api, auth, blob-store, kv-store, ceremony-state
+│   ├── types/                  # ceremony types, next-auth extensions
+│   └── utils/                  # cn, entropy, format helpers
+├── scripts/                    # setup-ptau, init-ceremony, finalize-ceremony, reset-ceremony
+├── circuits/                   # .r1cs files and downloaded .ptau
+├── ceremony.config.ts          # Ceremony name, circuits, tiers, storage keys
+├── package.json
 └── README.md
 ```
 
-## Coordinator API
+## Ceremony API Endpoints
 
-Stateless serverless function with IPFS-backed state (content-addressed JSON, new pin per mutation).
+API routes live under `src/app/api/ceremony/` in the generated project.
 
-| Endpoint | Purpose |
-|----------|---------|
-| `POST /join` | Enter queue (GitHub OAuth required) |
-| `GET /status` | Ceremony progress, current contributor, queue |
-| `GET /contribute/:id` | Download current zkey |
-| `POST /contribute/:id` | Upload contribution + proof |
-| `GET /verify/:id` | Verify a specific contribution |
-| `GET /chain` | Full contribution chain with SHA-256 hashes |
-| `POST /finalize` | Apply beacon (operator only) |
+| Route | Method | Purpose |
+|-------|--------|---------|
+| `/api/ceremony/status` | GET | Ceremony progress, circuit states, queue lengths |
+| `/api/ceremony/queue` | POST | Join the contribution queue (GitHub OAuth required) |
+| `/api/ceremony/queue` | GET | Get authenticated participant's queue position (`?circuitId=...`) |
+| `/api/ceremony/circuits/[id]/zkey` | GET | Download current zkey (binary or JSON info) |
+| `/api/ceremony/circuits/[id]/upload` | POST | Upload contributed zkey to Vercel Blob |
+| `/api/ceremony/circuits/[id]/contribute` | POST | Submit contribution (verify, store, advance chain) |
+| `/api/ceremony/receipt` | GET | Retrieve contribution receipt for a participant |
 
-## Wizard Prompts (7 questions)
+## Wizard Prompts (4 questions)
 
-1. Ceremony name
-2. Circuit files (.r1cs) — multiple allowed
-3. Target contributions (100 / 500 / 1,000 / custom)
-4. Contribution tiers? (Y/n) — if yes, configure interactively
-5. Storage backend (IPFS recommended / S3)
-6. Branding (logo, colors, ceremony description)
-7. Deploy targets (Vercel / AWS / Docker / manual)
+1. **Project name** — Displayed in the ceremony UI
+2. **Target contributions** — Select from 100 (default) / 500 / 1,000 / custom
+3. **End date** — Optional YYYY-MM-DD deadline
+4. **Circuit artifacts path** — Optional path to .r1cs files; if provided, files are copied into `circuits/`
+
+The target contributions step defaults to 100 when the user presses Enter.
+
+## Ceremony Scripts
+
+Generated projects include four operator scripts in `scripts/`:
+
+| Script | npm command | Purpose |
+|--------|-------------|---------|
+| `setup-ptau.ts` | `npm run setup:ptau` | Download matching Powers of Tau file for each circuit |
+| `init-ceremony.ts` | `npm run init:ceremony` | Generate genesis zkeys, upload to Blob, write manifest to KV. Saves local copies and transcript to `output/genesis/` |
+| `finalize-ceremony.ts` | `npm run finalize:ceremony` | Apply Ethereum RANDAO beacon, export verification keys. Saves final zkeys and transcript to `output/finalize/` |
+| `reset-ceremony.ts` | `npm run reset:ceremony` | Clear all KV state and Blob storage for a fresh start |
 
 ## Ceremony Flow
 
-Operator scaffolds → deploys coordinator + frontend separately → contributors visit frontend or use CLI → each contribution: download zkey → collect entropy → compute in Web Worker/CLI → upload → verify → when target reached, operator applies Ethereum RANDAO beacon to finalize.
+Operator scaffolds → runs `setup:ptau` → runs `init:ceremony` → deploys to Vercel → contributors visit the UI or use CLI → each contribution: download zkey → collect entropy → compute in Web Worker/CLI → upload → verify → when target is reached, operator runs `finalize:ceremony` to apply an Ethereum RANDAO beacon and produce final parameters.
 
 ## Verification
 
-- BN254 pairing checks per contribution
+- Per-contribution BN254 pairing checks are optional, configurable via `verifyContributions` in `ceremony.config.ts` (default: `false` due to serverless timeouts)
+- The finalize script always verifies the full contribution chain before applying the beacon
 - SHA-256 hash chain from genesis to latest
-- Public audit endpoint for any contribution
-- Ethereum RANDAO beacon for finalization randomness (drand Quicknet also supported)
+- SHA-256 integrity check on every zkey download (genesis hash seeded at init)
+- Ethereum RANDAO beacon for finalization randomness
 
 ## Linear Project
 

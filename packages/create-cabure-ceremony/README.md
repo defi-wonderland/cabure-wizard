@@ -45,11 +45,13 @@ npm run dev
 | Script                      | Description                                                            |
 | --------------------------- | ---------------------------------------------------------------------- |
 | `npm run setup:ptau`        | Detect circuit constraints, download the correct PPoT ptau, and verify |
-| `npm run init:ceremony`     | Generate genesis zkey, upload to Blob, write manifest to KV            |
-| `npm run finalize:ceremony` | Apply beacon (Ethereum RANDAO by default), verify zkeys, write outputs |
-| `npm run reset:ceremony`    | Wipe all KV keys and Blob zkeys for a fresh start                      |
+| `npm run init:ceremony`     | Generate genesis zkey, upload to Blob, write manifest to KV. Saves local copies and transcript to `output/genesis/` |
+| `npm run finalize:ceremony` | Apply beacon (Ethereum RANDAO by default), verify zkeys. Saves final zkeys, vkeys, and transcript to `output/finalize/` |
+| `npm run reset:ceremony`    | Wipe all KV keys and Blob zkeys for a fresh start |
 
-Finalization uses the RANDAO reveal from the latest finalized Ethereum beacon chain slot by default for public verifiability. See the generated project README for advanced beacon options.
+Initialization generates `output/genesis/init-transcript.json` and `output/genesis/{circuitId}.genesis.zkey` for each circuit.
+
+Finalization uses the RANDAO reveal from the latest finalized Ethereum beacon chain slot by default for public verifiability. Outputs are saved to `output/finalize/` (transcript, verification keys, finalized zkeys). See the generated project README for advanced beacon options.
 
 ## Local development (inside this monorepo)
 
