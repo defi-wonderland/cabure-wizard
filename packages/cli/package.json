@@ -7,9 +7,18 @@
     "cabure": "./dist/index.js"
   },
   "scripts": {
-    "build": "echo 'not yet implemented'",
-    "test": "echo 'not yet implemented'",
+    "build": "node build.mjs",
+    "test": "vitest run",
     "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@wonderland/cabure-crypto": "workspace:*",
+    "@vercel/blob": "2.0.0",
+    "commander": "13.1.0"
+  },
+  "devDependencies": {
+    "esbuild": "0.25.0",
+    "vitest": "3.2.4"
   },
   "license": "MIT"
 }
