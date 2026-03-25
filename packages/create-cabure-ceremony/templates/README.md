@@ -49,8 +49,9 @@ cp .env.example .env
 
 1. Create an OAuth App at [github.com/settings/developers](https://github.com/settings/developers).
 2. Set the callback URL to `<your-url>/api/auth/callback/github`.
-3. Copy the Client ID and Client Secret into your `.env`.
-4. Generate `NEXTAUTH_SECRET`:
+3. Check **Enable Device Flow** to support CLI contributions (`@wonderland/cabure-cli`).
+4. Copy the Client ID and Client Secret into your `.env`.
+5. Generate `NEXTAUTH_SECRET`:
 
 ```bash
 openssl rand -base64 32

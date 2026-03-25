@@ -1,8 +1,6 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
 import { handleUpload, type HandleUploadBody } from "@vercel/blob/client";
 
-import { authOptions } from "@/lib/auth";
 import { getCeremonyConfig } from "@/lib/ceremony-config";
 import {
   getAllCircuitStates,
@@ -11,6 +9,7 @@ import {
   isCeremonyActive,
   pruneExpiredEntries,
 } from "@/lib/ceremony-state";
+import { getParticipant } from "@/lib/participant-auth";
 
 export async function POST(
   request: Request,
@@ -24,8 +23,8 @@ export async function POST(
       body,
       request,
       onBeforeGenerateToken: async () => {
-        const session = await getServerSession(authOptions);
-        if (!session?.participantId) {
+        const participant = await getParticipant(request);
+        if (!participant) {
           throw new Error("Unauthorized");
         }
 
@@ -43,7 +42,7 @@ export async function POST(
           config.queueTimeoutSeconds,
         );
 
-        if (pruned[0]?.participantId !== session.participantId) {
+        if (pruned[0]?.participantId !== participant.participantId) {
           throw new Error("Not at front of the queue");
         }
 
@@ -51,7 +50,7 @@ export async function POST(
           allowedContentTypes: ["application/octet-stream"],
           addRandomSuffix: true,
           tokenPayload: JSON.stringify({
-            participantId: session.participantId,
+            participantId: participant.participantId,
             circuitId: id,
           }),
         };
