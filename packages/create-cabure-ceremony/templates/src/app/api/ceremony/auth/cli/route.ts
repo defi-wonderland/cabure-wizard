@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { randomBytes } from "node:crypto";
 
 import { env } from "@/lib/env";
-import { getJson, setJson } from "@/lib/kv-store";
+import { acquireLock, getJson, releaseLock, setJson } from "@/lib/kv-store";
 import { signCliToken } from "@/lib/participant-auth";
 import { cliLoginKey, type PendingDeviceAuth } from "@/lib/cli-auth";
 
@@ -113,126 +113,159 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     });
   }
 
-  const now = Date.now();
-  const lastPoll = pending.lastPolledAt ?? pending.createdAt;
-  const elapsedSeconds = (now - lastPoll) / 1000;
+  const lockKey = `cli-login-lock:${code}`;
+  const lockToken = randomBytes(16).toString("hex");
+  const locked = await acquireLock(lockKey, lockToken);
 
-  if (elapsedSeconds < pending.interval) {
+  if (!locked) {
     return NextResponse.json(
       { status: "pending", interval: pending.interval },
       { status: 202 },
     );
   }
 
-  await setJson(
-    cliLoginKey(code),
-    { ...pending, lastPolledAt: now } satisfies PendingDeviceAuth,
-    LOGIN_TTL_SECONDS,
-  );
+  try {
+    // Re-read after acquiring lock to see updates from a prior holder.
+    const fresh = await getJson<PendingDeviceAuth>(cliLoginKey(code));
+    if (!fresh) {
+      return NextResponse.json(
+        { error: "Invalid or expired login code" },
+        { status: 404 },
+      );
+    }
 
-  const tokenResponse = await fetch(GITHUB_TOKEN_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Accept: "application/json",
-    },
-    body: JSON.stringify({
-      client_id: env.GITHUB_CLIENT_ID,
-      client_secret: env.GITHUB_CLIENT_SECRET,
-      device_code: pending.deviceCode,
-      grant_type: "urn:ietf:params:oauth:grant-type:device_code",
-    }),
-  });
+    if (fresh.completedToken) {
+      return NextResponse.json({
+        token: fresh.completedToken,
+        participantId: fresh.completedParticipantId,
+        participantName: fresh.completedParticipantName,
+        expiresAt: fresh.completedExpiresAt,
+      });
+    }
 
-  if (!tokenResponse.ok) {
-    return NextResponse.json(
-      { error: "GitHub token exchange failed" },
-      { status: 502 },
-    );
-  }
+    const now = Date.now();
+    const lastPoll = fresh.lastPolledAt ?? fresh.createdAt;
+    const elapsedSeconds = (now - lastPoll) / 1000;
 
-  const tokenData = (await tokenResponse.json()) as {
-    access_token?: string;
-    error?: string;
-    error_description?: string;
-  };
+    if (elapsedSeconds < fresh.interval) {
+      return NextResponse.json(
+        { status: "pending", interval: fresh.interval },
+        { status: 202 },
+      );
+    }
 
-  if (tokenData.error === "authorization_pending") {
-    return NextResponse.json({ status: "pending" }, { status: 202 });
-  }
-
-  if (tokenData.error === "slow_down") {
-    const increased = pending.interval + 5;
     await setJson(
       cliLoginKey(code),
-      { ...pending, interval: increased, lastPolledAt: now } satisfies PendingDeviceAuth,
+      { ...fresh, lastPolledAt: now } satisfies PendingDeviceAuth,
       LOGIN_TTL_SECONDS,
     );
-    return NextResponse.json(
-      { status: "pending", interval: increased },
-      { status: 202 },
-    );
-  }
 
-  if (tokenData.error || !tokenData.access_token) {
-    return NextResponse.json(
-      {
-        error:
-          tokenData.error_description ??
-          tokenData.error ??
-          "GitHub authorization failed",
+    const tokenResponse = await fetch(GITHUB_TOKEN_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
       },
-      { status: 400 },
+      body: JSON.stringify({
+        client_id: env.GITHUB_CLIENT_ID,
+        client_secret: env.GITHUB_CLIENT_SECRET,
+        device_code: fresh.deviceCode,
+        grant_type: "urn:ietf:params:oauth:grant-type:device_code",
+      }),
+    });
+
+    if (!tokenResponse.ok) {
+      return NextResponse.json(
+        { error: "GitHub token exchange failed" },
+        { status: 502 },
+      );
+    }
+
+    const tokenData = (await tokenResponse.json()) as {
+      access_token?: string;
+      error?: string;
+      error_description?: string;
+    };
+
+    if (tokenData.error === "authorization_pending") {
+      return NextResponse.json({ status: "pending" }, { status: 202 });
+    }
+
+    if (tokenData.error === "slow_down") {
+      const increased = fresh.interval + 5;
+      await setJson(
+        cliLoginKey(code),
+        { ...fresh, interval: increased, lastPolledAt: now } satisfies PendingDeviceAuth,
+        LOGIN_TTL_SECONDS,
+      );
+      return NextResponse.json(
+        { status: "pending", interval: increased },
+        { status: 202 },
+      );
+    }
+
+    if (tokenData.error || !tokenData.access_token) {
+      return NextResponse.json(
+        {
+          error:
+            tokenData.error_description ??
+            tokenData.error ??
+            "GitHub authorization failed",
+        },
+        { status: 400 },
+      );
+    }
+
+    const userResponse = await fetch(GITHUB_USER_URL, {
+      headers: {
+        Authorization: `Bearer ${tokenData.access_token}`,
+        Accept: "application/vnd.github+json",
+      },
+    });
+
+    if (!userResponse.ok) {
+      return NextResponse.json(
+        { error: "Failed to fetch GitHub user profile" },
+        { status: 502 },
+      );
+    }
+
+    const user = (await userResponse.json()) as {
+      id?: number;
+      login?: string;
+      name?: string;
+    };
+
+    if (!user.id) {
+      return NextResponse.json(
+        { error: "Invalid GitHub user profile" },
+        { status: 502 },
+      );
+    }
+
+    const participantId = `github:${user.id}`;
+    const participantName = user.login ?? user.name ?? "";
+    const { token, expiresAt } = signCliToken(participantId, participantName);
+
+    await setJson(
+      cliLoginKey(code),
+      {
+        ...fresh,
+        completedToken: token,
+        completedParticipantId: participantId,
+        completedParticipantName: participantName,
+        completedExpiresAt: expiresAt,
+      } satisfies PendingDeviceAuth,
+      LOGIN_TTL_SECONDS,
     );
+
+    return NextResponse.json({
+      token,
+      participantId,
+      participantName,
+      expiresAt,
+    });
+  } finally {
+    await releaseLock(lockKey, lockToken);
   }
-
-  const userResponse = await fetch(GITHUB_USER_URL, {
-    headers: {
-      Authorization: `Bearer ${tokenData.access_token}`,
-      Accept: "application/vnd.github+json",
-    },
-  });
-
-  if (!userResponse.ok) {
-    return NextResponse.json(
-      { error: "Failed to fetch GitHub user profile" },
-      { status: 502 },
-    );
-  }
-
-  const user = (await userResponse.json()) as {
-    id?: number;
-    login?: string;
-    name?: string;
-  };
-
-  if (!user.id) {
-    return NextResponse.json(
-      { error: "Invalid GitHub user profile" },
-      { status: 502 },
-    );
-  }
-
-  const participantId = `github:${user.id}`;
-  const participantName = user.login ?? user.name ?? "";
-  const { token, expiresAt } = signCliToken(participantId, participantName);
-
-  await setJson(
-    cliLoginKey(code),
-    {
-      ...pending,
-      completedToken: token,
-      completedParticipantId: participantId,
-      completedParticipantName: participantName,
-      completedExpiresAt: expiresAt,
-    } satisfies PendingDeviceAuth,
-    LOGIN_TTL_SECONDS,
-  );
-
-  return NextResponse.json({
-    token,
-    participantId,
-    participantName,
-    expiresAt,
-  });
 }
