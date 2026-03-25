@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
 
 import {
   getAllCircuitStates,
@@ -11,7 +10,7 @@ import {
   selectCircuitsForTier,
 } from "@/lib/ceremony-state";
 import { getCeremonyConfig, type TierId } from "@/lib/ceremony-config";
-import { authOptions } from "@/lib/auth";
+import { getParticipant } from "@/lib/participant-auth";
 import { acquireLock, releaseLock, setJson } from "@/lib/kv-store";
 
 type QueuePosition = {
@@ -22,11 +21,11 @@ type QueuePosition = {
 };
 
 export async function POST(request: NextRequest) {
-  const session = await getServerSession(authOptions);
-  if (!session?.participantId) {
+  const participant = await getParticipant(request);
+  if (!participant) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  const participantId = session.participantId;
+  const { participantId } = participant;
 
   const payload = (await request.json()) as {
     tierId?: TierId;
@@ -133,11 +132,11 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
-  const session = await getServerSession(authOptions);
-  if (!session?.participantId) {
+  const participant = await getParticipant(request);
+  if (!participant) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  const participantId = session.participantId;
+  const { participantId } = participant;
 
   const circuitId = request.nextUrl.searchParams.get("circuitId");
 
