@@ -27,12 +27,17 @@ import {
 
 const BLOB_HOST_SUFFIX = ".public.blob.vercel-storage.com";
 
-function isVercelBlobUrl(url: string): boolean {
+function isValidPendingBlobUrl(url: string, circuitId: string): boolean {
   try {
     const parsed = new URL(url);
-    return (
-      parsed.protocol === "https:" && parsed.hostname.endsWith(BLOB_HOST_SUFFIX)
-    );
+    if (
+      parsed.protocol !== "https:" ||
+      !parsed.hostname.endsWith(BLOB_HOST_SUFFIX)
+    ) {
+      return false;
+    }
+    const expectedPrefix = `/contributions/${circuitId}/`;
+    return parsed.pathname.startsWith(expectedPrefix);
   } catch {
     return false;
   }
@@ -50,12 +55,20 @@ export async function POST(
   }
   const participantId = session.participantId;
 
-  const { blobUrl, contributionHash: clientHash } = (await request.json()) as {
-    blobUrl: string;
-    contributionHash?: string;
-  };
+  const { blobUrl, contributionHash: rawClientHash } =
+    (await request.json()) as {
+      blobUrl: string;
+      contributionHash?: unknown;
+    };
 
-  if (!blobUrl || !isVercelBlobUrl(blobUrl)) {
+  const clientHash =
+    typeof rawClientHash === "string" &&
+    rawClientHash.length <= 256 &&
+    /^0x[0-9a-fA-F]+$/.test(rawClientHash)
+      ? rawClientHash
+      : null;
+
+  if (!blobUrl || !isValidPendingBlobUrl(blobUrl, id)) {
     return NextResponse.json(
       { error: "Missing or invalid blobUrl" },
       { status: 400 },
@@ -147,14 +160,6 @@ export async function POST(
 
     const computedHash = `0x${createHash("sha256").update(body).digest("hex")}`;
 
-    if (clientHash && clientHash !== computedHash) {
-      await deleteBinary(blobUrl).catch(() => {});
-      return NextResponse.json(
-        { error: "Contribution hash mismatch: client and server hashes differ" },
-        { status: 400 },
-      );
-    }
-
     const contributionIndex = circuit.totalContributions + 1;
     const timestamp = Date.now();
     const chainHash = computeChainHash({
@@ -180,10 +185,10 @@ export async function POST(
       circuitId: id,
       participantId,
       contributionIndex,
-      contributionHash: clientHash ?? computedHash,
+      contributionHash: computedHash,
+      clientContributionHash: clientHash,
       chainHash,
       timestamp,
-      serverComputedContributionHash: computedHash,
     };
 
     await Promise.all([

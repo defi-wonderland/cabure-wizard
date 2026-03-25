@@ -118,6 +118,7 @@ export function useContributionFlow(options: {
       const zkeyInfo = await getZkeyInfo(circuitId, controller.signal);
       const zkeyResponse = await fetch(zkeyInfo.url, {
         signal: controller.signal,
+        cache: "no-store",
       });
       if (!zkeyResponse.ok) {
         throw new Error("Failed to download zkey.");
@@ -328,8 +329,9 @@ export function useContributionFlow(options: {
       markCircuitStatus(currentCircuitId, "waiting");
     }
     setContributionError(null);
+    setQueueError(null);
     contributeMutation.reset();
-    queryClient.invalidateQueries({
+    queryClient.resetQueries({
       queryKey: ["queuePosition", currentCircuitId],
     });
   };

@@ -17,9 +17,9 @@ export interface ContributionReceipt {
   participantId: string;
   contributionIndex: number;
   contributionHash: string;
+  clientContributionHash: string | null;
   chainHash: string;
   timestamp: number;
-  serverComputedContributionHash: string;
 }
 
 export interface QueueEntry {
