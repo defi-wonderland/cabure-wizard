@@ -2,6 +2,7 @@ export interface PendingDeviceAuth {
   deviceCode: string;
   interval: number;
   createdAt: number;
+  lastPolledAt?: number;
   completedToken?: string;
   completedParticipantId?: string;
   completedParticipantName?: string;

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getToken } from "next-auth/jwt";
 
-export async function middleware(request: NextRequest) {
+export async function middleware(request: NextRequest): Promise<NextResponse> {
   // Bearer tokens bypass the NextAuth session check here; the actual JWT
   // validation happens in getParticipant() inside each route handler.
   if (request.headers.get("authorization")?.startsWith("Bearer ")) {

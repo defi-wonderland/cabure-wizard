@@ -35,7 +35,6 @@ export async function getParticipant(
         participantName: payload.name,
       };
     }
-    return null;
   }
 
   const session = await getServerSession(authOptions);

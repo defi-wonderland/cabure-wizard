@@ -18,7 +18,7 @@ const GITHUB_USER_URL = "https://api.github.com/user";
  * the request so the CLI never needs the client ID or secret.
  * Returns a user code for the participant to enter at github.com/login/device.
  */
-export async function POST() {
+export async function POST(): Promise<NextResponse> {
   const deviceResponse = await fetch(GITHUB_DEVICE_CODE_URL, {
     method: "POST",
     headers: {
@@ -87,7 +87,7 @@ export async function POST() {
  * The server checks GitHub's token endpoint with the stored device_code.
  * Returns 202 while pending, or the signed CLI JWT once authorized.
  */
-export async function GET(request: NextRequest) {
+export async function GET(request: NextRequest): Promise<NextResponse> {
   const code = request.nextUrl.searchParams.get("code");
   if (!code) {
     return NextResponse.json(
@@ -112,6 +112,23 @@ export async function GET(request: NextRequest) {
       expiresAt: pending.completedExpiresAt,
     });
   }
+
+  const now = Date.now();
+  const lastPoll = pending.lastPolledAt ?? pending.createdAt;
+  const elapsedSeconds = (now - lastPoll) / 1000;
+
+  if (elapsedSeconds < pending.interval) {
+    return NextResponse.json(
+      { status: "pending", interval: pending.interval },
+      { status: 202 },
+    );
+  }
+
+  await setJson(
+    cliLoginKey(code),
+    { ...pending, lastPolledAt: now } satisfies PendingDeviceAuth,
+    LOGIN_TTL_SECONDS,
+  );
 
   const tokenResponse = await fetch(GITHUB_TOKEN_URL, {
     method: "POST",
@@ -145,8 +162,14 @@ export async function GET(request: NextRequest) {
   }
 
   if (tokenData.error === "slow_down") {
+    const increased = pending.interval + 5;
+    await setJson(
+      cliLoginKey(code),
+      { ...pending, interval: increased, lastPolledAt: now } satisfies PendingDeviceAuth,
+      LOGIN_TTL_SECONDS,
+    );
     return NextResponse.json(
-      { status: "pending", interval: pending.interval + 5 },
+      { status: "pending", interval: increased },
       { status: 202 },
     );
   }
