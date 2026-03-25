@@ -95,8 +95,9 @@ API routes live under `src/app/api/ceremony/` in the generated project.
 
 | Route | Method | Purpose |
 |-------|--------|---------|
-| `/api/ceremony/status` | GET | Ceremony progress, circuit states, current queue |
+| `/api/ceremony/status` | GET | Ceremony progress, circuit states, queue lengths |
 | `/api/ceremony/queue` | POST | Join the contribution queue (GitHub OAuth required) |
+| `/api/ceremony/queue` | GET | Get authenticated participant's queue position (`?circuitId=...`) |
 | `/api/ceremony/circuits/[id]/zkey` | GET | Download current zkey (binary or JSON info) |
 | `/api/ceremony/circuits/[id]/upload` | POST | Upload contributed zkey to Vercel Blob |
 | `/api/ceremony/circuits/[id]/contribute` | POST | Submit contribution (verify, store, advance chain) |
@@ -128,7 +129,8 @@ Operator scaffolds → runs `setup:ptau` → runs `init:ceremony` → deploys to
 
 ## Verification
 
-- BN254 pairing checks per contribution
+- Per-contribution BN254 pairing checks are optional, configurable via `verifyContributions` in `ceremony.config.ts` (default: `false` due to serverless timeouts)
+- The finalize script always verifies the full contribution chain before applying the beacon
 - SHA-256 hash chain from genesis to latest
 - SHA-256 integrity check on every zkey download (genesis hash seeded at init)
 - Ethereum RANDAO beacon for finalization randomness

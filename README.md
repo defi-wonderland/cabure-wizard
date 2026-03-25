@@ -27,7 +27,7 @@ Generated projects are **single Next.js applications** containing both the parti
 3. **Initialize** — Run `npm run init:ceremony` to generate genesis zkeys, upload to Vercel Blob, and write the manifest to KV. Local copies and an init transcript are saved to `output/genesis/`
 4. **Deploy** — Import the generated app into Vercel (or deploy manually)
 5. **Contribute** — Contributors visit the UI or use `@wonderland/cabure-cli`. Each contribution: download current zkey, collect entropy (mouse/click required in browser), compute in Web Worker or CLI, upload result
-6. **Verify** — Each contribution is verified with BN254 pairing checks. A SHA-256 hash chain links all contributions from genesis
+6. **Verify** — Contributions can optionally be verified per-submission via BN254 pairing checks (`verifyContributions` in config, off by default due to serverless timeouts). A SHA-256 hash chain links all contributions from genesis. The finalize script always verifies the full chain before applying the beacon
 7. **Finalize** — When target is reached, operator runs `npm run finalize:ceremony`. By default this uses the RANDAO reveal from the latest finalized Ethereum beacon chain slot as the beacon source. Outputs are saved to `output/finalize/`
 
 ## `@wonderland/cabure-crypto` API
