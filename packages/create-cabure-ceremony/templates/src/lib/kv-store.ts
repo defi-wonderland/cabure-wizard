@@ -22,8 +22,16 @@ export async function getJson<T>(key: string): Promise<T | null> {
   return (await redis().get<T>(key)) ?? null;
 }
 
-export async function setJson<T>(key: string, value: T): Promise<void> {
-  await redis().set(key, value);
+export async function setJson<T>(
+  key: string,
+  value: T,
+  ttlSeconds?: number,
+): Promise<void> {
+  if (ttlSeconds !== undefined) {
+    await redis().set(key, value, { ex: ttlSeconds });
+  } else {
+    await redis().set(key, value);
+  }
 }
 
 export async function listPush<T>(key: string, value: T): Promise<void> {

@@ -1,11 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createHash } from "node:crypto";
-import { getServerSession } from "next-auth";
 
 import { verify } from "@defi-wonderland/cabure-crypto";
 
 import { getCeremonyConfig } from "@/lib/ceremony-config";
-import { authOptions } from "@/lib/auth";
+import { getParticipant } from "@/lib/participant-auth";
 import {
   computeChainHash,
   getAllCircuitStates,
@@ -48,12 +47,12 @@ export async function POST(
   context: { params: Promise<{ id: string }> },
 ) {
   const { id } = await context.params;
-  const session = await getServerSession(authOptions);
+  const participant = await getParticipant(request);
 
-  if (!session?.participantId) {
+  if (!participant) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  const participantId = session.participantId;
+  const { participantId } = participant;
 
   const { blobUrl, contributionHash: rawClientHash } =
     (await request.json()) as {
