@@ -1,7 +1,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import process from "node:process";
 
 import type {
@@ -132,13 +132,19 @@ export async function authenticate(ceremonyUrl: string): Promise<StoredAuth> {
 
 function openBrowser(url: string): void {
   try {
+    new URL(url);
+  } catch {
+    return;
+  }
+
+  try {
     const platform = process.platform;
     if (platform === "darwin") {
-      execSync(`open "${url}"`, { stdio: "ignore" });
+      execFileSync("open", [url], { stdio: "ignore" });
     } else if (platform === "win32") {
-      execSync(`start "" "${url}"`, { stdio: "ignore" });
+      execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", "Start-Process", url], { stdio: "ignore" });
     } else {
-      execSync(`xdg-open "${url}"`, { stdio: "ignore" });
+      execFileSync("xdg-open", [url], { stdio: "ignore" });
     }
   } catch {
     /* browser open is best-effort; URL is printed to console */

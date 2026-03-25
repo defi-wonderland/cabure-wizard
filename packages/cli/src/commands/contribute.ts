@@ -44,7 +44,12 @@ export async function contributeCommand(
     throw new Error("Ceremony is not active.");
   }
 
-  let circuitIds: string[];
+  if (options.tier && options.circuit) {
+    throw new Error("Cannot use --tier and --circuit together. Pick one.");
+  }
+
+  let joinOptions: { tierId?: string; circuitIds?: string[] };
+
   if (options.circuit) {
     const found = status.circuits.find((c) => c.circuitId === options.circuit);
     if (!found) {
@@ -53,26 +58,36 @@ export async function contributeCommand(
     if (found.isComplete) {
       throw new Error(`Circuit ${options.circuit} has already reached its target.`);
     }
-    circuitIds = [options.circuit];
+    joinOptions = { circuitIds: [options.circuit] };
+  } else if (options.tier) {
+    joinOptions = { tierId: options.tier };
   } else {
-    circuitIds = status.circuits
+    const incompleteIds = status.circuits
       .filter((c) => !c.isComplete)
       .map((c) => c.circuitId);
+
+    if (incompleteIds.length === 0) {
+      console.log("\nAll circuits have reached their contribution targets.");
+      return;
+    }
+    joinOptions = { circuitIds: incompleteIds };
   }
 
+  console.log("\nJoining queue...");
+  const { positions } = await client.joinQueue(joinOptions);
+
+  const circuitIds = positions.map((p) => p.circuitId);
+
   if (circuitIds.length === 0) {
-    console.log("\nAll circuits have reached their contribution targets.");
+    console.log("\nNo circuits to contribute to.");
     return;
   }
 
-  console.log(`\nContributing to ${circuitIds.length} circuit(s): ${circuitIds.join(", ")}`);
+  console.log(`Contributing to ${circuitIds.length} circuit(s): ${circuitIds.join(", ")}`);
 
-  const joinOptions = options.tier
-    ? { tierId: options.tier }
-    : { circuitIds };
-
-  console.log("\nJoining queue...");
-  await client.joinQueue(joinOptions);
+  for (const pos of positions) {
+    console.log(`  ${pos.circuitId}: queue position ${pos.position}`);
+  }
 
   const receipts: ReceiptResponse[] = [];
 
@@ -110,7 +125,7 @@ export async function contributeCommand(
     console.log("  Uploading...");
     const blob = await upload(
       `contributions/${circuitId}/pending.zkey`,
-      new Blob([result.zkey]),
+        new Blob([result.zkey as BlobPart]),
       {
         access: "public",
         handleUploadUrl: `${ceremonyUrl}/api/ceremony/circuits/${circuitId}/upload`,
