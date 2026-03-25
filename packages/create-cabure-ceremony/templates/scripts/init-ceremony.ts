@@ -24,7 +24,7 @@ process.on("uncaughtException", (error: NodeJS.ErrnoException) => {
 });
 
 const GENESIS_CHAIN_HASH = `0x${"0".repeat(64)}`;
-const OUTPUT_DIR = path.resolve(process.cwd(), "output", "genesis");
+const OUTPUT_DIR = path.resolve(process.cwd(), "public", "genesis");
 
 type QueueEntry = {
   participantId: string;
@@ -160,7 +160,7 @@ async function main() {
     const localZkeyFile = `${circuit.id}.genesis.zkey`;
     const localZkeyPath = path.join(OUTPUT_DIR, localZkeyFile);
     await writeFile(localZkeyPath, Buffer.from(zkey));
-    console.log(`  Saved locally to: output/genesis/${localZkeyFile}`);
+    console.log(`  Saved locally to: public/genesis/${localZkeyFile}`);
 
     const circuitState: CircuitState = {
       id: circuit.id,
@@ -183,7 +183,7 @@ async function main() {
       genesisZkeySize: zkey.length,
       genesisZkeyUrl: zkeyUpload.url,
       genesisZkeyPath: zkeyUpload.pathname,
-      localZkeyPath: `output/genesis/${localZkeyFile}`,
+      localZkeyPath: `public/genesis/${localZkeyFile}`,
       r1csPath: circuit.artifacts.r1csPath,
       ptauPath: circuit.artifacts.ptauPath,
     });
@@ -233,7 +233,7 @@ async function main() {
 
   const transcriptPath = path.join(OUTPUT_DIR, "init-transcript.json");
   await writeFile(transcriptPath, JSON.stringify(transcript, null, 2));
-  console.log(`Transcript saved to output/genesis/init-transcript.json`);
+  console.log(`Transcript saved to public/genesis/init-transcript.json`);
 
   console.log();
   console.log("=== Ceremony initialized ===");
@@ -244,8 +244,8 @@ async function main() {
     `  Target:        ${ceremonyConfig.targetContributions} contributions`,
   );
   console.log(`  End date:      ${ceremonyConfig.endDate ?? "(none)"}`);
-  console.log(`  Genesis zkeys: output/genesis/*.genesis.zkey`);
-  console.log(`  Transcript:    output/genesis/init-transcript.json`);
+  console.log(`  Genesis zkeys: public/genesis/*.genesis.zkey`);
+  console.log(`  Transcript:    public/genesis/init-transcript.json`);
 
   process.exit(0);
 }

@@ -24,11 +24,11 @@ Generated projects are **single Next.js applications** containing both the parti
 
 1. **Scaffold** — Operator runs `npx @wonderland/create-cabure-ceremony` and answers 4 prompts (project name, target contributions, optional end date, optional circuit artifacts path)
 2. **Configure artifacts** — If a circuit path was provided, `.r1cs` files are copied automatically. Otherwise, copy your `.r1cs` files into `circuits/` and run `npm run setup:ptau`
-3. **Initialize** — Run `npm run init:ceremony` to generate genesis zkeys, upload to Vercel Blob, and write the manifest to KV. Local copies and an init transcript are saved to `output/genesis/`
+3. **Initialize** — Run `npm run init:ceremony` to generate genesis zkeys, upload to Vercel Blob, and write the manifest to KV. Local copies and an init transcript are saved to `public/genesis/`
 4. **Deploy** — Import the generated app into Vercel (or deploy manually)
 5. **Contribute** — Contributors visit the UI or use `@wonderland/cabure-cli`. Each contribution: download current zkey, collect entropy (mouse/click required in browser), compute in Web Worker or CLI, upload result
 6. **Verify** — Contributions can optionally be verified per-submission via BN254 pairing checks (`verifyContributions` in config, off by default due to serverless timeouts). A SHA-256 hash chain links all contributions from genesis. The finalize script always verifies the full chain before applying the beacon
-7. **Finalize** — When target is reached, operator runs `npm run finalize:ceremony`. By default this uses the RANDAO reveal from the latest finalized Ethereum beacon chain slot as the beacon source. Outputs are saved to `output/finalize/`
+7. **Finalize** — When target is reached, operator runs `npm run finalize:ceremony`. By default this uses the RANDAO reveal from the latest finalized Ethereum beacon chain slot as the beacon source. Outputs are saved to `public/finalize/`
 
 ## `@wonderland/cabure-crypto` API
 
