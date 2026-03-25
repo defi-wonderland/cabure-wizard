@@ -1,6 +1,6 @@
 # Cabure
 
-Open-source CLI wizard and toolkit for running Groth16 Phase 2 trusted setup ceremonies. Replaces p0tion + DefinitelySetup with a modern, separated architecture.
+Open-source CLI wizard and toolkit for running Groth16 Phase 2 trusted setup ceremonies. Replaces p0tion + DefinitelySetup with a single-command scaffolding experience.
 
 ## Packages
 
@@ -12,47 +12,49 @@ Open-source CLI wizard and toolkit for running Groth16 Phase 2 trusted setup cer
 
 ## Architecture
 
-Cabure uses a **separated architecture** where generated projects have three independent parts:
+Generated projects are **single Next.js applications** containing both the participant UI and the ceremony API routes:
 
-- **Coordinator** - Stateless serverless function (not coupled to any framework). Manages queue, verifies contributions, tracks ceremony state.
-- **Frontend** - Static site with zero server dependencies. Contributors interact through the browser, providing entropy via mouse movement/clicks.
-- **Crypto** - All cryptographic operations imported from `@wonderland/cabure-crypto`. Runs in a Web Worker (browser) or natively (CLI).
+- **API routes** (`src/app/api/ceremony/`) — Manage queue, verify contributions, track ceremony state via Vercel KV (Upstash Redis).
+- **Frontend** (`src/app/`, `src/app/screens/`) — Contributors interact through the browser, providing entropy via mouse movement and clicks.
+- **Crypto** — All cryptographic operations imported from `@wonderland/cabure-crypto`. Runs in a Web Worker (browser) or natively (CLI).
 
-**Storage is IPFS-first**: ceremony state is stored as content-addressed JSON, zkeys are pinned to IPFS. S3 is supported as an alternative.
+**Storage is Vercel-first**: zkey files are stored in Vercel Blob, ceremony state and receipts in Upstash Redis (Vercel KV).
 
 ## Ceremony Flow
 
-1. **Scaffold** - Operator runs `npx @wonderland/create-cabure-ceremony` and answers prompts (project name, target contributions, optional end date, optional circuit path)
-2. **Configure artifacts** - If a circuit path was provided, `.r1cs` files are copied automatically. Otherwise, copy your `.r1cs` files into `circuits/` and update `ceremony.config.ts`
-3. **Deploy** - Import the generated app into Vercel (or deploy manually)
-4. **Contribute** - Contributors visit the frontend or use `@wonderland/cabure-cli`. Each contribution: download current zkey, collect entropy (mouse/click required in browser), compute in Web Worker or CLI, upload result
-5. **Verify** - Each contribution is verified with BN254 pairing checks. A SHA-256 hash chain links all contributions from genesis
-6. **Finalize** - When target is reached, operator applies a drand Quicknet beacon to produce the final parameters
+1. **Scaffold** — Operator runs `npx @wonderland/create-cabure-ceremony` and answers 4 prompts (project name, target contributions, optional end date, optional circuit artifacts path)
+2. **Configure artifacts** — If a circuit path was provided, `.r1cs` files are copied automatically. Otherwise, copy your `.r1cs` files into `circuits/` and run `npm run setup:ptau`
+3. **Initialize** — Run `npm run init:ceremony` to generate genesis zkeys, upload to Vercel Blob, and write the manifest to KV. Local copies and an init transcript are saved to `output/genesis/`
+4. **Deploy** — Import the generated app into Vercel (or deploy manually)
+5. **Contribute** — Contributors visit the UI or use `@wonderland/cabure-cli`. Each contribution: download current zkey, collect entropy (mouse/click required in browser), compute in Web Worker or CLI, upload result
+6. **Verify** — Each contribution is verified with BN254 pairing checks. A SHA-256 hash chain links all contributions from genesis
+7. **Finalize** — When target is reached, operator runs `npm run finalize:ceremony`. By default this uses the RANDAO reveal from the latest finalized Ethereum beacon chain slot as the beacon source. Outputs are saved to `output/finalize/`
 
 ## `@wonderland/cabure-crypto` API
 
-All functions use the snarkjs in-memory I/O pattern: `Uint8Array` in, `{ type: "mem" }` output.
+All functions accept `Uint8Array` inputs. snarkjs file I/O is handled internally via temp directories.
 
 ```typescript
 // Generate the genesis zkey from a Powers of Tau ceremony and an R1CS circuit
 generateInitialZkey(ptau: Uint8Array, r1cs: Uint8Array): Promise<Uint8Array>
 
 // Apply a contribution to a zkey using provided entropy
-contribute(prevZkey: Uint8Array, entropy: Uint8Array, name?: string): Promise<{ zkey: Uint8Array; hash: string }>
+contribute(prevZkey: Uint8Array, entropy: Uint8Array, name?: string): Promise<ContributionResult>
+// ContributionResult = { zkey: Uint8Array; hash: string }
 
-// Verify a single contribution against the previous zkey
-verify(prevZkey: Uint8Array, newZkey: Uint8Array): Promise<boolean>
+// Verify a zkey against the original circuit and Powers of Tau
+verify(r1cs: Uint8Array, ptau: Uint8Array, zkey: Uint8Array): Promise<boolean>
 
 // Verify the full contribution chain from genesis
-verifyChain(initialZkey: Uint8Array, contributions: Uint8Array[]): Promise<boolean>
+verifyChain(r1cs: Uint8Array, ptau: Uint8Array, initialZkey: Uint8Array, contributions: Uint8Array[]): Promise<boolean>
 
 // Generate entropy from available sources (CSPRNG + optional mouse/click data)
 generateEntropy(sources?: EntropySource[]): Promise<Uint8Array>
 
-// Apply a drand beacon to finalize the ceremony
-applyBeacon(zkey: Uint8Array, beaconHash: string): Promise<Uint8Array>
+// Apply a beacon to finalize the ceremony (2^N rounds of SHA-256)
+applyBeacon(zkey: Uint8Array, beaconHash: string, numIterationsExp?: number): Promise<Uint8Array>
 
-// Extract the verification key from a finalized zkey
+// Extract the Groth16 verification key from a finalized zkey
 exportVerificationKey(zkey: Uint8Array): Promise<object>
 ```
 
@@ -68,11 +70,19 @@ Running `npx @wonderland/create-cabure-ceremony` produces:
 
 ```text
 my-ceremony/
-├── app/                  # Next.js app routes and UI
-├── lib/
-├── ceremony.config.ts
-├── circuits/
-├── vercel.json
+├── src/
+│   ├── app/                # Next.js pages, screens, and API routes
+│   │   ├── api/ceremony/   # Queue, contribute, status, receipt endpoints
+│   │   ├── screens/        # Landing, Entropy, Tier, Progress, Complete, Verify
+│   │   └── components/     # Header, Button, ScreenWrapper, ErrorBoundary
+│   ├── hooks/              # useContributionFlow, useEntropyCollector, etc.
+│   ├── lib/                # api, auth, blob-store, kv-store, ceremony-state
+│   ├── types/              # ceremony types, next-auth extensions
+│   └── utils/              # entropy, formatting helpers
+├── scripts/                # setup-ptau, init-ceremony, finalize-ceremony, reset-ceremony
+├── circuits/               # .r1cs files and downloaded .ptau
+├── ceremony.config.ts      # Ceremony name, circuits, tiers, storage keys, UI copy
+├── package.json
 └── README.md
 ```
 

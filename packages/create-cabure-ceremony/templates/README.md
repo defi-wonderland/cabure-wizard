@@ -80,9 +80,9 @@ The init script only needs to run once. After deploying, the API routes handle c
 | Script                      | Description                                                              |
 | --------------------------- | ------------------------------------------------------------------------ |
 | `npm run setup:ptau`        | Detect circuit constraints, download the correct PPoT ptau, and verify   |
-| `npm run init:ceremony`     | Generate genesis zkey, upload to Blob, write manifest to KV              |
-| `npm run reset:ceremony`    | Wipe all KV keys and Blob zkeys for a fresh start                        |
-| `npm run finalize:ceremony` | Apply beacon (Ethereum RANDAO by default), verify zkeys, write outputs   |
+| `npm run init:ceremony`     | Generate genesis zkey, upload to Blob, write manifest to KV. Outputs to `output/genesis/` |
+| `npm run reset:ceremony`    | Wipe all KV keys and Blob zkeys for a fresh start |
+| `npm run finalize:ceremony` | Apply beacon (Ethereum RANDAO by default), verify zkeys. Outputs to `output/finalize/` |
 
 ### Setup ptau
 
@@ -106,11 +106,20 @@ npm run finalize:ceremony -- --force                   # finalize before target 
 
 For maximum verifiability, announce a future beacon chain slot number publicly before running with `--beacon-slot`. The RANDAO reveal is fetched from the Ethereum Beacon API (`BEACON_API_URL` env var overrides the default public endpoint).
 
-Outputs written to `output/`:
+### Initialization output
 
-- `transcript.json` -- full ceremony record (includes beacon source and slot)
-- `{circuitId}.vkey.json` -- Groth16 verification key
-- `{circuitId}.final.zkey` -- finalized proving key
+Running `init:ceremony` generates `output/genesis/`:
+
+- `init-transcript.json` — full initialization record (ceremony config, circuit hashes, storage paths)
+- `{circuitId}.genesis.zkey` — local copy of each genesis zkey
+
+### Finalization output
+
+Running `finalize:ceremony` generates `output/finalize/`:
+
+- `transcript.json` — full ceremony record (includes beacon source and slot)
+- `{circuitId}.vkey.json` — Groth16 verification key
+- `{circuitId}.final.zkey` — finalized proving key
 
 ## Configuration
 
