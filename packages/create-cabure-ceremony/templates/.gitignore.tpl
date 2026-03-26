@@ -7,4 +7,5 @@ next-env.d.ts
 .env
 .vercel
 .npmrc
-output/
+public/genesis/*.zkey
+public/finalize/*.zkey

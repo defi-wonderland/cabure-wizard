@@ -61,7 +61,7 @@ interface ContributionReceipt {
   timestamp: number;
 }
 
-const OUTPUT_DIR = path.resolve(process.cwd(), "output", "finalize");
+const OUTPUT_DIR = path.resolve(process.cwd(), "public", "finalize");
 
 interface BeaconResult {
   hex: string;
@@ -314,18 +314,18 @@ async function main() {
     const vkeyFile = `${circuitConfig.id}.vkey.json`;
     const vkeyPath = path.join(OUTPUT_DIR, vkeyFile);
     await writeFile(vkeyPath, JSON.stringify(vkey, null, 2));
-    console.log(`  Saved verification key to output/finalize/${vkeyFile}`);
+    console.log(`  Saved verification key to public/finalize/${vkeyFile}`);
 
     const finalZkeyFile = `${circuitConfig.id}.final.zkey`;
     const finalZkeyPath = path.join(OUTPUT_DIR, finalZkeyFile);
     await writeFile(finalZkeyPath, Buffer.from(finalZkey));
-    console.log(`  Saved finalized zkey to output/finalize/${finalZkeyFile}`);
+    console.log(`  Saved finalized zkey to public/finalize/${finalZkeyFile}`);
 
     circuitSummaries.push({
       circuitId: circuitConfig.id,
       totalContributions: state.totalContributions,
       finalChainHash: state.chainHash,
-      finalZkeyPath: `output/finalize/${finalZkeyFile}`,
+      finalZkeyPath: `public/finalize/${finalZkeyFile}`,
       verificationKey: vkey,
     });
 
@@ -353,16 +353,16 @@ async function main() {
 
   const transcriptPath = path.join(OUTPUT_DIR, "transcript.json");
   await writeFile(transcriptPath, JSON.stringify(transcript, null, 2));
-  console.log(`Transcript saved to output/finalize/transcript.json`);
+  console.log(`Transcript saved to public/finalize/transcript.json`);
 
   console.log();
   console.log("=== Ceremony finalized ===");
   console.log(`  Beacon:  0x${beaconHex}`);
   console.log(`  Circuits finalized: ${circuitSummaries.length}`);
   console.log(`  Total contributions: ${totalContributions}`);
-  console.log(`  Transcript: output/finalize/transcript.json`);
-  console.log(`  Verification keys: output/finalize/*.vkey.json`);
-  console.log(`  Finalized zkeys:   output/finalize/*.final.zkey`);
+  console.log(`  Transcript: public/finalize/transcript.json`);
+  console.log(`  Verification keys: public/finalize/*.vkey.json`);
+  console.log(`  Finalized zkeys:   public/finalize/*.final.zkey`);
 
   process.exit(0);
 }

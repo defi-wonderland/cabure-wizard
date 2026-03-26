@@ -119,8 +119,8 @@ Generated projects include four operator scripts in `scripts/`:
 | Script | npm command | Purpose |
 |--------|-------------|---------|
 | `setup-ptau.ts` | `npm run setup:ptau` | Download matching Powers of Tau file for each circuit |
-| `init-ceremony.ts` | `npm run init:ceremony` | Generate genesis zkeys, upload to Blob, write manifest to KV. Saves local copies and transcript to `output/genesis/` |
-| `finalize-ceremony.ts` | `npm run finalize:ceremony` | Apply Ethereum RANDAO beacon, export verification keys. Saves final zkeys and transcript to `output/finalize/` |
+| `init-ceremony.ts` | `npm run init:ceremony` | Generate genesis zkeys, upload to Blob, write manifest to KV. Saves local copies and transcript to `public/genesis/` |
+| `finalize-ceremony.ts` | `npm run finalize:ceremony` | Apply Ethereum RANDAO beacon, export verification keys. Saves final zkeys and transcript to `public/finalize/` |
 | `reset-ceremony.ts` | `npm run reset:ceremony` | Clear all KV state and Blob storage for a fresh start |
 
 ## Ceremony Flow

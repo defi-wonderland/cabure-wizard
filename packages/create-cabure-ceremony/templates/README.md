@@ -81,9 +81,9 @@ The init script only needs to run once. After deploying, the API routes handle c
 | Script                      | Description                                                              |
 | --------------------------- | ------------------------------------------------------------------------ |
 | `npm run setup:ptau`        | Detect circuit constraints, download the correct PPoT ptau, and verify   |
-| `npm run init:ceremony`     | Generate genesis zkey, upload to Blob, write manifest to KV. Outputs to `output/genesis/` |
+| `npm run init:ceremony`     | Generate genesis zkey, upload to Blob, write manifest to KV. Outputs to `public/genesis/` |
 | `npm run reset:ceremony`    | Wipe all KV keys and Blob zkeys for a fresh start |
-| `npm run finalize:ceremony` | Apply beacon (Ethereum RANDAO by default), verify zkeys. Outputs to `output/finalize/` |
+| `npm run finalize:ceremony` | Apply beacon (Ethereum RANDAO by default), verify zkeys. Outputs to `public/finalize/` |
 
 ### Setup ptau
 
@@ -109,14 +109,14 @@ For maximum verifiability, announce a future beacon chain slot number publicly b
 
 ### Initialization output
 
-Running `init:ceremony` generates `output/genesis/`:
+Running `init:ceremony` generates `public/genesis/`:
 
 - `init-transcript.json` — full initialization record (ceremony config, circuit hashes, storage paths)
 - `{circuitId}.genesis.zkey` — local copy of each genesis zkey
 
 ### Finalization output
 
-Running `finalize:ceremony` generates `output/finalize/`:
+Running `finalize:ceremony` generates `public/finalize/`:
 
 - `transcript.json` — full ceremony record (includes beacon source and slot)
 - `{circuitId}.vkey.json` — Groth16 verification key
