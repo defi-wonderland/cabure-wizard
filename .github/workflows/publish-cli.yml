@@ -1,13 +1,8 @@
-name: Publish Cabure CLI Package
+name: Publish Cabure CLI
 
 on:
   workflow_call:
   workflow_dispatch:
-    inputs:
-      version:
-        description: 'Version from package.json (e.g., 1.0.0 or 1.0.0-beta.1). Do NOT include the "v" prefix.'
-        required: false
-        type: string
 
 permissions:
   contents: read
@@ -15,6 +10,7 @@ permissions:
 
 jobs:
   publish:
+    if: github.event_name == 'workflow_call' || github.event_name == 'workflow_dispatch' || (github.event_name == 'release' && github.event.release.draft == false)
     environment: Publisher
     runs-on: ubuntu-latest
     defaults:
@@ -32,20 +28,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: pnpm
-          registry-url: "https://registry.npmjs.org"
-
-      - name: Validate input version matches package.json
-        if: github.event_name == 'workflow_dispatch' && github.event.inputs.version != ''
-        run: |
-          INPUT_VERSION="${{ github.event.inputs.version }}"
-          PKG_VERSION=$(node -p "require('./package.json').version")
-          echo "Input version: $INPUT_VERSION"
-          echo "package.json version: $PKG_VERSION"
-          if [ "$INPUT_VERSION" != "$PKG_VERSION" ]; then
-            echo "::error::Input version ($INPUT_VERSION) does not match package.json version ($PKG_VERSION). Update package.json or re-run with the matching version (no 'v' prefix)."
-            exit 1
-          fi
 
       - name: Update npm (for OIDC support)
         run: npm install -g npm@11.5.2
@@ -60,14 +42,14 @@ jobs:
 
       - name: Update version (dev branch)
         if: github.ref == 'refs/heads/dev'
-        run: npm version "0.0.0-snapshot.${GITHUB_SHA::8}.${{ github.run_id }}" --no-git-tag-version
+        run: npm version --new-version "0.0.0-snapshot.${GITHUB_SHA::8}.${{ github.run_id }}" --no-git-tag-version
 
       - name: Publish snapshot (dev branch)
         if: github.ref == 'refs/heads/dev'
         run: npm publish --access public --tag snapshot
 
-      - name: Publish (main branch)
-        if: github.ref == 'refs/heads/main'
+      - name: Publish stable (main branch or release)
+        if: github.ref == 'refs/heads/main' || (startsWith(github.ref, 'refs/tags/release-') && github.event.release.target_commitish == 'main')
         run: |
           VERSION=$(node -p "require('./package.json').version")
           if [[ "$VERSION" == *-* ]]; then
