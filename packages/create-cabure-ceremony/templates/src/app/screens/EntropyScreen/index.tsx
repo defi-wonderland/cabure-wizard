@@ -132,7 +132,7 @@ export function EntropyScreen({
             <div className={styles.divider} />
             <div className={styles.topBarContributions}>
               <div className="accentDot" />
-              <span className={styles.topBarHint}>
+              <span className={styles.topBarContributionsLabel}>
                 {(totalContributions ?? 0).toLocaleString()}{" "}
                 {copy.header.contributionsLabel}
               </span>
