@@ -2,7 +2,7 @@ import {
   RequestType,
   ResponseType,
   type WorkerResponse,
-} from "@defi-wonderland/cabure-crypto/protocol";
+} from "@wonderland/cabure-crypto/protocol";
 
 export interface ContributionResult {
   zkey: Uint8Array;
@@ -18,7 +18,7 @@ export async function runContribution(options: {
 }): Promise<ContributionResult> {
   return await new Promise((resolve, reject) => {
     const worker = new Worker(
-      new URL("@defi-wonderland/cabure-crypto/worker", import.meta.url),
+      new URL("@wonderland/cabure-crypto/worker", import.meta.url),
       { type: "module" },
     );
 

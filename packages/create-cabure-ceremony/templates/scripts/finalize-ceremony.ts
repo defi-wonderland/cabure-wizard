@@ -8,7 +8,7 @@ import {
   applyBeacon,
   exportVerificationKey,
   verify,
-} from "@defi-wonderland/cabure-crypto";
+} from "@wonderland/cabure-crypto";
 
 import { getJson, listRange } from "@/lib/kv-store";
 import { ceremonyConfig } from "../ceremony.config";
@@ -74,7 +74,9 @@ function parseBeaconFlag(): string | null {
   if (idx === -1) return null;
   const value = process.argv[idx + 1];
   if (!value || value.startsWith("--")) {
-    throw new Error("--beacon requires a hex value (e.g. --beacon 0xabc123...)");
+    throw new Error(
+      "--beacon requires a hex value (e.g. --beacon 0xabc123...)",
+    );
   }
   const hex = value.startsWith("0x") ? value.slice(2) : value;
   if (!/^[0-9a-fA-F]+$/.test(hex) || hex.length < 16) {
@@ -130,9 +132,7 @@ async function fetchRandaoReveal(
   const resolvedSlot = Number(json.data?.message?.slot);
 
   if (!randaoReveal) {
-    throw new Error(
-      `No RANDAO reveal found in beacon block at ${slotOrTag}.`,
-    );
+    throw new Error(`No RANDAO reveal found in beacon block at ${slotOrTag}.`);
   }
 
   const hex = randaoReveal.startsWith("0x")
@@ -223,7 +223,9 @@ async function main() {
         `${storage.circuitStatePrefix}:${c.id}`,
       );
       if (!state) {
-        throw new Error(`Missing circuit state for ${c.id}. Run init:ceremony.`);
+        throw new Error(
+          `Missing circuit state for ${c.id}. Run init:ceremony.`,
+        );
       }
       return state;
     }),
@@ -251,7 +253,9 @@ async function main() {
   }
 
   if (totalContributions === 0) {
-    throw new Error("No contributions have been made. Cannot finalize an empty ceremony.");
+    throw new Error(
+      "No contributions have been made. Cannot finalize an empty ceremony.",
+    );
   }
 
   const beacon = await resolveBeacon();
@@ -279,9 +283,7 @@ async function main() {
     const state = circuitStates.find((s) => s.id === circuitConfig.id)!;
 
     if (state.totalContributions === 0) {
-      console.log(
-        `Skipping ${circuitConfig.id} — no contributions received.`,
-      );
+      console.log(`Skipping ${circuitConfig.id} — no contributions received.`);
       continue;
     }
 

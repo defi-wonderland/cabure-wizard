@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { generateInitialZkey } from "@defi-wonderland/cabure-crypto";
+import { generateInitialZkey } from "@wonderland/cabure-crypto";
 import {
   getCeremonyConfig,
   type CeremonyCircuitConfig,
@@ -57,13 +57,17 @@ export async function getManifest(): Promise<ManifestState> {
   return manifest;
 }
 
-export async function getCircuitState(circuitId: string): Promise<CircuitState> {
+export async function getCircuitState(
+  circuitId: string,
+): Promise<CircuitState> {
   const config = getCeremonyConfig();
   const state = await getJson<CircuitState>(
     circuitStatePath(config.storage.circuitStatePrefix, circuitId),
   );
   if (!state) {
-    throw new Error(`Missing circuit state for ${circuitId}. Run init:ceremony.`);
+    throw new Error(
+      `Missing circuit state for ${circuitId}. Run init:ceremony.`,
+    );
   }
   return state;
 }
@@ -151,7 +155,6 @@ export function computeChainHash(options: {
   return `0x${digest}`;
 }
 
-
 export async function generateGenesisZkey(artifacts: {
   r1csPath: string;
   ptauPath: string;
@@ -190,7 +193,9 @@ export function circuitStatePath(prefix: string, circuitId: string): string {
   return `${prefix}:${circuitId}`;
 }
 
-export async function readCircuitBytes(relativePath: string): Promise<Uint8Array> {
+export async function readCircuitBytes(
+  relativePath: string,
+): Promise<Uint8Array> {
   const fullPath = path.resolve(process.cwd(), relativePath);
   try {
     const data = await readFile(fullPath);

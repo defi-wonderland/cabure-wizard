@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createHash } from "node:crypto";
 
-import { verify } from "@defi-wonderland/cabure-crypto";
+import { verify } from "@wonderland/cabure-crypto";
 
 import { getCeremonyConfig } from "@/lib/ceremony-config";
 import { getParticipant } from "@/lib/participant-auth";
@@ -17,12 +17,7 @@ import {
   circuitStatePath,
 } from "@/lib/ceremony-state";
 import { deleteBinary, putBinary } from "@/lib/blob-store";
-import {
-  acquireLock,
-  listPush,
-  releaseLock,
-  setJson,
-} from "@/lib/kv-store";
+import { acquireLock, listPush, releaseLock, setJson } from "@/lib/kv-store";
 
 const BLOB_HOST_SUFFIX = ".public.blob.vercel-storage.com";
 
