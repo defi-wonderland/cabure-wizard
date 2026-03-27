@@ -24,7 +24,7 @@ export const defaultCopy: CeremonyCopy = {
       progressLabel: "Progress",
     },
     authNote:
-      "Sign in with GitHub to verify your identity and join the queue.",
+      "Sign in with GitHub to prevent spam and join the queue.",
     githubCta: "CONTINUE WITH GITHUB",
     beginCta: "BEGIN CONTRIBUTION",
     endedSubtitle: "This ceremony has concluded",
@@ -32,11 +32,11 @@ export const defaultCopy: CeremonyCopy = {
       "Thank you to everyone who contributed. The ceremony has reached its target. You can still verify existing receipts below.",
     verifyCta: "VERIFY A RECEIPT",
     footer:
-      "No sign-up required. Your contribution is anonymous by default.\nTakes ~1 minute for core circuits.",
+      "GitHub sign-in required to prevent spam. No other data collected.\nTakes ~1 minute for core circuits.",
   },
   entropy: {
     topBarTitle: "ENTROPY COLLECTION",
-    topBarHint: "Move your mouse & click for bursts",
+    topBarHint: "Move around & tap for bursts",
     strengthLabel: "Entropy strength",
     readyCta: "CONTINUE",
     collectingCta: "COLLECTING ENTROPY...",

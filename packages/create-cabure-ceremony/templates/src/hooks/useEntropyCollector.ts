@@ -8,10 +8,12 @@ const MAX_ENTROPY_BYTES = 4096;
 /**
  * Collects user-interaction entropy for ceremony contributions.
  *
- * Entropy is gathered from mouse movements (2 bits each) and clicks
+ * Entropy is gathered from pointer movements (2 bits each) and taps/clicks
  * (45 bits each). Each event is packed into a 16-byte sample containing
  * coordinates, deltas, timing, and a monotonic counter, then appended to
  * a ring buffer capped at {@link MAX_ENTROPY_BYTES}.
+ *
+ * Uses Pointer Events so touch, pen, and mouse all contribute equally.
  *
  * Once {@link TARGET_ENTROPY} bits are collected, `isReady` flips to `true`.
  * Call {@link buildSeed} to mix the collected bytes with CSPRNG output
@@ -21,7 +23,7 @@ export function useEntropyCollector() {
   const entropyCountRef = useRef(0);
   const entropyBytesRef = useRef<number[]>([]);
   const eventCountRef = useRef(0);
-  const lastMouseRef = useRef({ x: 0, y: 0, time: 0 });
+  const lastPointerRef = useRef({ x: 0, y: 0, time: 0 });
   const areaRef = useRef<HTMLDivElement>(null);
 
   const [entropyPercent, setEntropyPercent] = useState(0);
@@ -83,9 +85,9 @@ export function useEntropyCollector() {
     [isReady],
   );
 
-  /** Records a mouse-move event, updating the CSS glow vars and sampling entropy. */
-  const handleMouseMove = useCallback(
-    (e: React.MouseEvent<HTMLDivElement>) => {
+  /** Records a pointer-move event, updating the CSS glow vars and sampling entropy. */
+  const handlePointerMove = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
       const el = areaRef.current;
       if (!el || isReady) return;
 
@@ -97,23 +99,23 @@ export function useEntropyCollector() {
       el.style.setProperty("--mx", `${e.clientX}px`);
       el.style.setProperty("--my", `${e.clientY}px`);
 
-      const dx = x - lastMouseRef.current.x;
-      const dy = y - lastMouseRef.current.y;
+      const dx = x - lastPointerRef.current.x;
+      const dy = y - lastPointerRef.current.y;
       const dist = Math.sqrt(dx * dx + dy * dy);
-      const dt = now - lastMouseRef.current.time;
+      const dt = now - lastPointerRef.current.time;
 
       if (dt > 0 && dist > 3) {
         recordSample({ x, y, dx, dy, typeCode: 1 });
         addEntropy(2);
       }
 
-      lastMouseRef.current = { x, y, time: now };
+      lastPointerRef.current = { x, y, time: now };
     },
     [isReady, recordSample, addEntropy],
   );
 
-  /** Records a click entropy sample (45 bits). */
-  const recordClick = useCallback(
+  /** Records a tap/click entropy sample (45 bits). */
+  const recordTap = useCallback(
     (x: number, y: number) => {
       if (isReady) return;
       recordSample({ x, y, dx: 0, dy: 0, typeCode: 2 });
@@ -143,8 +145,8 @@ export function useEntropyCollector() {
     entropyPercent,
     isReady,
     areaRef,
-    handleMouseMove,
-    recordClick,
+    handlePointerMove,
+    recordTap,
     recordKeyPress,
     buildSeed,
   };
