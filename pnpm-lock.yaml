@@ -14,8 +14,8 @@ importers:
         specifier: 2.0.0
         version: 2.0.0
       '@wonderland/cabure-crypto':
-        specifier: workspace:*
-        version: link:../crypto
+        specifier: 0.0.0-snapshot.369cfd2c.23648002230
+        version: 0.0.0-snapshot.369cfd2c.23648002230
       commander:
         specifier: 13.1.0
         version: 13.1.0
@@ -713,6 +713,9 @@ packages:
 
   '@vitest/utils@3.2.4':
     resolution: {integrity: sha512-fB2V0JFrQSMsCo9HiSq3Ezpdv4iYaXRG1Sx8edX3MwxfyNn83mKiGzOcH+Fkxt4MHxr3y42fQi1oeAInqgX2QA==}
+
+  '@wonderland/cabure-crypto@0.0.0-snapshot.369cfd2c.23648002230':
+    resolution: {integrity: sha512-2Nu7MGSC1kXMXsw2EMoFGj/90E/95iD1hfIMk4ScBktEyBmH7iMzZK7nU38hJ7K3Yop0nEnlMfqIuvBWOlGUYQ==}
 
   assertion-error@2.0.1:
     resolution: {integrity: sha512-Izi8RQcffqCeNVgFigKli1ssklIbpHnCYc6AknXGYoB6grJqyeby7jv12JUQgmTAnIDnbck1uxksT4dzN3PWBA==}
@@ -1488,6 +1491,12 @@ snapshots:
       '@vitest/pretty-format': 3.2.4
       loupe: 3.2.1
       tinyrainbow: 2.0.0
+
+  '@wonderland/cabure-crypto@0.0.0-snapshot.369cfd2c.23648002230':
+    dependencies:
+      snarkjs: 0.7.5
+    transitivePeerDependencies:
+      - react-native-b4a
 
   assertion-error@2.0.1: {}
 

@@ -5,7 +5,7 @@ import process from "node:process";
 
 import { put } from "@vercel/blob";
 import { loadEnvConfig } from "@next/env";
-import { generateInitialZkey } from "@defi-wonderland/cabure-crypto";
+import { generateInitialZkey } from "@wonderland/cabure-crypto";
 
 import { getJson, listClear, setJson } from "@/lib/kv-store";
 import { ceremonyConfig } from "../ceremony.config";
@@ -201,14 +201,10 @@ async function main() {
   };
 
   await setJson(ceremonyConfig.storage.manifestPath, manifest);
-  console.log(
-    `Manifest saved to KV: ${ceremonyConfig.storage.manifestPath}`,
-  );
+  console.log(`Manifest saved to KV: ${ceremonyConfig.storage.manifestPath}`);
 
   await listClear(ceremonyConfig.storage.receiptsPath);
-  console.log(
-    `Receipts list cleared: ${ceremonyConfig.storage.receiptsPath}`,
-  );
+  console.log(`Receipts list cleared: ${ceremonyConfig.storage.receiptsPath}`);
   console.log();
 
   console.log("Generating initialization transcript...");
