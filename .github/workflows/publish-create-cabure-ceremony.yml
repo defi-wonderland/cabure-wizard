@@ -42,7 +42,7 @@ jobs:
 
       - name: Update version (dev branch)
         if: github.ref == 'refs/heads/dev'
-        run: npm version --new-version "0.0.0-snapshot.${GITHUB_SHA::8}" --no-git-tag-version
+        run: npm version --new-version "0.0.0-snapshot.${GITHUB_SHA::8}.${{ github.run_id }}" --no-git-tag-version
 
       - name: Publish snapshot (dev branch)
         if: github.ref == 'refs/heads/dev'
@@ -50,4 +50,12 @@ jobs:
 
       - name: Publish stable (main branch or release)
         if: github.ref == 'refs/heads/main' || (startsWith(github.ref, 'refs/tags/release-') && github.event.release.target_commitish == 'main')
-        run: npm publish --access public
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          if [[ "$VERSION" == *-* ]]; then
+            TAG="${VERSION#*-}"
+            TAG="${TAG%%.*}"
+            npm publish --access public --tag "$TAG"
+          else
+            npm publish --access public
+          fi
