@@ -98,9 +98,12 @@
 
   .logoDivider,
   .title,
-  .contributions,
   .divider {
     display: none;
+  }
+
+  .nav {
+    gap: 0.5rem;
   }
 
   .userBadge {
