@@ -7,7 +7,6 @@ import { useParticipant } from "@/hooks/useParticipant";
 import styles from "./Header.module.css";
 
 export function Header({
-  step,
   onLogoClick,
 }: {
   step: CeremonyStep;
@@ -21,7 +20,6 @@ export function Header({
   const shortName = config.branding.shortName;
   const totalContributions = status?.totalContributions;
   const displayName = isAuthenticated ? participantName : undefined;
-  const stepLabel = copy.header.steps[step];
 
   return (
     <header className={styles.header}>
@@ -31,13 +29,11 @@ export function Header({
             {shortName ?? "TS"}
           </span>
         </div>
-        <div className={styles.divider} />
+        <div className={styles.logoDivider} />
         <span className={styles.title}>{copy.header.title}</span>
       </button>
 
       <div className={styles.nav}>
-        <span className={styles.stepLabel}>{stepLabel}</span>
-        <div className={styles.divider} />
         {displayName && (
           <>
             <span className={styles.userBadge}>@{displayName}</span>
@@ -46,7 +42,7 @@ export function Header({
         )}
         <div className={styles.contributions}>
           <div className="accentDot" />
-          <span className={styles.stepLabel}>
+          <span className={styles.contributionsLabel}>
             {(totalContributions ?? 0).toLocaleString()} {copy.header.contributionsLabel}
           </span>
         </div>

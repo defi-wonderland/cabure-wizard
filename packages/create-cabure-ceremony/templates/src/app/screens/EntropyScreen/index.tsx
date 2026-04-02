@@ -26,8 +26,8 @@ export function EntropyScreen({
     entropyPercent,
     isReady,
     areaRef,
-    handleMouseMove,
-    recordClick,
+    handlePointerMove,
+    recordTap,
     recordKeyPress,
     buildSeed,
   } = useEntropyCollector();
@@ -36,8 +36,17 @@ export function EntropyScreen({
   const [ripples, setRipples] = useState<{ id: number; x: number; y: number }[]>([]);
   const rippleIdRef = useRef(0);
 
-  const handleClick = useCallback(
-    (e: React.MouseEvent<HTMLDivElement>) => {
+  const handlePointerDown = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      const el = areaRef.current;
+      if (!el) return;
+      el.setPointerCapture(e.pointerId);
+    },
+    [areaRef],
+  );
+
+  const handlePointerUp = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
       if (isReady) return;
 
       const el = areaRef.current;
@@ -53,9 +62,9 @@ export function EntropyScreen({
         setRipples((prev) => prev.filter((r) => r.id !== id));
       }, 600);
 
-      recordClick(x, y);
+      recordTap(x, y);
     },
-    [isReady, areaRef, recordClick],
+    [isReady, areaRef, recordTap],
   );
 
   const handleKeyDown = useCallback(
@@ -82,8 +91,9 @@ export function EntropyScreen({
         role="application"
         tabIndex={0}
         aria-label={copy.entropy.topBarTitle}
-        onMouseMove={handleMouseMove}
-        onClick={handleClick}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
         onKeyDown={handleKeyDown}
         className={styles.interactiveArea}
       >
@@ -106,7 +116,7 @@ export function EntropyScreen({
             <div className={styles.logoIcon}>
               <span className={styles.logoText}>{shortName}</span>
             </div>
-            <div className={styles.divider} />
+            <div className={styles.logoDivider} />
             <span className={styles.topBarTitle}>{copy.entropy.topBarTitle}</span>
           </div>
           <div className={styles.topBarRight}>
@@ -122,7 +132,7 @@ export function EntropyScreen({
             <div className={styles.divider} />
             <div className={styles.topBarContributions}>
               <div className="accentDot" />
-              <span className={styles.topBarHint}>
+              <span className={styles.topBarContributionsLabel}>
                 {(totalContributions ?? 0).toLocaleString()}{" "}
                 {copy.header.contributionsLabel}
               </span>
