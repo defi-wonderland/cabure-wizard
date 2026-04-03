@@ -12,13 +12,13 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
+    "@vercel/blob": "2.3.3",
     "@wonderland/cabure-crypto": "0.0.0-snapshot.369cfd2c.23648002230",
-    "@vercel/blob": "2.0.0",
     "commander": "13.1.0"
   },
   "devDependencies": {
-    "esbuild": "0.25.0",
-    "vitest": "3.2.4"
+    "esbuild": "0.25.12",
+    "vitest": "4.1.2"
   },
   "license": "MIT"
 }

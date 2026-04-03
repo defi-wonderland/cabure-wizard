@@ -45,7 +45,7 @@
   "devDependencies": {
     "esbuild": "0.25.12",
     "typescript": "5.9.3",
-    "vitest": "3.2.4",
+    "vitest": "4.1.2",
     "@types/node": "22.19.11",
     "@types/snarkjs": "0.7.9"
   },
