@@ -1,0 +1,10 @@
+node_modules/
+dist/
+*.tsbuildinfo
+.env
+.env.*
+coverage/
+
+# Keep template fixtures visible for create-cabure-ceremony
+!packages/create-cabure-ceremony/templates/
+!packages/create-cabure-ceremony/templates/**

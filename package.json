@@ -1,0 +1,15 @@
+{
+  "name": "cabure-wizard",
+  "private": true,
+  "scripts": {
+    "format": "pnpm -r --if-present format",
+    "build": "pnpm -r build",
+    "test": "pnpm -r test",
+    "test:e2e": "pnpm -r --if-present test:e2e",
+    "clean": "pnpm -r clean"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "packageManager": "pnpm@9.15.4"
+}

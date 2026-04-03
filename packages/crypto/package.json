@@ -1,0 +1,53 @@
+{
+  "name": "@wonderland/cabure-crypto",
+  "version": "1.0.0",
+  "description": "Typed exports for all Groth16 Phase 2 ceremony operations",
+  "type": "module",
+  "main": "./dist/cjs/index.cjs",
+  "module": "./dist/esm/index.js",
+  "types": "./dist/esm/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/esm/index.d.ts",
+        "default": "./dist/esm/index.js"
+      },
+      "require": {
+        "types": "./dist/cjs/index.d.cts",
+        "default": "./dist/cjs/index.cjs"
+      }
+    },
+    "./worker": {
+      "default": "./dist/worker/contribute.worker.js"
+    },
+    "./protocol": {
+      "import": {
+        "types": "./dist/esm/worker/protocol.d.ts",
+        "default": "./dist/worker/protocol.js"
+      },
+      "require": {
+        "types": "./dist/worker/protocol.d.cts",
+        "default": "./dist/worker/protocol.cjs"
+      }
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "node build.mjs",
+    "test": "vitest run",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "snarkjs": "0.7.5"
+  },
+  "devDependencies": {
+    "esbuild": "0.25.12",
+    "typescript": "5.9.3",
+    "vitest": "3.2.4",
+    "@types/node": "22.19.11",
+    "@types/snarkjs": "0.7.9"
+  },
+  "license": "MIT"
+}
