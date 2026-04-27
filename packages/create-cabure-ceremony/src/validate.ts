@@ -69,10 +69,14 @@ export function validateTargetContributions(value: number): number {
  * Validates an optional end date in YYYY-MM-DD format.
  *
  * @param value - Date string (blank allowed).
+ * @param now - Reference "current" date used for the past-date check (defaults to `new Date()`).
  * @returns Trimmed date string or null if blank.
- * @throws Error if format is invalid or date is not a valid calendar date.
+ * @throws Error if format is invalid, not a valid calendar date, or earlier than today.
  */
-export function validateEndDate(value: string): string | null {
+export function validateEndDate(
+  value: string,
+  now: Date = new Date(),
+): string | null {
   const trimmed = value.trim();
   if (!trimmed) {
     return null;
@@ -91,6 +95,15 @@ export function validateEndDate(value: string): string | null {
     parsed.getUTCDate() !== day
   ) {
     throw new Error("End date is not a valid calendar date.");
+  }
+
+  const todayUtc = Date.UTC(
+    now.getUTCFullYear(),
+    now.getUTCMonth(),
+    now.getUTCDate(),
+  );
+  if (parsed.getTime() < todayUtc) {
+    throw new Error("End date must be today or in the future.");
   }
 
   return trimmed;
