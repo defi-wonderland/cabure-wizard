@@ -139,6 +139,8 @@ export interface CeremonyCopy {
     note: string;
     successTitle: string;
     invalidReceipt: string;
+    duplicateReceipt: string;
+    hashMismatch: string;
     backCta: string;
   };
 }
