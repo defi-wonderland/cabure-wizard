@@ -66,7 +66,7 @@ export function validateTargetContributions(value: number): number {
 }
 
 /**
- * Validates an optional end date in YYYY-MM-DD format.
+ * Validates an optional end date in YYYY-MM-DD format against the local calendar date.
  *
  * @param value - Date string (blank allowed).
  * @param now - Reference "current" date used for the past-date check (defaults to `new Date()`).
@@ -87,22 +87,18 @@ export function validateEndDate(
   }
 
   const [year, month, day] = trimmed.split("-").map(Number);
-  const parsed = new Date(Date.UTC(year, month - 1, day));
+  const parsed = new Date(year, month - 1, day);
 
   if (
-    parsed.getUTCFullYear() !== year ||
-    parsed.getUTCMonth() !== month - 1 ||
-    parsed.getUTCDate() !== day
+    parsed.getFullYear() !== year ||
+    parsed.getMonth() !== month - 1 ||
+    parsed.getDate() !== day
   ) {
     throw new Error("End date is not a valid calendar date.");
   }
 
-  const todayUtc = Date.UTC(
-    now.getUTCFullYear(),
-    now.getUTCMonth(),
-    now.getUTCDate(),
-  );
-  if (parsed.getTime() < todayUtc) {
+  const todayLocal = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  if (parsed.getTime() < todayLocal.getTime()) {
     throw new Error("End date must be today or in the future.");
   }
 

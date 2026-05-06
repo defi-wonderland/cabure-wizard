@@ -24,14 +24,33 @@ describe("validate helpers", () => {
   });
 
   test("validateEndDate accepts blank or proper yyyy-mm-dd", () => {
-    const now = new Date(Date.UTC(2026, 0, 15));
+    const now = new Date(2026, 0, 15, 12);
     expect(validateEndDate("", now)).toBeNull();
     expect(validateEndDate("2026-03-27", now)).toBe("2026-03-27");
   });
 
   test("validateEndDate accepts today", () => {
-    const now = new Date(Date.UTC(2026, 0, 15));
+    const now = new Date(2026, 0, 15, 12);
     expect(validateEndDate("2026-01-15", now)).toBe("2026-01-15");
+  });
+
+  test("validateEndDate compares against the local calendar date", () => {
+    const originalTimezone = process.env.TZ;
+    process.env.TZ = "America/Sao_Paulo";
+
+    try {
+      const now = new Date("2026-01-15T01:30:00.000Z");
+      expect(validateEndDate("2026-01-14", now)).toBe("2026-01-14");
+      expect(() => validateEndDate("2026-01-13", now)).toThrowError(
+        "End date must be today or in the future.",
+      );
+    } finally {
+      if (originalTimezone === undefined) {
+        delete process.env.TZ;
+      } else {
+        process.env.TZ = originalTimezone;
+      }
+    }
   });
 
   test("validateEndDate rejects invalid calendar dates", () => {
@@ -41,7 +60,7 @@ describe("validate helpers", () => {
   });
 
   test("validateEndDate rejects past dates", () => {
-    const now = new Date(Date.UTC(2026, 0, 15));
+    const now = new Date(2026, 0, 15, 12);
     expect(() => validateEndDate("2023-01-29", now)).toThrowError(
       "End date must be today or in the future.",
     );
