@@ -90,7 +90,7 @@ The init script only needs to run once. After deploying, the API routes handle c
 ### Setup ptau
 
 ```bash
-npm run setup:ptau                  # download, verify, and update config
+npm run setup:ptau                  # download, verify, and update constraints
 npm run setup:ptau -- --force       # re-download even if ptau exists
 npm run setup:ptau -- --skip-verify # skip snarkjs verification (faster for large files)
 ```
@@ -142,7 +142,7 @@ circuits: [
     targetContributions: 100,               // per-circuit target; overrides the top-level value
     artifacts: {
       r1csPath: "circuits/multiplier.r1cs", // path relative to the project root
-      ptauPath: PTAU_PATH,                  // set by `setup:ptau`; don't edit by hand
+      ptauPath: PTAU_PATH,                  // points to circuits/pot_final.ptau, downloaded by `setup:ptau`
     },
   },
 ],
@@ -167,7 +167,7 @@ tiers: [
     label: "Full ceremony",
     description: "Contribute to every circuit",
     estimatedMinutes: 30,
-    circuitIds: ["multiplier", "hash", "signature"],
+    circuitIds: ["multiplier"],             // add more IDs here after defining matching circuits above
   },
 ],
 ```
