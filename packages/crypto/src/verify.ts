@@ -5,6 +5,10 @@ import { withTempDir, writeTempFile } from "./util.js";
  * Verify a single contribution by checking the full zkey against
  * the original circuit (r1cs) and Powers of Tau.
  *
+ * Note: this confirms `zkey` is a valid contribution chain extending the
+ * genesis derivable from `(r1cs, ptau)`. It does NOT confirm that `zkey` is
+ * the next contribution in any specific chain — for that, see `verifyChain`.
+ *
  * @param r1cs - R1CS circuit definition
  * @param ptau - Powers of Tau ceremony output
  * @param zkey - The zkey to verify
@@ -25,37 +29,48 @@ export async function verify(
 }
 
 /**
- * Verify a full contribution chain from the genesis zkey.
+ * Verify the full contribution chain embedded inside `latestZkey`.
  *
- * snarkjs embeds the entire contribution history inside each zkey file.
- * `verifyFromInit` checks the full chain from genesis to the given zkey,
- * so verifying the last contribution in the array is sufficient to validate
- * every contribution that came before it.
+ * snarkjs records the entire contribution transcript inside every zkey
+ * file, so verifying the latest zkey against the genesis is equivalent to
+ * verifying every intermediate contribution. Intermediate zkeys do not need
+ * to be supplied.
  *
- * @param r1cs - R1CS circuit definition
+ * If `latestZkey` is byte-equal to `initialZkey` (no contributions yet) the
+ * function returns `true` without invoking snarkjs.
+ *
+ * @param r1cs - R1CS circuit definition. Accepted for API symmetry with
+ *               `verify`; not used by `verifyFromInit`, which binds to the
+ *               genesis zkey directly.
  * @param ptau - Powers of Tau ceremony output
  * @param initialZkey - The genesis zkey
- * @param contributions - Array of contributed zkeys in order
- * @returns true if the entire chain is valid
+ * @param latestZkey - The most recently contributed zkey
+ * @returns true if every contribution embedded in `latestZkey` is valid and
+ *          the chain reaches `initialZkey` at its base
  */
 export async function verifyChain(
   r1cs: Uint8Array,
   ptau: Uint8Array,
   initialZkey: Uint8Array,
-  contributions: Uint8Array[],
+  latestZkey: Uint8Array,
 ): Promise<boolean> {
-  if (contributions.length === 0) return true;
-
-  // The last zkey contains the full contribution chain, so verifying it
-  // against genesis is equivalent to verifying every intermediate step.
-  const lastContribution = contributions[contributions.length - 1];
+  if (bytesEqual(latestZkey, initialZkey)) {
+    return true;
+  }
 
   return withTempDir(async (dir) => {
-    const r1csPath = await writeTempFile(dir, "circuit.r1cs", r1cs);
     const ptauPath = await writeTempFile(dir, "pot.ptau", ptau);
     const initPath = await writeTempFile(dir, "genesis.zkey", initialZkey);
-    const zkeyPath = await writeTempFile(dir, "latest.zkey", lastContribution);
+    const zkeyPath = await writeTempFile(dir, "latest.zkey", latestZkey);
 
     return snarkjs.zKey.verifyFromInit(initPath, ptauPath, zkeyPath);
   });
+}
+
+function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
 }
