@@ -10,6 +10,7 @@ import {
   applyBeacon,
   exportVerificationKey,
 } from "../src/index.js";
+import { bytesToHexRaw, toHex } from "../src/hex.js";
 
 const FIXTURES = join(import.meta.dirname, "fixtures");
 
@@ -104,14 +105,27 @@ describe("verifyChain", () => {
       new Uint8Array(32).fill(3),
     );
 
-    const valid = await verifyChain(r1cs, ptau, genesis, [zkey1, zkey2, zkey3]);
+    const valid = await verifyChain(r1cs, ptau, genesis, zkey3);
     expect(valid).toBe(true);
   });
 
-  it("returns true for empty contributions array", async () => {
+  it("returns true when latestZkey equals initialZkey", async () => {
     const genesis = await generateInitialZkey(ptau, r1cs);
-    const valid = await verifyChain(r1cs, ptau, genesis, []);
+    const valid = await verifyChain(r1cs, ptau, genesis, genesis);
     expect(valid).toBe(true);
+  });
+
+  it("returns false when the latest zkey is tampered", async () => {
+    const genesis = await generateInitialZkey(ptau, r1cs);
+    const { zkey } = await contribute(genesis, new Uint8Array(32).fill(7));
+
+    const tampered = new Uint8Array(zkey);
+    const mid = Math.floor(tampered.length / 2);
+    tampered[mid] ^= 0xff;
+    tampered[mid + 1] ^= 0xff;
+
+    const valid = await verifyChain(r1cs, ptau, genesis, tampered);
+    expect(valid).toBe(false);
   });
 });
 
@@ -139,13 +153,14 @@ describe("generateEntropy", () => {
 });
 
 describe("applyBeacon", () => {
+  const VALID_BEACON =
+    "0102030405060708091011121314151617181920212223242526272829303132";
+
   it("produces a finalized zkey with a beacon", async () => {
     const genesis = await generateInitialZkey(ptau, r1cs);
     const { zkey } = await contribute(genesis, new Uint8Array(32).fill(1));
 
-    const beaconHash =
-      "0102030405060708091011121314151617181920212223242526272829303132";
-    const finalized = await applyBeacon(zkey, beaconHash);
+    const finalized = await applyBeacon(zkey, VALID_BEACON);
 
     expect(finalized).toBeInstanceOf(Uint8Array);
     expect(finalized.length).toBeGreaterThan(0);
@@ -155,12 +170,97 @@ describe("applyBeacon", () => {
     const genesis = await generateInitialZkey(ptau, r1cs);
     const { zkey } = await contribute(genesis, new Uint8Array(32).fill(1));
 
-    const beaconHash =
-      "0102030405060708091011121314151617181920212223242526272829303132";
-    const finalized1 = await applyBeacon(zkey, beaconHash);
-    const finalized2 = await applyBeacon(zkey, beaconHash);
+    const finalized1 = await applyBeacon(zkey, VALID_BEACON);
+    const finalized2 = await applyBeacon(zkey, VALID_BEACON);
 
     expect(Buffer.from(finalized1).equals(Buffer.from(finalized2))).toBe(true);
+  });
+
+  it("accepts a beacon with the 0x prefix", async () => {
+    const genesis = await generateInitialZkey(ptau, r1cs);
+    const { zkey } = await contribute(genesis, new Uint8Array(32).fill(1));
+
+    const finalized = await applyBeacon(zkey, `0x${VALID_BEACON}`);
+    expect(finalized.length).toBeGreaterThan(0);
+  });
+
+  it("rejects non-hex beacon", async () => {
+    const genesis = await generateInitialZkey(ptau, r1cs);
+    const { zkey } = await contribute(genesis, new Uint8Array(32).fill(1));
+
+    await expect(applyBeacon(zkey, "xyz")).rejects.toThrow(/hex/i);
+  });
+
+  it("rejects odd-length beacon", async () => {
+    const genesis = await generateInitialZkey(ptau, r1cs);
+    const { zkey } = await contribute(genesis, new Uint8Array(32).fill(1));
+
+    await expect(applyBeacon(zkey, "abc")).rejects.toThrow(/even/i);
+  });
+
+  it("rejects a beacon shorter than 32 bytes", async () => {
+    const genesis = await generateInitialZkey(ptau, r1cs);
+    const { zkey } = await contribute(genesis, new Uint8Array(32).fill(1));
+
+    await expect(applyBeacon(zkey, "00".repeat(31))).rejects.toThrow(
+      /at least 32 bytes/i,
+    );
+  });
+
+  it("rejects an empty beacon", async () => {
+    const genesis = await generateInitialZkey(ptau, r1cs);
+    const { zkey } = await contribute(genesis, new Uint8Array(32).fill(1));
+
+    await expect(applyBeacon(zkey, "")).rejects.toThrow(/at least 32 bytes/i);
+  });
+
+  it("rejects out-of-range numIterationsExp", async () => {
+    const genesis = await generateInitialZkey(ptau, r1cs);
+    const { zkey } = await contribute(genesis, new Uint8Array(32).fill(1));
+
+    await expect(applyBeacon(zkey, VALID_BEACON, 0)).rejects.toThrow(
+      /numIterationsExp/,
+    );
+    await expect(applyBeacon(zkey, VALID_BEACON, 33)).rejects.toThrow(
+      /numIterationsExp/,
+    );
+    await expect(applyBeacon(zkey, VALID_BEACON, 1.5)).rejects.toThrow(
+      /numIterationsExp/,
+    );
+  });
+});
+
+describe("hex helpers", () => {
+  it("bytesToHexRaw produces lowercase hex without prefix", () => {
+    expect(bytesToHexRaw(new Uint8Array([0xab, 0xcd, 0xef]))).toBe("abcdef");
+  });
+
+  it("bytesToHexRaw left-pads single-digit nibbles", () => {
+    expect(bytesToHexRaw(new Uint8Array([0x00, 0x0a, 0xff]))).toBe("000aff");
+  });
+
+  it("bytesToHexRaw on empty input returns empty string", () => {
+    expect(bytesToHexRaw(new Uint8Array(0))).toBe("");
+  });
+
+  it("toHex prefixes the same encoding with 0x", () => {
+    const bytes = new Uint8Array([0x12, 0x34]);
+    expect(toHex(bytes)).toBe(`0x${bytesToHexRaw(bytes)}`);
+  });
+
+  it("Node and browser-worker entropy encodings agree", () => {
+    // Regression guard: if the Node and worker hex paths drift apart,
+    // identical entropy bytes will produce different snarkjs contributions.
+    const entropy = new Uint8Array(64);
+    for (let i = 0; i < entropy.length; i++) entropy[i] = i;
+
+    const nodePath = bytesToHexRaw(entropy);
+    const inlineFallback = Array.from(entropy)
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+
+    expect(nodePath).toBe(inlineFallback);
+    expect(nodePath.startsWith("0x")).toBe(false);
   });
 });
 
