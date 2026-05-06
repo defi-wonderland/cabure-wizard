@@ -1,0 +1,166 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { describe, it, expect, beforeAll, beforeEach } from "vitest";
+
+import { generateInitialZkey, verify } from "../src/index.js";
+import { browserContribute } from "../src/worker/browser-contribute.js";
+import {
+  RequestType,
+  ResponseType,
+  type WorkerRequest,
+  type WorkerResponse,
+} from "../src/worker/protocol.js";
+
+const FIXTURES = join(import.meta.dirname, "fixtures");
+
+function loadFixture(name: string): Uint8Array {
+  const buf = readFileSync(join(FIXTURES, name));
+  return new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);
+}
+
+const r1cs = loadFixture("multiplier.r1cs");
+const ptau = loadFixture("pot_final.ptau");
+
+describe("browserContribute (direct)", () => {
+  let genesis: Uint8Array;
+
+  beforeAll(async () => {
+    genesis = await generateInitialZkey(ptau, r1cs);
+  });
+
+  it("produces a valid contribution", async () => {
+    const entropy = new Uint8Array(32).fill(0xa5);
+    const result = await browserContribute(genesis, entropy, "browser-test");
+
+    expect(result.zkey).toBeInstanceOf(Uint8Array);
+    expect(result.zkey.length).toBeGreaterThan(0);
+    expect(result.hash).toMatch(/^0x[0-9a-f]{128}$/);
+
+    const valid = await verify(r1cs, ptau, result.zkey);
+    expect(valid).toBe(true);
+  });
+
+  it("does not mutate the input entropy (zeroing happens in the worker handler)", async () => {
+    const entropy = new Uint8Array(32).fill(0xa5);
+    const original = new Uint8Array(entropy);
+    await browserContribute(genesis, entropy, "test");
+    expect(Buffer.from(entropy).equals(Buffer.from(original))).toBe(true);
+  });
+
+  it("produces different zkeys on repeat calls with identical entropy", async () => {
+    // snarkjs mixes 64 bytes from getRandomBytes() into the RNG seed
+    // alongside the user entropy; this guards against a future change that
+    // would bypass that mixing.
+    const e1 = new Uint8Array(32).fill(0xa5);
+    const e2 = new Uint8Array(32).fill(0xa5);
+    const r1 = await browserContribute(genesis, e1, "test");
+    const r2 = await browserContribute(genesis, e2, "test");
+    expect(r1.hash).not.toBe(r2.hash);
+  });
+});
+
+describe("worker onmessage protocol", () => {
+  type PostedMessage = { msg: WorkerResponse; transfer: Transferable[] };
+
+  let posted: PostedMessage[];
+  let onmessageHandler: ((event: MessageEvent<WorkerRequest>) => Promise<void>) | null;
+
+  // `self` must exist before the worker module is imported, since the module
+  // assigns its handler to `self.onmessage` at load time.
+  beforeAll(async () => {
+    const mockSelf = {
+      postMessage: (msg: WorkerResponse, options?: { transfer?: Transferable[] }) => {
+        posted.push({ msg, transfer: options?.transfer ?? [] });
+      },
+      onmessage: null as
+        | ((event: MessageEvent<WorkerRequest>) => Promise<void>)
+        | null,
+    };
+    (globalThis as unknown as { self: typeof mockSelf }).self = mockSelf;
+
+    await import("../src/worker/contribute.worker.js");
+    onmessageHandler = mockSelf.onmessage;
+  });
+
+  beforeEach(() => {
+    posted = [];
+  });
+
+  function fireMessage(data: WorkerRequest): Promise<void> {
+    if (!onmessageHandler) {
+      throw new Error("worker onmessage was not assigned during import");
+    }
+    return onmessageHandler({ data } as MessageEvent<WorkerRequest>);
+  }
+
+  it("handles a Contribute request end-to-end", async () => {
+    const genesis = await generateInitialZkey(ptau, r1cs);
+    const entropy = new Uint8Array(32).fill(0x42);
+
+    await fireMessage({
+      type: RequestType.Contribute,
+      prevZkey: genesis,
+      entropy,
+      name: "worker-test",
+    });
+
+    expect(posted).toHaveLength(3);
+    expect(posted[0].msg).toEqual({
+      type: ResponseType.Progress,
+      stage: "computing",
+      percent: 0,
+    });
+    expect(posted[1].msg).toEqual({
+      type: ResponseType.Progress,
+      stage: "done",
+      percent: 100,
+    });
+
+    const result = posted[2].msg;
+    expect(result.type).toBe(ResponseType.Result);
+    if (result.type !== ResponseType.Result) throw new Error("unreachable");
+
+    expect(result.newZkey).toBeInstanceOf(Uint8Array);
+    expect(result.hash).toMatch(/^0x[0-9a-f]{128}$/);
+
+    expect(posted[2].transfer).toEqual([result.newZkey.buffer]);
+
+    const valid = await verify(r1cs, ptau, result.newZkey);
+    expect(valid).toBe(true);
+
+    for (const byte of entropy) expect(byte).toBe(0);
+  });
+
+  it("handles a GenerateEntropy request", async () => {
+    await fireMessage({ type: RequestType.GenerateEntropy });
+
+    expect(posted).toHaveLength(1);
+    const reply = posted[0].msg;
+    expect(reply.type).toBe(ResponseType.Entropy);
+    if (reply.type !== ResponseType.Entropy) throw new Error("unreachable");
+    expect(reply.data).toBeInstanceOf(Uint8Array);
+    expect(reply.data.length).toBe(64);
+    expect(posted[0].transfer).toEqual([reply.data.buffer]);
+  });
+
+  it("posts an Error response when contribute throws", async () => {
+    const garbage = new Uint8Array(0);
+    const entropy = new Uint8Array(32).fill(0x01);
+
+    await fireMessage({
+      type: RequestType.Contribute,
+      prevZkey: garbage,
+      entropy,
+      name: "should-fail",
+    });
+
+    expect(posted.length).toBeGreaterThanOrEqual(2);
+    expect(posted[0].msg.type).toBe(ResponseType.Progress);
+
+    const errorMsg = posted[posted.length - 1].msg;
+    expect(errorMsg.type).toBe(ResponseType.Error);
+    if (errorMsg.type !== ResponseType.Error) throw new Error("unreachable");
+    expect(typeof errorMsg.message).toBe("string");
+    expect(errorMsg.message.length).toBeGreaterThan(0);
+  });
+});
