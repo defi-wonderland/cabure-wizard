@@ -123,6 +123,7 @@ export const defaultCopy: CeremonyCopy = {
     note: "This PoC verifies receipt presence in the coordinator state. Full cryptographic verification is not implemented yet.",
     successTitle: "Receipt verified",
     invalidReceipt: "Receipt JSON is missing required fields.",
+    errorLabel: "Error",
     backCta: "BACK TO LANDING",
   },
 };

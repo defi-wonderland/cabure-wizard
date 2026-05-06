@@ -139,6 +139,7 @@ export interface CeremonyCopy {
     note: string;
     successTitle: string;
     invalidReceipt: string;
+    errorLabel: string;
     backCta: string;
   };
 }
