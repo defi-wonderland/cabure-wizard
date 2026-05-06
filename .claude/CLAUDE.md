@@ -49,7 +49,7 @@ verifyChain(
   r1cs: Uint8Array,
   ptau: Uint8Array,
   initialZkey: Uint8Array,
-  contributions: Uint8Array[],
+  latestZkey: Uint8Array,
 ): Promise<boolean>
 
 generateEntropy(sources?: EntropySource[]): Promise<Uint8Array>

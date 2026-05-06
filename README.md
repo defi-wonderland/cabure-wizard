@@ -45,8 +45,9 @@ contribute(prevZkey: Uint8Array, entropy: Uint8Array, name?: string): Promise<Co
 // Verify a zkey against the original circuit and Powers of Tau
 verify(r1cs: Uint8Array, ptau: Uint8Array, zkey: Uint8Array): Promise<boolean>
 
-// Verify the full contribution chain from genesis
-verifyChain(r1cs: Uint8Array, ptau: Uint8Array, initialZkey: Uint8Array, contributions: Uint8Array[]): Promise<boolean>
+// Verify the full contribution chain from genesis (snarkjs walks the
+// transcript embedded in latestZkey; intermediates are not needed)
+verifyChain(r1cs: Uint8Array, ptau: Uint8Array, initialZkey: Uint8Array, latestZkey: Uint8Array): Promise<boolean>
 
 // Generate entropy from available sources (CSPRNG + optional mouse/click data)
 generateEntropy(sources?: EntropySource[]): Promise<Uint8Array>
