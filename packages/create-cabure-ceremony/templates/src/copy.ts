@@ -52,6 +52,7 @@ export const defaultCopy: CeremonyCopy = {
     cta: "JOIN QUEUE",
     tierLabelPrefix: "Tier",
     timeSuffix: "min",
+    completedLabel: "Completed",
   },
   progress: {
     title: "Contribution in progress",

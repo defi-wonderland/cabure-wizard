@@ -77,6 +77,7 @@ export interface CeremonyCopy {
     cta: string;
     tierLabelPrefix: string;
     timeSuffix: string;
+    completedLabel: string;
   };
   progress: {
     title: string;

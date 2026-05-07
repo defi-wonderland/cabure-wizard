@@ -102,9 +102,10 @@ export function isCeremonyActive(
 
 /**
  * Resolves which circuits a participant should queue for given their selected
- * tier. Drops circuits that have already reached their per-circuit target and
- * backfills with the most underserved circuits from the full config, up to the
- * original tier's circuit count.
+ * tier. Returns only the circuits that belong to the selected tier and have
+ * not yet reached their per-circuit target. Never includes circuits from
+ * other tiers; if every circuit in the tier is finalized, returns an empty
+ * array so the caller can reject the request.
  */
 export function selectCircuitsForTier(
   tierId: TierId,
@@ -114,34 +115,13 @@ export function selectCircuitsForTier(
 ): string[] {
   const tier = tiers.find((t) => t.id === tierId);
   if (!tier) return [];
-  const maxCount = tier.circuitIds.length;
 
-  const needed = tier.circuitIds.filter((id) => {
+  return tier.circuitIds.filter((id) => {
     const conf = circuitConfigs.find((c) => c.id === id);
     const state = allCircuits.find((s) => s.id === id);
     if (!conf || !state) return true;
     return state.totalContributions < conf.targetContributions;
   });
-
-  if (needed.length >= maxCount) return needed;
-
-  const alreadyIncluded = new Set(needed);
-  const candidates = circuitConfigs
-    .filter((c) => !alreadyIncluded.has(c.id))
-    .map((c) => {
-      const state = allCircuits.find((s) => s.id === c.id);
-      const remaining =
-        c.targetContributions - (state?.totalContributions ?? 0);
-      return { id: c.id, remaining };
-    })
-    .filter((c) => c.remaining > 0)
-    .sort((a, b) => b.remaining - a.remaining);
-
-  const backfill = candidates
-    .slice(0, maxCount - needed.length)
-    .map((c) => c.id);
-
-  return [...needed, ...backfill];
 }
 
 export function computeChainHash(options: {

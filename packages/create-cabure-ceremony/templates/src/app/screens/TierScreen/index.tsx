@@ -1,6 +1,6 @@
 "use client";
 
-import type { TierId } from "@/lib/ceremony-config";
+import type { CeremonyTierConfig, TierId } from "@/lib/ceremony-config";
 import type { StatusResponse } from "@/lib/api";
 import { useCeremonyConfig } from "@/hooks/useCeremonyConfig";
 import { useCeremonyStatus } from "@/hooks/useCeremonyStatus";
@@ -23,6 +23,16 @@ function circuitProgress(
   };
 }
 
+function isTierFullyComplete(
+  tier: CeremonyTierConfig,
+  status: StatusResponse | null,
+): boolean {
+  if (!status) return false;
+  return tier.circuitIds.every(
+    (id) => circuitProgress(id, status)?.complete ?? false,
+  );
+}
+
 export function TierScreen({
   selectedTier,
   onSelectTier,
@@ -37,6 +47,10 @@ export function TierScreen({
 
   const { copy } = config;
   const tiers = config.tiers ?? [];
+  const selectedTierConfig = tiers.find((tier) => tier.id === selectedTier);
+  const selectedTierComplete = selectedTierConfig
+    ? isTierFullyComplete(selectedTierConfig, status)
+    : false;
   return (
     <ScreenWrapper className="screenLayout">
       <div className={styles.header}>
@@ -47,11 +61,18 @@ export function TierScreen({
       <div className={styles.tierList}>
         {tiers.map((tier, index) => {
           const selected = selectedTier === tier.id;
+          const tierComplete = isTierFullyComplete(tier, status);
           return (
             <button
               key={tier.id}
               onClick={() => onSelectTier(tier.id)}
-              className={cn(styles.tierCard, selected && styles.tierCardSelected)}
+              disabled={tierComplete}
+              aria-disabled={tierComplete}
+              className={cn(
+                styles.tierCard,
+                selected && styles.tierCardSelected,
+                tierComplete && styles.tierCardDisabled,
+              )}
             >
               <div className={styles.tierTop}>
                 <div className={styles.tierInfo}>
@@ -74,9 +95,15 @@ export function TierScreen({
                     </span>
                   </div>
                 </div>
-                <span className={styles.estimate}>
-                  ~{tier.estimatedMinutes} {copy.tier.timeSuffix}
-                </span>
+                {tierComplete ? (
+                  <span className={styles.completedIndicator}>
+                    {copy.tier.completedLabel} ✓
+                  </span>
+                ) : (
+                  <span className={styles.estimate}>
+                    ~{tier.estimatedMinutes} {copy.tier.timeSuffix}
+                  </span>
+                )}
               </div>
 
               <p className={styles.tierDescription}>{tier.description}</p>
@@ -106,7 +133,9 @@ export function TierScreen({
         })}
       </div>
 
-      <Button onClick={onNext}>{copy.tier.cta}</Button>
+      <Button onClick={onNext} disabled={selectedTierComplete}>
+        {copy.tier.cta}
+      </Button>
     </ScreenWrapper>
   );
 }

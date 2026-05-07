@@ -32,6 +32,16 @@
   box-shadow: 0 1px 3px rgba(149, 194, 58, 0.1);
 }
 
+.tierCardDisabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.tierCardDisabled:hover {
+  border-color: var(--color-border);
+  box-shadow: none;
+}
+
 .tierTop {
   display: flex;
   align-items: flex-start;
@@ -96,6 +106,14 @@
   font-size: 0.75rem;
   color: var(--color-text-muted);
   font-family: var(--font-mono), monospace;
+}
+
+.completedIndicator {
+  font-size: 0.75rem;
+  color: var(--color-accent);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
 }
 
 .tierDescription {
