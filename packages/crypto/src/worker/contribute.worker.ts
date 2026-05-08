@@ -17,48 +17,75 @@ import {
 } from "./protocol.js";
 import { browserContribute } from "./browser-contribute.js";
 
-function post(msg: WorkerResponse, transfer?: Transferable[]) {
-  self.postMessage(msg, { transfer: transfer ?? [] });
+/**
+ * Minimal structural type for the worker scope, so the handler is testable
+ * with a plain object instead of mutating `globalThis.self`.
+ */
+export interface WorkerScope {
+  postMessage(
+    msg: WorkerResponse,
+    options?: { transfer?: Transferable[] },
+  ): void;
+  onmessage:
+    | ((event: MessageEvent<WorkerRequest>) => unknown)
+    | null;
 }
 
-self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
-  const msg = event.data;
+/**
+ * Bind the contribute-worker message handler to a worker-like scope. The real
+ * worker entry below calls this once with the global `self`; tests call it
+ * with a mock object.
+ */
+export function attachWorker(target: WorkerScope): void {
+  const post = (msg: WorkerResponse, transfer?: Transferable[]) => {
+    target.postMessage(msg, { transfer: transfer ?? [] });
+  };
 
-  try {
-    switch (msg.type) {
-      case RequestType.Contribute: {
-        post({ type: ResponseType.Progress, stage: "computing", percent: 0 });
+  target.onmessage = async (event: MessageEvent<WorkerRequest>) => {
+    const msg = event.data;
 
-        const result = await browserContribute(
-          msg.prevZkey,
-          msg.entropy,
-          msg.name ?? "contributor",
-        );
+    try {
+      switch (msg.type) {
+        case RequestType.Contribute: {
+          post({ type: ResponseType.Progress, stage: "computing", percent: 0 });
 
-        post({ type: ResponseType.Progress, stage: "done", percent: 100 });
+          const result = await browserContribute(
+            msg.prevZkey,
+            msg.entropy,
+            msg.name ?? "contributor",
+          );
 
-        post(
-          {
-            type: ResponseType.Result,
-            newZkey: result.zkey,
-            hash: result.hash,
-          },
-          [result.zkey.buffer],
-        );
+          post({ type: ResponseType.Progress, stage: "done", percent: 100 });
 
-        msg.entropy.fill(0);
-        break;
+          post(
+            {
+              type: ResponseType.Result,
+              newZkey: result.zkey,
+              hash: result.hash,
+            },
+            [result.zkey.buffer],
+          );
+
+          msg.entropy.fill(0);
+          break;
+        }
+
+        case RequestType.GenerateEntropy: {
+          const data = new Uint8Array(64);
+          crypto.getRandomValues(data);
+          post({ type: ResponseType.Entropy, data }, [data.buffer]);
+          break;
+        }
       }
-
-      case RequestType.GenerateEntropy: {
-        const data = new Uint8Array(64);
-        crypto.getRandomValues(data);
-        post({ type: ResponseType.Entropy, data }, [data.buffer]);
-        break;
-      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      post({ type: ResponseType.Error, message });
     }
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    post({ type: ResponseType.Error, message });
-  }
-};
+  };
+}
+
+// Real worker entry. In Node (tests importing this module), `self` is
+// undefined and this is a no-op — tests call `attachWorker(mock)` directly.
+if (typeof self !== "undefined") {
+  attachWorker(self as unknown as WorkerScope);
+}

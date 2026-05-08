@@ -4,6 +4,7 @@ import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 
 import { generateInitialZkey, verify } from "../src/index.js";
 import { browserContribute } from "../src/worker/browser-contribute.js";
+import { attachWorker } from "../src/worker/contribute.worker.js";
 import {
   RequestType,
   ResponseType,
@@ -63,22 +64,23 @@ describe("worker onmessage protocol", () => {
   type PostedMessage = { msg: WorkerResponse; transfer: Transferable[] };
 
   let posted: PostedMessage[];
-  let onmessageHandler: ((event: MessageEvent<WorkerRequest>) => Promise<void>) | null;
+  let onmessageHandler:
+    | ((event: MessageEvent<WorkerRequest>) => unknown)
+    | null;
 
-  // `self` must exist before the worker module is imported, since the module
-  // assigns its handler to `self.onmessage` at load time.
-  beforeAll(async () => {
+  beforeAll(() => {
     const mockSelf = {
-      postMessage: (msg: WorkerResponse, options?: { transfer?: Transferable[] }) => {
+      postMessage: (
+        msg: WorkerResponse,
+        options?: { transfer?: Transferable[] },
+      ) => {
         posted.push({ msg, transfer: options?.transfer ?? [] });
       },
       onmessage: null as
-        | ((event: MessageEvent<WorkerRequest>) => Promise<void>)
+        | ((event: MessageEvent<WorkerRequest>) => unknown)
         | null,
     };
-    (globalThis as unknown as { self: typeof mockSelf }).self = mockSelf;
-
-    await import("../src/worker/contribute.worker.js");
+    attachWorker(mockSelf);
     onmessageHandler = mockSelf.onmessage;
   });
 
@@ -86,11 +88,13 @@ describe("worker onmessage protocol", () => {
     posted = [];
   });
 
-  function fireMessage(data: WorkerRequest): Promise<void> {
+  function fireMessage(data: WorkerRequest): Promise<unknown> {
     if (!onmessageHandler) {
-      throw new Error("worker onmessage was not assigned during import");
+      throw new Error("worker onmessage was not assigned by attachWorker");
     }
-    return onmessageHandler({ data } as MessageEvent<WorkerRequest>);
+    return Promise.resolve(
+      onmessageHandler({ data } as MessageEvent<WorkerRequest>),
+    );
   }
 
   it("handles a Contribute request end-to-end", async () => {
