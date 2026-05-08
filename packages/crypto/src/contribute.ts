@@ -1,7 +1,7 @@
 import * as snarkjs from "snarkjs";
 import type { ContributionResult } from "./types.js";
-import { withTempDir, writeTempFile, readFileAsBytes, toHex } from "./util.js";
-import { bytesToHexRaw } from "./hex.js";
+import { withTempDir, writeTempFile, readFileAsBytes } from "./util.js";
+import { toHex, bytesToHexRaw } from "./hex.js";
 
 /**
  * Apply a contribution to a zkey using the provided entropy.
