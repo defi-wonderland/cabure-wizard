@@ -46,7 +46,6 @@ contribute(
 verify(r1cs: Uint8Array, ptau: Uint8Array, zkey: Uint8Array): Promise<boolean>
 
 verifyChain(
-  r1cs: Uint8Array,
   ptau: Uint8Array,
   initialZkey: Uint8Array,
   latestZkey: Uint8Array,
