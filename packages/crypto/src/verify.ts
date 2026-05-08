@@ -29,27 +29,30 @@ export async function verify(
 }
 
 /**
- * Verify the full contribution chain embedded inside `latestZkey`.
+ * Verify the full contribution chain embedded inside `latestZkey`, rooted at
+ * `initialZkey`.
  *
- * snarkjs records the entire contribution transcript inside every zkey
- * file, so verifying the latest zkey against the genesis is equivalent to
- * verifying every intermediate contribution. Intermediate zkeys do not need
- * to be supplied.
+ * snarkjs records the entire contribution transcript inside every zkey file,
+ * so verifying the latest zkey against the genesis is equivalent to verifying
+ * every intermediate contribution. Intermediate zkeys do not need to be
+ * supplied.
+ *
+ * `initialZkey` is taken as trusted: this function does NOT confirm
+ * `initialZkey` is the canonical genesis for any particular `r1cs`. Callers
+ * that need to bind the chain to a specific circuit should additionally call
+ * `verify(r1cs, ptau, initialZkey)` (or hash-pin `initialZkey` against a
+ * known-good value).
  *
  * If `latestZkey` is byte-equal to `initialZkey` (no contributions yet) the
  * function returns `true` without invoking snarkjs.
  *
- * @param r1cs - R1CS circuit definition. Accepted for API symmetry with
- *               `verify`; not used by `verifyFromInit`, which binds to the
- *               genesis zkey directly.
  * @param ptau - Powers of Tau ceremony output
- * @param initialZkey - The genesis zkey
+ * @param initialZkey - The genesis zkey, taken as trusted
  * @param latestZkey - The most recently contributed zkey
  * @returns true if every contribution embedded in `latestZkey` is valid and
  *          the chain reaches `initialZkey` at its base
  */
 export async function verifyChain(
-  r1cs: Uint8Array,
   ptau: Uint8Array,
   initialZkey: Uint8Array,
   latestZkey: Uint8Array,
