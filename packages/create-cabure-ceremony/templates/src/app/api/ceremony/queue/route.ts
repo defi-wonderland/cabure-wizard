@@ -9,7 +9,11 @@ import {
   circuitStatePath,
   selectCircuitsForTier,
 } from "@/lib/ceremony-state";
-import { getCeremonyConfig, type TierId } from "@/lib/ceremony-config";
+import {
+  getCeremonyConfig,
+  type CeremonyTierConfig,
+  type TierId,
+} from "@/lib/ceremony-config";
 import { getParticipant } from "@/lib/participant-auth";
 import { acquireLock, releaseLock, setJson } from "@/lib/kv-store";
 
@@ -44,7 +48,27 @@ export async function POST(request: NextRequest) {
   }
 
   let resolvedIds: string[];
-  if (payload.tierId && config.tiersEnabled && config.tiers) {
+  if (payload.tierId) {
+    if (!config.tiersEnabled || !config.tiers || config.tiers.length === 0) {
+      return NextResponse.json(
+        { error: "This ceremony does not have tiers configured" },
+        { status: 400 },
+      );
+    }
+    const tierExists = config.tiers.some(
+      (t: CeremonyTierConfig) => t.id === payload.tierId,
+    );
+    if (!tierExists) {
+      const availableTiers = config.tiers
+        .map((t: CeremonyTierConfig) => t.id)
+        .join(", ");
+      return NextResponse.json(
+        {
+          error: `Invalid tier '${payload.tierId}'. Available tiers are: ${availableTiers}`,
+        },
+        { status: 400 },
+      );
+    }
     resolvedIds = selectCircuitsForTier(
       payload.tierId,
       config.tiers,
