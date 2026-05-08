@@ -105,13 +105,13 @@ describe("verifyChain", () => {
       new Uint8Array(32).fill(3),
     );
 
-    const valid = await verifyChain(r1cs, ptau, genesis, zkey3);
+    const valid = await verifyChain(ptau, genesis, zkey3);
     expect(valid).toBe(true);
   });
 
   it("returns true when latestZkey equals initialZkey", async () => {
     const genesis = await generateInitialZkey(ptau, r1cs);
-    const valid = await verifyChain(r1cs, ptau, genesis, genesis);
+    const valid = await verifyChain(ptau, genesis, genesis);
     expect(valid).toBe(true);
   });
 
@@ -124,7 +124,7 @@ describe("verifyChain", () => {
     tampered[mid] ^= 0xff;
     tampered[mid + 1] ^= 0xff;
 
-    const valid = await verifyChain(r1cs, ptau, genesis, tampered);
+    const valid = await verifyChain(ptau, genesis, tampered);
     expect(valid).toBe(false);
   });
 });
