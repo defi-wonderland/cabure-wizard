@@ -31,7 +31,7 @@ import {
 | `generateInitialZkey(ptau, r1cs)` | Generate the genesis zkey from Powers of Tau + R1CS |
 | `contribute(prevZkey, entropy, name?)` | Apply a contribution; returns `{ zkey, hash }` |
 | `verify(r1cs, ptau, zkey)` | Verify a zkey extends a chain rooted in (r1cs, ptau) |
-| `verifyChain(r1cs, ptau, initialZkey, latestZkey)` | Verify the chain embedded in `latestZkey` reaches `initialZkey` |
+| `verifyChain(ptau, initialZkey, latestZkey)` | Verify the chain embedded in `latestZkey` reaches `initialZkey` (taken as trusted) |
 | `generateEntropy(sources?)` | Combine WebCrypto CSPRNG with optional additional sources |
 | `applyBeacon(zkey, beaconHash, numIterationsExp?)` | Apply a public randomness beacon to finalize |
 | `exportVerificationKey(zkey)` | Extract the Groth16 verification key |
