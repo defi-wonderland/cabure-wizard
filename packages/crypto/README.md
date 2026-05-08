@@ -12,7 +12,7 @@ npm install @wonderland/cabure-crypto
 
 ## API
 
-All functions take `Uint8Array` inputs and either return `Uint8Array` outputs or `0x`-prefixed hex strings. snarkjs's file-based I/O is handled internally via temp directories (Node) or memFS (browser worker).
+The functions below accept the input types shown in the table and return either `Uint8Array`, `boolean`, or a verification-key object. snarkjs's file-based I/O is handled internally via temp directories (Node) or memFS (browser worker).
 
 ```ts
 import {
