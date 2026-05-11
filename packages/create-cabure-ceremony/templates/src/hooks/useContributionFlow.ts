@@ -63,6 +63,7 @@ export function useContributionFlow(options: {
   const [circuitRuns, setCircuitRuns] = useState<CircuitRunItem[]>([]);
   const [resolvedCircuitIds, setResolvedCircuitIds] = useState<string[]>([]);
   const [currentCircuitIndex, setCurrentCircuitIndex] = useState(0);
+  const [flowRunId, setFlowRunId] = useState(0);
   const [finalizeReady, setFinalizeReady] = useState(false);
   const [queueError, setQueueError] = useState<string | null>(null);
   const [contributionPhase, setContributionPhase] =
@@ -235,9 +236,14 @@ export function useContributionFlow(options: {
     !!currentCircuitId &&
     !contributeMutation.isPending &&
     !finalizeReady;
+  const queuePositionQueryKey = [
+    "queuePosition",
+    flowRunId,
+    currentCircuitId,
+  ] as const;
 
   const queueQuery = useQuery({
-    queryKey: ["queuePosition", currentCircuitId],
+    queryKey: queuePositionQueryKey,
     queryFn: ({ signal }) =>
       getQueuePosition({
         circuitId: currentCircuitId!,
@@ -297,10 +303,18 @@ export function useContributionFlow(options: {
     joinOptions: JoinOptions,
     allCircuits: ClientCircuitConfig[],
   ) => {
+    setCircuitRuns([]);
+    setResolvedCircuitIds([]);
     setQueueError(null);
     setCurrentCircuitIndex(0);
     setFinalizeReady(false);
+    setContributionPhase("downloading");
+    setContributionProgress(0);
     setContributionError(null);
+    setReceipts([]);
+    contributeMutation.reset();
+    queryClient.removeQueries({ queryKey: ["queuePosition"] });
+    setFlowRunId((value) => value + 1);
 
     const result = await joinQueue(joinOptions);
 
@@ -332,7 +346,7 @@ export function useContributionFlow(options: {
     setQueueError(null);
     contributeMutation.reset();
     queryClient.resetQueries({
-      queryKey: ["queuePosition", currentCircuitId],
+      queryKey: queuePositionQueryKey,
     });
   };
 
@@ -348,11 +362,14 @@ export function useContributionFlow(options: {
     setResolvedCircuitIds([]);
     setQueueError(null);
     setCurrentCircuitIndex(0);
+    setFlowRunId((value) => value + 1);
     setFinalizeReady(false);
+    setContributionPhase("downloading");
     setContributionProgress(0);
     setContributionError(null);
     setReceipts([]);
     contributeMutation.reset();
+    queryClient.removeQueries({ queryKey: ["queuePosition"] });
   };
 
   return {
