@@ -29,7 +29,12 @@ export default function CeremonyPage() {
   );
 
   const { status, statusError } = useCeremonyStatus();
-  const { authenticate } = useParticipant();
+  const {
+    authenticate,
+    isAuthenticated,
+    walletAuthLoading,
+    walletAuthError,
+  } = useParticipant();
 
   const selectedCircuitIds = useMemo(() => {
     if (!tiersEnabled) {
@@ -48,7 +53,7 @@ export default function CeremonyPage() {
     active: step === "progress",
   });
 
-  const handleAuth = (method: "github") => {
+  const handleAuth = (method: "github" | "wallet") => {
     if (status && !status.isActive) return;
     authenticate(method);
   };
@@ -154,6 +159,10 @@ export default function CeremonyPage() {
 
             {step === "landing" && status && (
               <LandingScreen
+                status={status}
+                isAuthenticated={isAuthenticated}
+                walletAuthLoading={walletAuthLoading}
+                walletAuthError={walletAuthError}
                 onAuth={handleAuth}
                 onBegin={() => setStep("entropy")}
                 onVerify={() => setStep("verify")}

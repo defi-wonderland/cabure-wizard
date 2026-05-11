@@ -1,37 +1,41 @@
 "use client";
 
 import { useCeremonyConfig } from "@/hooks/useCeremonyConfig";
-import { useCeremonyStatus } from "@/hooks/useCeremonyStatus";
-import { useParticipant } from "@/hooks/useParticipant";
+import type { StatusResponse } from "@/lib/api";
 import { cn } from "@/utils/cn";
 import { Button } from "@/app/components/Button";
 import { ScreenWrapper } from "@/app/components/ScreenWrapper";
 import styles from "./LandingScreen.module.css";
 
 export function LandingScreen({
+  status,
+  isAuthenticated,
+  walletAuthLoading,
+  walletAuthError,
   onAuth,
   onBegin,
   onVerify,
 }: {
-  onAuth: (method: "github") => void;
+  status: StatusResponse;
+  isAuthenticated: boolean;
+  walletAuthLoading: boolean;
+  walletAuthError: string | null;
+  onAuth: (method: "github" | "wallet") => void;
   onBegin: () => void;
   onVerify: () => void;
 }) {
   const config = useCeremonyConfig();
-  const { status } = useCeremonyStatus();
-  const { isAuthenticated } = useParticipant();
 
   const { copy } = config;
-  const totalContributions = status?.totalContributions ?? 0;
-  const targetContributions =
-    status?.targetContributions ?? config.targetContributions;
+  const totalContributions = status.totalContributions;
+  const targetContributions = status.targetContributions;
   const progress = targetContributions
     ? Math.min(
         100,
         Math.round((totalContributions / targetContributions) * 100),
       )
     : 0;
-  const isActive = status?.isActive ?? true;
+  const isActive = status.isActive;
   const footerLines = copy.landing.footer.split("\n");
 
   const statsData = [
@@ -80,9 +84,35 @@ export function LandingScreen({
           <div className="card">{copy.landing.authNote}</div>
 
           <div className={styles.authButtons}>
-            <Button onClick={() => onAuth("github")}>
+            <Button
+              onClick={() => onAuth("github")}
+              disabled={walletAuthLoading}
+            >
               {copy.landing.githubCta}
             </Button>
+            <Button
+              variant="secondary"
+              onClick={() => onAuth("wallet")}
+              disabled={walletAuthLoading}
+              aria-busy={walletAuthLoading}
+            >
+              <span className={styles.walletButtonContent}>
+                {walletAuthLoading && (
+                  <span
+                    className={styles.walletSpinner}
+                    aria-hidden="true"
+                  />
+                )}
+                <span>
+                  {walletAuthLoading
+                    ? copy.landing.walletPendingCta
+                    : copy.landing.walletCta}
+                </span>
+              </span>
+            </Button>
+            {walletAuthError && (
+              <p className={styles.authError}>{walletAuthError}</p>
+            )}
           </div>
         </>
       )}

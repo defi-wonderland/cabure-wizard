@@ -16,12 +16,12 @@ export function EntropyScreen({
 }) {
   const config = useCeremonyConfig();
   const { status } = useCeremonyStatus();
-  const { isAuthenticated, participantName } = useParticipant();
+  const { isAuthenticated, participantDisplayName } = useParticipant();
 
   const { copy } = config;
   const shortName = config.branding.shortName;
   const totalContributions = status?.totalContributions;
-  const displayName = isAuthenticated ? participantName : undefined;
+  const displayName = isAuthenticated ? participantDisplayName : undefined;
   const {
     entropyPercent,
     isReady,
@@ -125,7 +125,7 @@ export function EntropyScreen({
             {displayName && (
               <>
                 <div className={styles.divider} />
-                <span className={styles.topBarUser}>@{displayName}</span>
+                <span className={styles.topBarUser}>{displayName}</span>
               </>
             )}
 

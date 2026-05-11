@@ -15,14 +15,19 @@
   "dependencies": {
     "@wonderland/cabure-crypto": "0.0.0-snapshot.ee1d2c51.23961858561",
     "@next/env": "15.5.12",
+    "@rainbow-me/rainbowkit": "2.2.11",
     "@tanstack/react-query": "5.91.0",
     "@upstash/redis": "1.36.2",
     "@vercel/blob": "2.3.3",
+    "ethers": "6.16.0",
     "next": "15.5.12",
     "next-auth": "4.24.13",
     "react": "19.2.4",
     "react-dom": "19.2.4",
-    "snarkjs": "0.7.5"
+    "siwe": "3.0.0",
+    "snarkjs": "0.7.5",
+    "viem": "2.48.11",
+    "wagmi": "2.19.5"
   },
   "devDependencies": {
     "@types/node": "22.19.11",

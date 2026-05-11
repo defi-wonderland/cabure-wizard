@@ -24,15 +24,17 @@ export const defaultCopy: CeremonyCopy = {
       progressLabel: "Progress",
     },
     authNote:
-      "Sign in with GitHub to prevent spam and join the queue.",
+      "Sign in with GitHub or your Ethereum wallet to prevent spam and join the queue.",
     githubCta: "CONTINUE WITH GITHUB",
+    walletCta: "CONTINUE WITH WALLET",
+    walletPendingCta: "WAITING FOR WALLET...",
     beginCta: "BEGIN CONTRIBUTION",
     endedSubtitle: "This ceremony has concluded",
     endedDescription:
       "Thank you to everyone who contributed. The ceremony has reached its target. You can still verify existing receipts below.",
     verifyCta: "VERIFY A RECEIPT",
     footer:
-      "GitHub sign-in required to prevent spam. No other data collected.\nTakes ~1 minute for core circuits.",
+      "GitHub or wallet sign-in required to prevent spam. No other data collected.\nTakes ~1 minute for core circuits.",
   },
   entropy: {
     topBarTitle: "ENTROPY COLLECTION",

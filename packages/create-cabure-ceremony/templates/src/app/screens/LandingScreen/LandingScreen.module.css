@@ -69,6 +69,37 @@
   gap: 1rem;
 }
 
+.authError {
+  font-size: 0.75rem;
+  color: var(--color-error, #ff6b6b);
+  text-align: center;
+  line-height: 1.4;
+}
+
+.walletButtonContent {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+}
+
+.walletSpinner {
+  width: 0.85rem;
+  height: 0.85rem;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: walletSpin 0.8s linear infinite;
+  opacity: 0.75;
+  flex-shrink: 0;
+}
+
+@keyframes walletSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .endedCard {
   text-align: center;
 }

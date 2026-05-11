@@ -28,15 +28,16 @@ Copy `.env.example` to `.env` and fill in the values:
 cp .env.example .env
 ```
 
-| Variable                | Source              | Purpose                           |
-| ----------------------- | ------------------- | --------------------------------- |
-| `BLOB_READ_WRITE_TOKEN` | Vercel Blob         | Read/write zkey files             |
-| `KV_REST_API_URL`       | Vercel KV (Upstash) | Redis endpoint for ceremony state |
-| `KV_REST_API_TOKEN`     | Vercel KV (Upstash) | Redis auth token                  |
-| `GITHUB_CLIENT_ID`      | GitHub OAuth App    | OAuth client ID                   |
-| `GITHUB_CLIENT_SECRET`  | GitHub OAuth App    | OAuth client secret               |
-| `NEXTAUTH_SECRET`       | Generated locally   | JWT session encryption secret     |
-| `NEXTAUTH_URL`          | Deployment URL      | Canonical app URL                 |
+| Variable                              | Source              | Purpose                                                     |
+| ------------------------------------- | ------------------- | ----------------------------------------------------------- |
+| `BLOB_READ_WRITE_TOKEN`               | Vercel Blob         | Read/write zkey files                                       |
+| `KV_REST_API_URL`                     | Vercel KV (Upstash) | Redis endpoint for ceremony state                           |
+| `KV_REST_API_TOKEN`                   | Vercel KV (Upstash) | Redis auth token                                            |
+| `GITHUB_CLIENT_ID`                    | GitHub OAuth App    | OAuth client ID                                             |
+| `GITHUB_CLIENT_SECRET`                | GitHub OAuth App    | OAuth client secret                                         |
+| `NEXTAUTH_SECRET`                     | Generated locally   | JWT session encryption secret                               |
+| `NEXTAUTH_URL`                        | Deployment URL      | Canonical app URL                                           |
+| `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` | WalletConnect Cloud | Enables WalletConnect-based wallets (optional, public)      |
 
 ### 4. Provision Vercel storage
 
@@ -57,7 +58,15 @@ cp .env.example .env
 openssl rand -base64 32
 ```
 
-### 6. Initialize and run
+### 6. Wallet sign-in (optional)
+
+The landing page also exposes a "Continue with wallet" button that uses Sign-In With Ethereum (EIP-4361). The signature is verified server-side; the resulting `participantId` is `wallet:<lowercased address>` and is otherwise interchangeable with the GitHub one.
+
+For multi-wallet support via WalletConnect, create a project at [WalletConnect Cloud](https://cloud.walletconnect.com/) and set `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` in your `.env`. If left blank, only injected wallets (MetaMask, Brave, Rabby, ...) will be available; everything else still works.
+
+The CLI flow (`@wonderland/cabure-cli`) continues to authenticate via GitHub Device Flow only.
+
+### 7. Initialize and run
 
 ```bash
 npm run init:ceremony

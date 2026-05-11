@@ -14,12 +14,12 @@ export function Header({
 }) {
   const config = useCeremonyConfig();
   const { status } = useCeremonyStatus();
-  const { isAuthenticated, participantName } = useParticipant();
+  const { isAuthenticated, participantDisplayName } = useParticipant();
 
   const { copy } = config;
   const shortName = config.branding.shortName;
   const totalContributions = status?.totalContributions;
-  const displayName = isAuthenticated ? participantName : undefined;
+  const displayName = isAuthenticated ? participantDisplayName : undefined;
 
   return (
     <header className={styles.header}>
@@ -36,7 +36,7 @@ export function Header({
       <div className={styles.nav}>
         {displayName && (
           <>
-            <span className={styles.userBadge}>@{displayName}</span>
+            <span className={styles.userBadge}>{displayName}</span>
             <div className={styles.divider} />
           </>
         )}
