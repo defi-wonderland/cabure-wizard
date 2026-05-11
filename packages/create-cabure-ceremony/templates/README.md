@@ -58,15 +58,7 @@ cp .env.example .env
 openssl rand -base64 32
 ```
 
-### 6. Wallet sign-in (optional)
-
-The landing page also exposes a "Continue with wallet" button that uses Sign-In With Ethereum (EIP-4361). The signature is verified server-side; the resulting `participantId` is `wallet:<lowercased address>` and is otherwise interchangeable with the GitHub one.
-
-For multi-wallet support via WalletConnect, create a project at [WalletConnect Cloud](https://cloud.walletconnect.com/) and set `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` in your `.env`. If left blank, only injected wallets (MetaMask, Brave, Rabby, ...) will be available; everything else still works.
-
-The CLI flow (`@wonderland/cabure-cli`) continues to authenticate via GitHub Device Flow only.
-
-### 7. Initialize and run
+### 6. Initialize and run
 
 ```bash
 npm run init:ceremony

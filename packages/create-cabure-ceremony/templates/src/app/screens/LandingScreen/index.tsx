@@ -98,15 +98,11 @@ export function LandingScreen({
             >
               <span className={styles.walletButtonContent}>
                 {walletAuthLoading && (
-                  <span
-                    className={styles.walletSpinner}
-                    aria-hidden="true"
-                  />
+                  <span className={styles.walletSpinner} aria-hidden="true" />
                 )}
                 <span>
-                  {walletAuthLoading
-                    ? copy.landing.walletPendingCta
-                    : copy.landing.walletCta}
+                  {walletAuthLoading && copy.landing.walletPendingCta}
+                  {!walletAuthLoading && copy.landing.walletCta}
                 </span>
               </span>
             </Button>
