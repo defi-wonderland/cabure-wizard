@@ -23,8 +23,7 @@ export const defaultCopy: CeremonyCopy = {
       circuitsLabel: "Circuits",
       progressLabel: "Progress",
     },
-    authNote:
-      "Sign in with GitHub to prevent spam and join the queue.",
+    authNote: "Sign in with GitHub to prevent spam and join the queue.",
     githubCta: "CONTINUE WITH GITHUB",
     beginCta: "BEGIN CONTRIBUTION",
     endedSubtitle: "This ceremony has concluded",
@@ -120,7 +119,7 @@ export const defaultCopy: CeremonyCopy = {
       '{"circuitId":"multiplier","participantId":"...","contributionIndex":1}',
     cta: "VERIFY RECEIPT",
     verifyingCta: "VERIFYING...",
-    note: "This PoC verifies that the receipt's contribution hash matches the coordinator's record. Full cryptographic verification is not implemented yet.",
+    note: "This check confirms that the receipt's contribution hash matches the coordinator's record.",
     successTitle: "Receipt verified",
     invalidReceipt: "Receipt JSON is missing required fields.",
     duplicateReceipt:
