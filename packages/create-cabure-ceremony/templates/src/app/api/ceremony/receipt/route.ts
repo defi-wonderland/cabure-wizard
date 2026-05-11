@@ -6,6 +6,7 @@ export async function GET(request: NextRequest) {
   const circuitId = request.nextUrl.searchParams.get("circuitId");
   const participantId = request.nextUrl.searchParams.get("participantId");
   const indexRaw = request.nextUrl.searchParams.get("contributionIndex");
+  const hashRaw = request.nextUrl.searchParams.get("contributionHash");
 
   if (!circuitId || !participantId || !indexRaw) {
     return NextResponse.json(
@@ -28,6 +29,13 @@ export async function GET(request: NextRequest) {
     );
   }
 
+  if (hashRaw !== null && !/^0x[0-9a-fA-F]+$/.test(hashRaw)) {
+    return NextResponse.json(
+      { error: "contributionHash must be a hex string prefixed with 0x" },
+      { status: 400 },
+    );
+  }
+
   const receipts = await getReceipts();
   const receipt = receipts.find(
     (item) =>
@@ -38,6 +46,16 @@ export async function GET(request: NextRequest) {
 
   if (!receipt) {
     return NextResponse.json({ error: "Receipt not found" }, { status: 404 });
+  }
+
+  if (
+    hashRaw !== null &&
+    hashRaw.toLowerCase() !== receipt.contributionHash.toLowerCase()
+  ) {
+    return NextResponse.json(
+      { error: "Hash mismatch for the requested receipt" },
+      { status: 400 },
+    );
   }
 
   return NextResponse.json({
