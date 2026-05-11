@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 
 import { Header } from "./components/Header";
 import { LandingScreen } from "./screens/LandingScreen";
@@ -27,6 +27,8 @@ export default function CeremonyPage() {
   const [selectedTier, setSelectedTier] = useState<TierId>(
     tiers[0]?.id ?? "core",
   );
+  const [isJoining, setIsJoining] = useState(false);
+  const joiningRef = useRef(false);
 
   const { status, statusError } = useCeremonyStatus();
   const { authenticate } = useParticipant();
@@ -63,6 +65,9 @@ export default function CeremonyPage() {
   };
 
   const handleJoinQueue = async () => {
+    if (joiningRef.current) return;
+    joiningRef.current = true;
+    setIsJoining(true);
     try {
       const joinOptions = tiersEnabled
         ? { tierId: selectedTier }
@@ -71,6 +76,9 @@ export default function CeremonyPage() {
       setStep("progress");
     } catch (error) {
       /* queue error is tracked inside the hook */
+    } finally {
+      joiningRef.current = false;
+      setIsJoining(false);
     }
   };
 
@@ -165,6 +173,7 @@ export default function CeremonyPage() {
                 selectedTier={selectedTier}
                 onSelectTier={setSelectedTier}
                 onNext={handleJoinQueue}
+                isJoining={isJoining}
               />
             )}
 
