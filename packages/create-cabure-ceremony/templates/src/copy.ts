@@ -127,6 +127,7 @@ export const defaultCopy: CeremonyCopy = {
       "Receipt list contains duplicate entries for the same contribution.",
     hashMismatch:
       "Submitted hash does not match the coordinator's record for {{circuitId}} #{{contributionIndex}}.",
+    errorLabel: "Error",
     backCta: "BACK TO LANDING",
   },
 };

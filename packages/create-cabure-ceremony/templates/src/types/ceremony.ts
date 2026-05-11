@@ -141,6 +141,7 @@ export interface CeremonyCopy {
     invalidReceipt: string;
     duplicateReceipt: string;
     hashMismatch: string;
+    errorLabel: string;
     backCta: string;
   };
 }

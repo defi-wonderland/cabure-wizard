@@ -42,8 +42,8 @@ export async function listRange<T>(key: string): Promise<T[]> {
   return await redis().lrange<T>(key, 0, -1);
 }
 
-export async function listClear(key: string): Promise<void> {
-  await redis().del(key);
+export async function listClear(key: string): Promise<number> {
+  return redis().del(key);
 }
 
 export async function acquireLock(
