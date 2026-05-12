@@ -1,7 +1,10 @@
+import process from "node:process";
+
 import { del, list } from "@vercel/blob";
 import { loadEnvConfig } from "@next/env";
+
+import { circuitContributionsPath } from "@/lib/ceremony-state";
 import { listClear } from "@/lib/kv-store";
-import process from "node:process";
 import { ceremonyConfig } from "../ceremony.config";
 
 async function main() {
@@ -26,11 +29,10 @@ async function main() {
   const redisKeys = [
     storage.manifestPath,
     storage.receiptsPath,
-    ...circuits.map(
-      (c) => `${storage.circuitStatePrefix}:${c.id}`,
-    ),
-    ...circuits.map(
-      (c) => `${storage.manifestPath}:lock:${c.id}`,
+    ...circuits.map((c) => `${storage.circuitStatePrefix}:${c.id}`),
+    ...circuits.map((c) => `${storage.manifestPath}:lock:${c.id}`),
+    ...circuits.map((c) =>
+      circuitContributionsPath(storage.circuitContributionsPrefix, c.id),
     ),
   ];
 

@@ -19,6 +19,7 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
 export const config = {
   matcher: [
     "/api/ceremony/queue",
+    "/api/ceremony/participant/:path*",
     "/api/ceremony/circuits/:path*/contribute",
     "/api/ceremony/circuits/:path*/upload",
   ],

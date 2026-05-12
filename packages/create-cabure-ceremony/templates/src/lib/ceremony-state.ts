@@ -8,7 +8,7 @@ import {
   type CeremonyTierConfig,
   type TierId,
 } from "./ceremony-config";
-import { getJson, listRange } from "./kv-store";
+import { getJson, listRange, setIsMember } from "./kv-store";
 
 const GENESIS_CHAIN_HASH = `0x${"0".repeat(64)}`;
 const END_DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
@@ -88,11 +88,24 @@ export async function getReceipts(): Promise<ContributionReceipt[]> {
 export async function getParticipantContributedCircuitIds(
   participantId: string,
 ): Promise<Set<string>> {
-  const receipts = await getReceipts();
+  const config = getCeremonyConfig();
+  const memberships = await Promise.all(
+    config.circuits.map(async (circuit) => ({
+      circuitId: circuit.id,
+      hasContributed: await setIsMember(
+        circuitContributionsPath(
+          config.storage.circuitContributionsPrefix,
+          circuit.id,
+        ),
+        participantId,
+      ),
+    })),
+  );
+
   return new Set(
-    receipts
-      .filter((receipt) => receipt.participantId === participantId)
-      .map((receipt) => receipt.circuitId),
+    memberships
+      .filter((membership) => membership.hasContributed)
+      .map((membership) => membership.circuitId),
   );
 }
 
@@ -100,9 +113,14 @@ export async function hasParticipantContributedToCircuit(
   participantId: string,
   circuitId: string,
 ): Promise<boolean> {
-  const contributedCircuitIds =
-    await getParticipantContributedCircuitIds(participantId);
-  return contributedCircuitIds.has(circuitId);
+  const config = getCeremonyConfig();
+  return await setIsMember(
+    circuitContributionsPath(
+      config.storage.circuitContributionsPrefix,
+      circuitId,
+    ),
+    participantId,
+  );
 }
 
 export function getEndDateDeadlineMs(endDate: string | null): number | null {
@@ -252,6 +270,13 @@ export function pruneExpiredEntries(
 }
 
 export function circuitStatePath(prefix: string, circuitId: string): string {
+  return `${prefix}:${circuitId}`;
+}
+
+export function circuitContributionsPath(
+  prefix: string,
+  circuitId: string,
+): string {
   return `${prefix}:${circuitId}`;
 }
 

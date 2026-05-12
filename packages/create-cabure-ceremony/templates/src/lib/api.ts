@@ -19,6 +19,13 @@ export interface StatusResponse {
   circuits: CircuitStatus[];
 }
 
+export interface ParticipantEligibilityResponse {
+  participantId: string;
+  contributedCircuitIds: string[];
+  eligibleCircuitIds: string[];
+  hasEligibleCircuits: boolean;
+}
+
 export interface QueuePosition {
   participantId: string;
   circuitId: string;
@@ -64,6 +71,15 @@ async function apiFetch<T>(input: RequestInfo | URL, init?: RequestInit): Promis
 
 export async function getStatus(signal?: AbortSignal): Promise<StatusResponse> {
   return await apiFetch<StatusResponse>("/api/ceremony/status", { signal });
+}
+
+export async function getParticipantEligibility(
+  signal?: AbortSignal,
+): Promise<ParticipantEligibilityResponse> {
+  return await apiFetch<ParticipantEligibilityResponse>(
+    "/api/ceremony/participant/eligibility",
+    { signal },
+  );
 }
 
 export async function joinQueue(options: {

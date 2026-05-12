@@ -7,7 +7,10 @@ import { put } from "@vercel/blob";
 import { loadEnvConfig } from "@next/env";
 import { generateInitialZkey } from "@wonderland/cabure-crypto";
 
-import { getEndDateDeadlineMs } from "@/lib/ceremony-state";
+import {
+  circuitContributionsPath,
+  getEndDateDeadlineMs,
+} from "@/lib/ceremony-state";
 import { getJson, listClear, setJson } from "@/lib/kv-store";
 import { ceremonyConfig } from "../ceremony.config";
 
@@ -209,6 +212,20 @@ async function main() {
 
   await listClear(ceremonyConfig.storage.receiptsPath);
   console.log(`Receipts list cleared: ${ceremonyConfig.storage.receiptsPath}`);
+
+  await Promise.all(
+    ceremonyConfig.circuits.map((circuit) =>
+      listClear(
+        circuitContributionsPath(
+          ceremonyConfig.storage.circuitContributionsPrefix,
+          circuit.id,
+        ),
+      ),
+    ),
+  );
+  console.log(
+    `Contribution index cleared: ${ceremonyConfig.storage.circuitContributionsPrefix}:*`,
+  );
   console.log();
 
   console.log("Generating initialization transcript...");
@@ -227,6 +244,8 @@ async function main() {
       manifestPath: ceremonyConfig.storage.manifestPath,
       circuitStatePrefix: ceremonyConfig.storage.circuitStatePrefix,
       receiptsPath: ceremonyConfig.storage.receiptsPath,
+      circuitContributionsPrefix:
+        ceremonyConfig.storage.circuitContributionsPrefix,
       zkeyPrefix: ceremonyConfig.storage.zkeyPrefix,
     },
   };

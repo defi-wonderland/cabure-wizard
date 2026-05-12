@@ -3,6 +3,7 @@
 import { useCeremonyConfig } from "@/hooks/useCeremonyConfig";
 import { useCeremonyStatus } from "@/hooks/useCeremonyStatus";
 import { useParticipant } from "@/hooks/useParticipant";
+import type { ParticipantEligibilityResponse } from "@/lib/api";
 import { cn } from "@/utils/cn";
 import { Button } from "@/app/components/Button";
 import { ScreenWrapper } from "@/app/components/ScreenWrapper";
@@ -12,10 +13,14 @@ export function LandingScreen({
   onAuth,
   onBegin,
   onVerify,
+  eligibility,
+  eligibilityLoading,
 }: {
   onAuth: (method: "github") => void;
   onBegin: () => void;
   onVerify: () => void;
+  eligibility: ParticipantEligibilityResponse | null;
+  eligibilityLoading: boolean;
 }) {
   const config = useCeremonyConfig();
   const { status } = useCeremonyStatus();
@@ -33,6 +38,11 @@ export function LandingScreen({
     : 0;
   const isActive = status?.isActive ?? true;
   const footerLines = copy.landing.footer.split("\n");
+  const hasEligibleCircuits = eligibility?.hasEligibleCircuits ?? true;
+  const beginDisabled = eligibilityLoading || !hasEligibleCircuits;
+  const beginCta = eligibilityLoading
+    ? copy.landing.eligibilityLoadingCta
+    : copy.landing.beginCta;
 
   const statsData = [
     {
@@ -88,7 +98,22 @@ export function LandingScreen({
       )}
 
       {isAuthenticated && (
-        <Button onClick={onBegin}>{copy.landing.beginCta}</Button>
+        <>
+          {!hasEligibleCircuits && (
+            <div className={cn("card", styles.alreadyContributedCard)}>
+              <h3 className={styles.alreadyContributedTitle}>
+                {copy.landing.alreadyContributedTitle}
+              </h3>
+              <p className={styles.alreadyContributedText}>
+                {copy.landing.alreadyContributedDescription}
+              </p>
+            </div>
+          )}
+
+          <Button onClick={onBegin} disabled={beginDisabled}>
+            {beginCta}
+          </Button>
+        </>
       )}
 
       <Button variant="secondary" size="small" onClick={onVerify}>

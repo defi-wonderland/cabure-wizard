@@ -15,6 +15,7 @@ import { type CeremonyStep, type TierId } from "@/lib/ceremony-config";
 import { useCeremonyConfig } from "@/hooks/useCeremonyConfig";
 import { useCeremonyStatus } from "@/hooks/useCeremonyStatus";
 import { useParticipant } from "@/hooks/useParticipant";
+import { useParticipantEligibility } from "@/hooks/useParticipantEligibility";
 import { useContributionFlow } from "@/hooks/useContributionFlow";
 import { formatTemplate } from "@/utils/format";
 import styles from "./page.module.css";
@@ -31,6 +32,7 @@ export default function CeremonyPage() {
 
   const { status, statusError } = useCeremonyStatus();
   const { authenticate } = useParticipant();
+  const { eligibility, eligibilityLoading } = useParticipantEligibility();
 
   const selectedCircuitIds = useMemo(() => {
     if (!tiersEnabled) {
@@ -52,6 +54,11 @@ export default function CeremonyPage() {
   const handleAuth = (method: "github") => {
     if (status && !status.isActive) return;
     authenticate(method);
+  };
+
+  const handleBeginContribution = () => {
+    if (eligibility && !eligibility.hasEligibleCircuits) return;
+    setStep("entropy");
   };
 
   const handleEntropyComplete = (seed: Uint8Array) => {
@@ -181,8 +188,10 @@ export default function CeremonyPage() {
             {step === "landing" && status && (
               <LandingScreen
                 onAuth={handleAuth}
-                onBegin={() => setStep("entropy")}
+                onBegin={handleBeginContribution}
                 onVerify={() => setStep("verify")}
+                eligibility={eligibility}
+                eligibilityLoading={eligibilityLoading}
               />
             )}
 

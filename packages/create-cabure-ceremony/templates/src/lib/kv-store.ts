@@ -42,8 +42,42 @@ export async function listRange<T>(key: string): Promise<T[]> {
   return await redis().lrange<T>(key, 0, -1);
 }
 
+export async function setAdd(
+  key: string,
+  ...members: string[]
+): Promise<number> {
+  if (members.length === 0) {
+    return 0;
+  }
+  return await redis().sadd(key, ...members);
+}
+
+export async function setIsMember(
+  key: string,
+  member: string,
+): Promise<boolean> {
+  const result = await redis().sismember(key, member);
+  return Boolean(result);
+}
+
 export async function listClear(key: string): Promise<number> {
   return redis().del(key);
+}
+
+export async function writeContributionRecord<TCircuit, TReceipt>(options: {
+  circuitStateKey: string;
+  circuitState: TCircuit;
+  receiptsKey: string;
+  receipt: TReceipt;
+  circuitContributionsKey: string;
+  participantId: string;
+}): Promise<void> {
+  await redis()
+    .multi()
+    .set(options.circuitStateKey, options.circuitState)
+    .rpush(options.receiptsKey, options.receipt)
+    .sadd(options.circuitContributionsKey, options.participantId)
+    .exec();
 }
 
 export async function acquireLock(

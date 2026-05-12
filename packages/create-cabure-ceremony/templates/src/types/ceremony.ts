@@ -56,6 +56,9 @@ export interface CeremonyCopy {
     authNote: string;
     githubCta: string;
     beginCta: string;
+    eligibilityLoadingCta: string;
+    alreadyContributedTitle: string;
+    alreadyContributedDescription: string;
     endedSubtitle: string;
     endedDescription: string;
     verifyCta: string;
@@ -165,6 +168,7 @@ export interface CeremonyConfig {
     manifestPath: string;
     circuitStatePrefix: string;
     receiptsPath: string;
+    circuitContributionsPrefix: string;
     zkeyPrefix: string;
   };
   copy: CeremonyCopy;
