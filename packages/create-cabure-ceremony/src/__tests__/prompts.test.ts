@@ -31,6 +31,27 @@ describe("wizard prompts", () => {
       "  4) Circuit artifacts path (press Enter if you'll add them later): ",
     );
   });
+
+  test("re-prompts only for the custom value after an invalid custom entry", async () => {
+    const { answers, output } = await runWizard([
+      "Privacy Pools v2",
+      "4",
+      "1,3",
+      "250",
+      "",
+      "",
+    ]);
+
+    expect(answers.targetContributions).toBe(250);
+    expect(output).toContain("Target contributions must be a whole number.");
+
+    const tierMenuOccurrences = output.split("2) Target contributions").length - 1;
+    expect(tierMenuOccurrences).toBe(1);
+
+    const customPromptOccurrences =
+      output.split("Enter a custom target contribution count:").length - 1;
+    expect(customPromptOccurrences).toBe(2);
+  });
 });
 
 async function runWizard(answers: string[]): Promise<{

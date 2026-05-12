@@ -240,42 +240,63 @@ async function main() {
     (sum, c) => sum + c.targetContributions,
     0,
   );
-  const incompleteCircuits = circuitConfigs.flatMap((c) => {
-    const state = circuitStates.find((s) => s.id === c.id);
-    if (!state || state.totalContributions >= c.targetContributions) return [];
-    return [
-      {
-        id: c.id,
-        totalContributions: state.totalContributions,
-        targetContributions: c.targetContributions,
-      },
-    ];
-  });
-
-  const endDateMs = getEndDateDeadlineMs(manifest.endDate);
-  const now = Date.now();
-  const deadlinePassed = endDateMs !== null && now > endDateMs;
-  const ceremonyActive =
-    incompleteCircuits.length > 0 && (endDateMs === null || !deadlinePassed);
-
-  const force = process.argv.includes("--force");
-  if (ceremonyActive && !force) {
-    const incompleteSummary = incompleteCircuits
-      .map(
-        (c) =>
-          `${c.id} (${c.totalContributions}/${c.targetContributions} contributions)`,
-      )
-      .join(", ");
-    throw new Error(
-      `Ceremony is still active (${totalContributions}/${totalTarget} total contributions). ` +
-        `Incomplete circuits: ${incompleteSummary}. ` +
-        "Wait for completion or use --force to finalize early.",
-    );
-  }
 
   if (totalContributions === 0) {
     throw new Error(
       "No contributions have been made. Cannot finalize an empty ceremony.",
+    );
+  }
+
+  const incompleteCircuits = circuitConfigs
+    .map((config) => {
+      const state = circuitStates.find((s) => s.id === config.id);
+      return {
+        id: config.id,
+        total: state?.totalContributions ?? 0,
+        target: config.targetContributions,
+      };
+    })
+    .filter((c) => c.total < c.target);
+
+  const endDateMs = getEndDateDeadlineMs(manifest.endDate);
+  const deadlinePassed = endDateMs !== null && Date.now() > endDateMs;
+  const ceremonyActive =
+    incompleteCircuits.length > 0 && (endDateMs === null || !deadlinePassed);
+
+  const force = process.argv.includes("--force");
+  if (ceremonyActive) {
+    const deadlineLine =
+      endDateMs === null
+        ? "Deadline: not configured"
+        : `Deadline: ${deadlinePassed ? "passed" : "not passed"} (${manifest.endDate})`;
+    const incompleteLine =
+      incompleteCircuits.length > 0
+        ? `Incomplete circuits: ${incompleteCircuits
+            .map((c) => `${c.id}: ${c.total}/${c.target}`)
+            .join(", ")}`
+        : null;
+    const statusLines = [
+      `Progress: ${totalContributions}/${totalTarget} contributions`,
+      deadlineLine,
+      ...(incompleteLine ? [incompleteLine] : []),
+    ];
+
+    if (!force) {
+      throw new Error(
+        [
+          "Ceremony is not ready to finalize.",
+          ...statusLines,
+          "Use --force to finalize before these conditions are met.",
+        ].join("\n"),
+      );
+    }
+
+    console.warn(
+      [
+        "Warning: finalizing early because --force was provided.",
+        ...statusLines,
+        "",
+      ].join("\n"),
     );
   }
 
