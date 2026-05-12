@@ -10,6 +10,7 @@ import {
   verify,
 } from "@wonderland/cabure-crypto";
 
+import { getEndDateDeadlineMs } from "@/lib/ceremony-state";
 import { getJson, listRange } from "@/lib/kv-store";
 import { ceremonyConfig } from "../ceremony.config";
 
@@ -257,15 +258,13 @@ async function main() {
     })
     .filter((c) => c.total < c.target);
 
-  const endDateMs = manifest.endDate
-    ? Date.parse(`${manifest.endDate}T23:59:59Z`)
-    : null;
+  const endDateMs = getEndDateDeadlineMs(manifest.endDate);
   const deadlinePassed = endDateMs !== null && Date.now() > endDateMs;
-  const requiresForce =
-    incompleteCircuits.length > 0 || (endDateMs !== null && !deadlinePassed);
+  const ceremonyActive =
+    incompleteCircuits.length > 0 && (endDateMs === null || !deadlinePassed);
 
   const force = process.argv.includes("--force");
-  if (requiresForce) {
+  if (ceremonyActive) {
     const deadlineLine =
       endDateMs === null
         ? "Deadline: not configured"
