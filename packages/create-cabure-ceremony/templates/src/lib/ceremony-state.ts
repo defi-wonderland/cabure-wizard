@@ -84,16 +84,19 @@ export async function getReceipts(): Promise<ContributionReceipt[]> {
   return await listRange<ContributionReceipt>(config.storage.receiptsPath);
 }
 
+export function getEndDateDeadlineMs(endDate: string | null): number | null {
+  return endDate ? Date.parse(`${endDate}T23:59:59Z`) : null;
+}
+
 export function isCeremonyActive(
   manifest: ManifestState,
   allCircuits: CircuitState[],
 ): boolean {
   const config = getCeremonyConfig();
   const now = Date.now();
-  const endDateMs = manifest.endDate
-    ? Date.parse(`${manifest.endDate}T23:59:59Z`)
-    : null;
-  if (endDateMs !== null && now > endDateMs) return false;
+  const endDateMs = getEndDateDeadlineMs(manifest.endDate);
+  const deadlinePassed = endDateMs !== null && now > endDateMs;
+  if (deadlinePassed) return false;
   return config.circuits.some((c) => {
     const state = allCircuits.find((s) => s.id === c.id);
     return !state || state.totalContributions < c.targetContributions;

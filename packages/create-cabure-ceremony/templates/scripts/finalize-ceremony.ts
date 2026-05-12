@@ -10,6 +10,7 @@ import {
   verify,
 } from "@wonderland/cabure-crypto";
 
+import { getEndDateDeadlineMs } from "@/lib/ceremony-state";
 import { getJson, listRange } from "@/lib/kv-store";
 import { ceremonyConfig } from "../ceremony.config";
 
@@ -235,19 +236,39 @@ async function main() {
     (sum, c) => sum + c.totalContributions,
     0,
   );
+  const totalTarget = circuitConfigs.reduce(
+    (sum, c) => sum + c.targetContributions,
+    0,
+  );
+  const incompleteCircuits = circuitConfigs.flatMap((c) => {
+    const state = circuitStates.find((s) => s.id === c.id);
+    if (!state || state.totalContributions >= c.targetContributions) return [];
+    return [
+      {
+        id: c.id,
+        totalContributions: state.totalContributions,
+        targetContributions: c.targetContributions,
+      },
+    ];
+  });
 
-  const endDateMs = manifest.endDate
-    ? Date.parse(`${manifest.endDate}T23:59:59Z`)
-    : null;
+  const endDateMs = getEndDateDeadlineMs(manifest.endDate);
   const now = Date.now();
-  const isActive =
-    (endDateMs === null || now <= endDateMs) &&
-    totalContributions < manifest.targetContributions;
+  const deadlinePassed = endDateMs !== null && now > endDateMs;
+  const ceremonyActive =
+    incompleteCircuits.length > 0 && (endDateMs === null || !deadlinePassed);
 
   const force = process.argv.includes("--force");
-  if (isActive && !force) {
+  if (ceremonyActive && !force) {
+    const incompleteSummary = incompleteCircuits
+      .map(
+        (c) =>
+          `${c.id} (${c.totalContributions}/${c.targetContributions} contributions)`,
+      )
+      .join(", ");
     throw new Error(
-      `Ceremony is still active (${totalContributions}/${manifest.targetContributions} contributions). ` +
+      `Ceremony is still active (${totalContributions}/${totalTarget} total contributions). ` +
+        `Incomplete circuits: ${incompleteSummary}. ` +
         "Wait for completion or use --force to finalize early.",
     );
   }
