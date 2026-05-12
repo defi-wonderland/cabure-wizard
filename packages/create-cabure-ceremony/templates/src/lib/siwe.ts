@@ -1,6 +1,6 @@
 import { SiweMessage, generateNonce } from "siwe";
 
-import { deleteKey, getJson, setJson } from "./kv-store";
+import { deleteKey, setJson } from "./kv-store";
 
 const NONCE_TTL_SECONDS = 5 * 60;
 
@@ -40,8 +40,8 @@ export async function verifySiwe(
     throw new Error("Invalid SIWE message format");
   }
 
-  const issued = await getJson<NonceRecord>(nonceKey(siwe.nonce));
-  if (!issued) {
+  const consumedNonceCount = await deleteKey(nonceKey(siwe.nonce));
+  if (consumedNonceCount !== 1) {
     throw new Error("Unknown or expired nonce");
   }
 
@@ -59,9 +59,6 @@ export async function verifySiwe(
   if (!verification.success) {
     throw new Error(verification.error?.type ?? "SIWE verification failed");
   }
-
-  await deleteKey(nonceKey(siwe.nonce));
-
   const address = verification.data.address.toLowerCase();
   return {
     address,

@@ -34,8 +34,8 @@ export async function setJson<T>(
   }
 }
 
-export async function deleteKey(key: string): Promise<void> {
-  await redis().del(key);
+export async function deleteKey(key: string): Promise<number> {
+  return await redis().del(key);
 }
 
 export async function listPush<T>(key: string, value: T): Promise<void> {
