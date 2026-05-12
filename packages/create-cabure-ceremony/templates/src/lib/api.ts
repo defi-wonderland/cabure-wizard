@@ -150,6 +150,7 @@ export async function getReceipt(options: {
   circuitId: string;
   participantId: string;
   contributionIndex: number;
+  contributionHash?: string;
   signal?: AbortSignal;
 }): Promise<ReceiptResponse> {
   const params = new URLSearchParams({
@@ -157,6 +158,9 @@ export async function getReceipt(options: {
     participantId: options.participantId,
     contributionIndex: String(options.contributionIndex),
   });
+  if (options.contributionHash) {
+    params.set("contributionHash", options.contributionHash);
+  }
   return await apiFetch<ReceiptResponse>(
     `/api/ceremony/receipt?${params.toString()}`,
     { signal: options.signal },

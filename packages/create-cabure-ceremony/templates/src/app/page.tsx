@@ -16,6 +16,7 @@ import { useCeremonyConfig } from "@/hooks/useCeremonyConfig";
 import { useCeremonyStatus } from "@/hooks/useCeremonyStatus";
 import { useParticipant } from "@/hooks/useParticipant";
 import { useContributionFlow } from "@/hooks/useContributionFlow";
+import { formatTemplate } from "@/utils/format";
 import styles from "./page.module.css";
 
 export default function CeremonyPage() {
@@ -102,11 +103,13 @@ export default function CeremonyPage() {
           circuitId?: string;
           participantId?: string;
           contributionIndex?: number;
+          contributionHash?: string;
         }
       | Array<{
           circuitId?: string;
           participantId?: string;
           contributionIndex?: number;
+          contributionHash?: string;
         }>;
 
     const receiptList = Array.isArray(parsed) ? parsed : [parsed];
@@ -118,20 +121,43 @@ export default function CeremonyPage() {
       if (
         !receipt?.circuitId ||
         !receipt.participantId ||
-        receipt.contributionIndex == null
+        receipt.contributionIndex == null ||
+        !receipt.contributionHash
       ) {
         throw new Error(config.copy.verify.invalidReceipt);
       }
     }
 
+    const seen = new Set<string>();
+    for (const receipt of receiptList) {
+      const key = `${receipt.circuitId}#${receipt.contributionIndex}`;
+      if (seen.has(key)) {
+        throw new Error(config.copy.verify.duplicateReceipt);
+      }
+      seen.add(key);
+    }
+
     return await Promise.all(
-      receiptList.map((receipt) =>
-        getReceipt({
+      receiptList.map(async (receipt) => {
+        const stored = await getReceipt({
           circuitId: receipt.circuitId as string,
           participantId: receipt.participantId as string,
           contributionIndex: receipt.contributionIndex as number,
-        }),
-      ),
+          contributionHash: receipt.contributionHash as string,
+        });
+        if (
+          (receipt.contributionHash as string).toLowerCase() !==
+          stored.contributionHash.toLowerCase()
+        ) {
+          throw new Error(
+            formatTemplate(config.copy.verify.hashMismatch, {
+              circuitId: receipt.circuitId as string,
+              contributionIndex: String(receipt.contributionIndex),
+            }),
+          );
+        }
+        return stored;
+      }),
     );
   };
 

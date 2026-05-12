@@ -131,21 +131,23 @@ async function askTargetContributions(rl: PromptSession): Promise<number> {
       return validateTargetContributions(Number.parseInt(selected.id, 10));
     }
 
-    const customValueRaw = await rl.question(
-      `${STEP_PADDING}Enter a custom target contribution count: `,
-    );
-    const customValue = parseWholeNumber(customValueRaw);
-    if (typeof customValue !== "number") {
-      rl.write(
-        `${DETAIL_PADDING}Target contributions must be a whole number.\n\n`,
+    for (;;) {
+      const customValueRaw = await rl.question(
+        `${STEP_PADDING}Enter a custom target contribution count: `,
       );
-      continue;
-    }
+      const customValue = parseWholeNumber(customValueRaw);
+      if (typeof customValue !== "number") {
+        rl.write(
+          `${DETAIL_PADDING}Target contributions must be a whole number.\n\n`,
+        );
+        continue;
+      }
 
-    try {
-      return validateTargetContributions(customValue);
-    } catch (error) {
-      rl.write(`${DETAIL_PADDING}${toMessage(error)}\n\n`);
+      try {
+        return validateTargetContributions(customValue);
+      } catch (error) {
+        rl.write(`${DETAIL_PADDING}${toMessage(error)}\n\n`);
+      }
     }
   }
 }
