@@ -90,14 +90,19 @@ export function getEndDateDeadlineMs(endDate: string | null): number | null {
     return null;
   }
 
-  if (!END_DATE_REGEX.test(endDate)) {
+  const normalizedEndDate = endDate.trim();
+  if (!normalizedEndDate) {
+    return null;
+  }
+
+  if (!END_DATE_REGEX.test(normalizedEndDate)) {
     throw new Error(
       `Invalid ceremony endDate "${endDate}". Expected YYYY-MM-DD.`,
     );
   }
 
-  const [year, month, day] = endDate.split("-").map(Number);
-  const deadlineMs = Date.parse(`${endDate}T23:59:59Z`);
+  const [year, month, day] = normalizedEndDate.split("-").map(Number);
+  const deadlineMs = Date.parse(`${normalizedEndDate}T23:59:59Z`);
   const deadline = new Date(deadlineMs);
   if (
     Number.isNaN(deadlineMs) ||
@@ -119,7 +124,16 @@ export function isCeremonyActive(
 ): boolean {
   const config = getCeremonyConfig();
   const now = Date.now();
-  const endDateMs = getEndDateDeadlineMs(manifest.endDate);
+  let endDateMs: number | null;
+  try {
+    endDateMs = getEndDateDeadlineMs(manifest.endDate);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(
+      `Ceremony inactive because manifest.endDate is invalid: ${message}`,
+    );
+    return false;
+  }
   const deadlinePassed = endDateMs !== null && now > endDateMs;
   if (deadlinePassed) return false;
   return config.circuits.some((c) => {
