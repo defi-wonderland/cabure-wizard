@@ -8,7 +8,7 @@ import { useParticipant } from "@/hooks/useParticipant";
 export function useParticipantEligibility() {
   const { isAuthenticated, participantId } = useParticipant();
 
-  const { data, error, isLoading } = useQuery({
+  const { data, isLoading } = useQuery({
     queryKey: ["participantEligibility", participantId],
     queryFn: ({ signal }) => getParticipantEligibility(signal),
     enabled: isAuthenticated,
@@ -17,7 +17,6 @@ export function useParticipantEligibility() {
 
   return {
     eligibility: data ?? null,
-    eligibilityError: error ? error.message : null,
     eligibilityLoading: isAuthenticated && isLoading,
   };
 }

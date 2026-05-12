@@ -3,7 +3,7 @@
 import { useCeremonyConfig } from "@/hooks/useCeremonyConfig";
 import { useCeremonyStatus } from "@/hooks/useCeremonyStatus";
 import { useParticipant } from "@/hooks/useParticipant";
-import type { ParticipantEligibilityResponse } from "@/lib/api";
+import { useParticipantEligibility } from "@/hooks/useParticipantEligibility";
 import { cn } from "@/utils/cn";
 import { Button } from "@/app/components/Button";
 import { ScreenWrapper } from "@/app/components/ScreenWrapper";
@@ -13,18 +13,15 @@ export function LandingScreen({
   onAuth,
   onBegin,
   onVerify,
-  eligibility,
-  eligibilityLoading,
 }: {
   onAuth: (method: "github") => void;
   onBegin: () => void;
   onVerify: () => void;
-  eligibility: ParticipantEligibilityResponse | null;
-  eligibilityLoading: boolean;
 }) {
   const config = useCeremonyConfig();
   const { status } = useCeremonyStatus();
   const { isAuthenticated } = useParticipant();
+  const { eligibility, eligibilityLoading } = useParticipantEligibility();
 
   const { copy } = config;
   const totalContributions = status?.totalContributions ?? 0;

@@ -6,8 +6,8 @@ import {
   getManifest,
   getParticipantContributedCircuitIds,
   isCeremonyActive,
+  kvKey,
   pruneExpiredEntries,
-  circuitStatePath,
   selectCircuitsForTier,
 } from "@/lib/ceremony-state";
 import {
@@ -150,10 +150,7 @@ export async function POST(request: NextRequest) {
 
     try {
       const circuit = await getCircuitState(circuitId);
-      const key = circuitStatePath(
-        config.storage.circuitStatePrefix,
-        circuitId,
-      );
+      const key = kvKey(config.storage.circuitStatePrefix, circuitId);
 
       const pruned = pruneExpiredEntries(
         circuit.queue,
@@ -227,7 +224,7 @@ export async function GET(request: NextRequest) {
   if (pruned.length < circuit.queue.length) {
     circuit.queue = pruned;
     await setJson(
-      circuitStatePath(config.storage.circuitStatePrefix, circuitId),
+      kvKey(config.storage.circuitStatePrefix, circuitId),
       circuit,
     );
   }

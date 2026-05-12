@@ -19,11 +19,23 @@ export interface StatusResponse {
   circuits: CircuitStatus[];
 }
 
+export type CircuitPreviewState =
+  | "willRun"
+  | "alreadyContributed"
+  | "targetReached"
+  | "fallback";
+
+export interface TierPreview {
+  tierId: string;
+  items: Array<{ circuitId: string; state: CircuitPreviewState }>;
+}
+
 export interface ParticipantEligibilityResponse {
   participantId: string;
   contributedCircuitIds: string[];
   eligibleCircuitIds: string[];
   hasEligibleCircuits: boolean;
+  tierPreviews: TierPreview[];
 }
 
 export interface QueuePosition {

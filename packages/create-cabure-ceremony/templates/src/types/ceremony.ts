@@ -172,7 +172,8 @@ export interface CeremonyConfig {
     manifestPath: string;
     circuitStatePrefix: string;
     receiptsPath: string;
-    circuitContributionsPrefix: string;
+    participantContributionsPrefix: string;
+    participantsIndexPath: string;
     zkeyPrefix: string;
   };
   copy: CeremonyCopy;

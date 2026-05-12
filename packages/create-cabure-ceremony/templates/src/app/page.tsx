@@ -15,7 +15,6 @@ import { type CeremonyStep, type TierId } from "@/lib/ceremony-config";
 import { useCeremonyConfig } from "@/hooks/useCeremonyConfig";
 import { useCeremonyStatus } from "@/hooks/useCeremonyStatus";
 import { useParticipant } from "@/hooks/useParticipant";
-import { useParticipantEligibility } from "@/hooks/useParticipantEligibility";
 import { useContributionFlow } from "@/hooks/useContributionFlow";
 import { formatTemplate } from "@/utils/format";
 import styles from "./page.module.css";
@@ -32,7 +31,6 @@ export default function CeremonyPage() {
 
   const { status, statusError } = useCeremonyStatus();
   const { authenticate } = useParticipant();
-  const { eligibility, eligibilityLoading } = useParticipantEligibility();
 
   const selectedCircuitIds = useMemo(() => {
     if (!tiersEnabled) {
@@ -57,7 +55,6 @@ export default function CeremonyPage() {
   };
 
   const handleBeginContribution = () => {
-    if (eligibility && !eligibility.hasEligibleCircuits) return;
     setStep("entropy");
   };
 
@@ -190,8 +187,6 @@ export default function CeremonyPage() {
                 onAuth={handleAuth}
                 onBegin={handleBeginContribution}
                 onVerify={() => setStep("verify")}
-                eligibility={eligibility}
-                eligibilityLoading={eligibilityLoading}
               />
             )}
 
@@ -200,7 +195,6 @@ export default function CeremonyPage() {
                 selectedTier={selectedTier}
                 onSelectTier={setSelectedTier}
                 onNext={handleJoinQueue}
-                eligibility={eligibility}
               />
             )}
 

@@ -12,18 +12,13 @@ import {
   getManifest,
   hasParticipantContributedToCircuit,
   isCeremonyActive,
+  kvKey,
   pruneExpiredEntries,
   readCircuitBytes,
   type ContributionReceipt,
-  circuitContributionsPath,
-  circuitStatePath,
 } from "@/lib/ceremony-state";
 import { deleteBinary, putBinary } from "@/lib/blob-store";
-import {
-  acquireLock,
-  releaseLock,
-  writeContributionRecord,
-} from "@/lib/kv-store";
+import { acquireLock, releaseLock, writeContribution } from "@/lib/kv-store";
 
 const BLOB_HOST_SUFFIX = ".public.blob.vercel-storage.com";
 
@@ -199,15 +194,17 @@ export async function POST(
       timestamp,
     };
 
-    await writeContributionRecord({
-      circuitStateKey: circuitStatePath(config.storage.circuitStatePrefix, id),
+    await writeContribution({
+      circuitStateKey: kvKey(config.storage.circuitStatePrefix, id),
       circuitState: circuit,
       receiptsKey: config.storage.receiptsPath,
       receipt,
-      circuitContributionsKey: circuitContributionsPath(
-        config.storage.circuitContributionsPrefix,
-        id,
+      participantContributionsKey: kvKey(
+        config.storage.participantContributionsPrefix,
+        participantId,
       ),
+      circuitId: id,
+      participantsIndexKey: config.storage.participantsIndexPath,
       participantId,
     });
 

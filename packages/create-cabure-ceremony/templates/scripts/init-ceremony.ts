@@ -7,11 +7,13 @@ import { put } from "@vercel/blob";
 import { loadEnvConfig } from "@next/env";
 import { generateInitialZkey } from "@wonderland/cabure-crypto";
 
+import { getEndDateDeadlineMs } from "@/lib/ceremony-state";
 import {
-  circuitContributionsPath,
-  getEndDateDeadlineMs,
-} from "@/lib/ceremony-state";
-import { getJson, listClear, setJson } from "@/lib/kv-store";
+  clearParticipantContributions,
+  getJson,
+  listClear,
+  setJson,
+} from "@/lib/kv-store";
 import { ceremonyConfig } from "../ceremony.config";
 
 // snarkjs/fastfile does not always close file handles explicitly. Node 25+
@@ -213,18 +215,13 @@ async function main() {
   await listClear(ceremonyConfig.storage.receiptsPath);
   console.log(`Receipts list cleared: ${ceremonyConfig.storage.receiptsPath}`);
 
-  await Promise.all(
-    ceremonyConfig.circuits.map((circuit) =>
-      listClear(
-        circuitContributionsPath(
-          ceremonyConfig.storage.circuitContributionsPrefix,
-          circuit.id,
-        ),
-      ),
-    ),
-  );
+  const clearedParticipants = await clearParticipantContributions({
+    participantsIndexKey: ceremonyConfig.storage.participantsIndexPath,
+    participantContributionsPrefix:
+      ceremonyConfig.storage.participantContributionsPrefix,
+  });
   console.log(
-    `Contribution index cleared: ${ceremonyConfig.storage.circuitContributionsPrefix}:*`,
+    `Contribution index cleared: ${clearedParticipants} participant(s).`,
   );
   console.log();
 
@@ -244,8 +241,9 @@ async function main() {
       manifestPath: ceremonyConfig.storage.manifestPath,
       circuitStatePrefix: ceremonyConfig.storage.circuitStatePrefix,
       receiptsPath: ceremonyConfig.storage.receiptsPath,
-      circuitContributionsPrefix:
-        ceremonyConfig.storage.circuitContributionsPrefix,
+      participantContributionsPrefix:
+        ceremonyConfig.storage.participantContributionsPrefix,
+      participantsIndexPath: ceremonyConfig.storage.participantsIndexPath,
       zkeyPrefix: ceremonyConfig.storage.zkeyPrefix,
     },
   };

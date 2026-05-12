@@ -42,16 +42,6 @@ export async function listRange<T>(key: string): Promise<T[]> {
   return await redis().lrange<T>(key, 0, -1);
 }
 
-export async function setAdd(
-  key: string,
-  ...members: string[]
-): Promise<number> {
-  if (members.length === 0) {
-    return 0;
-  }
-  return await redis().sadd(key, ...members);
-}
-
 export async function setIsMember(
   key: string,
   member: string,
@@ -60,24 +50,48 @@ export async function setIsMember(
   return Boolean(result);
 }
 
+export async function setMembers(key: string): Promise<string[]> {
+  return await redis().smembers(key);
+}
+
 export async function listClear(key: string): Promise<number> {
   return redis().del(key);
 }
 
-export async function writeContributionRecord<TCircuit, TReceipt>(options: {
+export async function writeContribution<TCircuit, TReceipt>(options: {
   circuitStateKey: string;
   circuitState: TCircuit;
   receiptsKey: string;
   receipt: TReceipt;
-  circuitContributionsKey: string;
+  participantContributionsKey: string;
+  circuitId: string;
+  participantsIndexKey: string;
   participantId: string;
 }): Promise<void> {
   await redis()
     .multi()
     .set(options.circuitStateKey, options.circuitState)
     .rpush(options.receiptsKey, options.receipt)
-    .sadd(options.circuitContributionsKey, options.participantId)
+    .sadd(options.participantContributionsKey, options.circuitId)
+    .sadd(options.participantsIndexKey, options.participantId)
     .exec();
+}
+
+export async function clearParticipantContributions(options: {
+  participantsIndexKey: string;
+  participantContributionsPrefix: string;
+}): Promise<number> {
+  const client = redis();
+  const participants = await client.smembers(options.participantsIndexKey);
+  if (participants.length > 0) {
+    const keys = participants.map(
+      (participantId) =>
+        `${options.participantContributionsPrefix}:${participantId}`,
+    );
+    await client.del(...keys);
+  }
+  await client.del(options.participantsIndexKey);
+  return participants.length;
 }
 
 export async function acquireLock(
