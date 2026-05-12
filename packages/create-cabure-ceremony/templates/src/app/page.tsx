@@ -200,6 +200,7 @@ export default function CeremonyPage() {
                 selectedTier={selectedTier}
                 onSelectTier={setSelectedTier}
                 onNext={handleJoinQueue}
+                eligibility={eligibility}
               />
             )}
 

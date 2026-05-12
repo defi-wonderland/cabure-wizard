@@ -80,6 +80,10 @@ export interface CeremonyCopy {
     cta: string;
     tierLabelPrefix: string;
     timeSuffix: string;
+    pillWillRun: string;
+    pillAlreadyContributed: string;
+    pillTargetReached: string;
+    pillNextAvailable: string;
   };
   progress: {
     title: string;
