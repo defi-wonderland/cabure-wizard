@@ -85,6 +85,26 @@ export async function getReceipts(): Promise<ContributionReceipt[]> {
   return await listRange<ContributionReceipt>(config.storage.receiptsPath);
 }
 
+export async function getParticipantContributedCircuitIds(
+  participantId: string,
+): Promise<Set<string>> {
+  const receipts = await getReceipts();
+  return new Set(
+    receipts
+      .filter((receipt) => receipt.participantId === participantId)
+      .map((receipt) => receipt.circuitId),
+  );
+}
+
+export async function hasParticipantContributedToCircuit(
+  participantId: string,
+  circuitId: string,
+): Promise<boolean> {
+  const contributedCircuitIds =
+    await getParticipantContributedCircuitIds(participantId);
+  return contributedCircuitIds.has(circuitId);
+}
+
 export function getEndDateDeadlineMs(endDate: string | null): number | null {
   if (endDate === null) {
     return null;

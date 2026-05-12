@@ -10,6 +10,7 @@ import {
   getAllCircuitStates,
   getCircuitState,
   getManifest,
+  hasParticipantContributedToCircuit,
   isCeremonyActive,
   pruneExpiredEntries,
   readCircuitBytes,
@@ -120,6 +121,14 @@ export async function POST(
       return NextResponse.json(
         { error: "Not at front of the queue" },
         { status: 409 },
+      );
+    }
+
+    if (await hasParticipantContributedToCircuit(participantId, id)) {
+      await deleteBinary(blobUrl).catch(() => {});
+      return NextResponse.json(
+        { error: "You have already contributed to this circuit" },
+        { status: 403 },
       );
     }
 

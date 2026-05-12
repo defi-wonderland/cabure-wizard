@@ -4,6 +4,7 @@ import {
   getAllCircuitStates,
   getCircuitState,
   getManifest,
+  getParticipantContributedCircuitIds,
   isCeremonyActive,
   pruneExpiredEntries,
   circuitStatePath,
@@ -11,6 +12,7 @@ import {
 } from "@/lib/ceremony-state";
 import {
   getCeremonyConfig,
+  type CeremonyCircuitConfig,
   type CeremonyTierConfig,
   type TierId,
 } from "@/lib/ceremony-config";
@@ -101,6 +103,38 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  const contributedCircuitIds =
+    await getParticipantContributedCircuitIds(participantId);
+  const isCircuitEligible = (circuitConfig: CeremonyCircuitConfig): boolean => {
+    if (contributedCircuitIds.has(circuitConfig.id)) {
+      return false;
+    }
+
+    const circuit = allCircuits.find((state) => state.id === circuitConfig.id);
+    return (
+      !circuit || circuit.totalContributions < circuitConfig.targetContributions
+    );
+  };
+  const eligibleResolvedIds = resolvedIds.filter((circuitId) => {
+    const circuitConfig = config.circuits.find((c) => c.id === circuitId);
+    return circuitConfig ? isCircuitEligible(circuitConfig) : false;
+  });
+
+  if (eligibleResolvedIds.length === 0) {
+    const fallbackCircuitId = config.circuits.find(isCircuitEligible)?.id;
+
+    if (!fallbackCircuitId) {
+      return NextResponse.json(
+        { error: "You have already contributed to every available circuit." },
+        { status: 403 },
+      );
+    }
+
+    resolvedIds = [fallbackCircuitId];
+  } else {
+    resolvedIds = eligibleResolvedIds;
+  }
+
   const now = Date.now();
   const positions: QueuePosition[] = [];
   for (const circuitId of resolvedIds) {
@@ -116,7 +150,10 @@ export async function POST(request: NextRequest) {
 
     try {
       const circuit = await getCircuitState(circuitId);
-      const key = circuitStatePath(config.storage.circuitStatePrefix, circuitId);
+      const key = circuitStatePath(
+        config.storage.circuitStatePrefix,
+        circuitId,
+      );
 
       const pruned = pruneExpiredEntries(
         circuit.queue,

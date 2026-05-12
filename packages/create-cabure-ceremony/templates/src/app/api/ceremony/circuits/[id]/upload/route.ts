@@ -6,6 +6,7 @@ import {
   getAllCircuitStates,
   getCircuitState,
   getManifest,
+  hasParticipantContributedToCircuit,
   isCeremonyActive,
   pruneExpiredEntries,
 } from "@/lib/ceremony-state";
@@ -34,6 +35,15 @@ export async function POST(
 
         if (!isCeremonyActive(manifest, allCircuits)) {
           throw new Error("Ceremony is not active");
+        }
+
+        if (
+          await hasParticipantContributedToCircuit(
+            participant.participantId,
+            id,
+          )
+        ) {
+          throw new Error("You have already contributed to this circuit");
         }
 
         const circuit = await getCircuitState(id);
