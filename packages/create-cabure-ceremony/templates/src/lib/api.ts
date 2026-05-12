@@ -94,6 +94,20 @@ export async function getParticipantEligibility(
   );
 }
 
+export interface ParticipantReceiptsResponse {
+  participantId: string;
+  receipts: ReceiptResponse[];
+}
+
+export async function getMyReceipts(
+  signal?: AbortSignal,
+): Promise<ParticipantReceiptsResponse> {
+  return await apiFetch<ParticipantReceiptsResponse>(
+    "/api/ceremony/participant/receipts",
+    { signal },
+  );
+}
+
 export async function joinQueue(options: {
   tierId?: string;
   circuitIds?: string[];

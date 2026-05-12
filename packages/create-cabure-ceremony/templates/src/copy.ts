@@ -27,6 +27,8 @@ export const defaultCopy: CeremonyCopy = {
     githubCta: "CONTINUE WITH GITHUB",
     beginCta: "BEGIN CONTRIBUTION",
     eligibilityLoadingCta: "CHECKING ELIGIBILITY...",
+    downloadReceiptsCta: "DOWNLOAD MY RECEIPTS",
+    downloadingReceiptsCta: "PREPARING DOWNLOAD...",
     alreadyContributedTitle: "You have already contributed",
     alreadyContributedDescription:
       "This GitHub account has contributed to every available circuit. You can still verify your receipts.",
