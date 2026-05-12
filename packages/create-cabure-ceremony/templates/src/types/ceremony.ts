@@ -75,6 +75,7 @@ export interface CeremonyCopy {
     title: string;
     description: string;
     cta: string;
+    joiningCta: string;
     tierLabelPrefix: string;
     timeSuffix: string;
   };

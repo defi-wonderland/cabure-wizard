@@ -27,10 +27,12 @@ export function TierScreen({
   selectedTier,
   onSelectTier,
   onNext,
+  isJoining = false,
 }: {
   selectedTier: TierId;
   onSelectTier: (tier: TierId) => void;
   onNext: () => void;
+  isJoining?: boolean;
 }) {
   const config = useCeremonyConfig();
   const { status } = useCeremonyStatus();
@@ -106,7 +108,9 @@ export function TierScreen({
         })}
       </div>
 
-      <Button onClick={onNext}>{copy.tier.cta}</Button>
+      <Button onClick={onNext} disabled={isJoining}>
+        {isJoining ? copy.tier.joiningCta : copy.tier.cta}
+      </Button>
     </ScreenWrapper>
   );
 }
