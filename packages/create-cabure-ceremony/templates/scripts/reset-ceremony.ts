@@ -34,8 +34,11 @@ async function main() {
     ),
   ];
 
-  await Promise.all(redisKeys.map((key) => listClear(key)));
-  console.log(`  Deleted ${redisKeys.length} keys.`);
+  const deletedCounts = await Promise.all(
+    redisKeys.map((key) => listClear(key)),
+  );
+  const deletedKeys = deletedCounts.reduce((sum, n) => sum + n, 0);
+  console.log(`  Deleted ${deletedKeys} keys.`);
 
   console.log("Deleting Vercel Blob zkeys...");
 

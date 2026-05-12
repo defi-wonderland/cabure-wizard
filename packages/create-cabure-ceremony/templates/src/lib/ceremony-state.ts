@@ -11,6 +11,7 @@ import {
 import { getJson, listRange } from "./kv-store";
 
 const GENESIS_CHAIN_HASH = `0x${"0".repeat(64)}`;
+const END_DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
 
 export interface ContributionReceipt {
   circuitId: string;
@@ -84,16 +85,57 @@ export async function getReceipts(): Promise<ContributionReceipt[]> {
   return await listRange<ContributionReceipt>(config.storage.receiptsPath);
 }
 
+export function getEndDateDeadlineMs(endDate: string | null): number | null {
+  if (endDate === null) {
+    return null;
+  }
+
+  const normalizedEndDate = endDate.trim();
+  if (!normalizedEndDate) {
+    return null;
+  }
+
+  if (!END_DATE_REGEX.test(normalizedEndDate)) {
+    throw new Error(
+      `Invalid ceremony endDate "${endDate}". Expected YYYY-MM-DD.`,
+    );
+  }
+
+  const [year, month, day] = normalizedEndDate.split("-").map(Number);
+  const deadlineMs = Date.parse(`${normalizedEndDate}T23:59:59Z`);
+  const deadline = new Date(deadlineMs);
+  if (
+    Number.isNaN(deadlineMs) ||
+    deadline.getUTCFullYear() !== year ||
+    deadline.getUTCMonth() !== month - 1 ||
+    deadline.getUTCDate() !== day
+  ) {
+    throw new Error(
+      `Invalid ceremony endDate "${endDate}". Expected a valid calendar date.`,
+    );
+  }
+
+  return deadlineMs;
+}
+
 export function isCeremonyActive(
   manifest: ManifestState,
   allCircuits: CircuitState[],
 ): boolean {
   const config = getCeremonyConfig();
   const now = Date.now();
-  const endDateMs = manifest.endDate
-    ? Date.parse(`${manifest.endDate}T23:59:59Z`)
-    : null;
-  if (endDateMs !== null && now > endDateMs) return false;
+  let endDateMs: number | null;
+  try {
+    endDateMs = getEndDateDeadlineMs(manifest.endDate);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(
+      `Ceremony inactive because manifest.endDate is invalid: ${message}`,
+    );
+    return false;
+  }
+  const deadlinePassed = endDateMs !== null && now > endDateMs;
+  if (deadlinePassed) return false;
   return config.circuits.some((c) => {
     const state = allCircuits.find((s) => s.id === c.id);
     return !state || state.totalContributions < c.targetContributions;

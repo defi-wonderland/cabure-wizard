@@ -7,6 +7,7 @@ import { put } from "@vercel/blob";
 import { loadEnvConfig } from "@next/env";
 import { generateInitialZkey } from "@wonderland/cabure-crypto";
 
+import { getEndDateDeadlineMs } from "@/lib/ceremony-state";
 import { getJson, listClear, setJson } from "@/lib/kv-store";
 import { ceremonyConfig } from "../ceremony.config";
 
@@ -108,12 +109,15 @@ async function main() {
     }
   }
 
+  const endDate = ceremonyConfig.endDate?.trim() || null;
+  getEndDateDeadlineMs(endDate);
+
   console.log(`Ceremony:    ${ceremonyConfig.name}`);
   console.log(`Circuits:    ${ceremonyConfig.circuits.length}`);
   console.log(
     `Target:      ${ceremonyConfig.targetContributions} contributions`,
   );
-  console.log(`End date:    ${ceremonyConfig.endDate ?? "(none)"}`);
+  console.log(`End date:    ${endDate ?? "(none)"}`);
   console.log();
 
   await mkdir(OUTPUT_DIR, { recursive: true });
@@ -195,7 +199,7 @@ async function main() {
   const manifest: ManifestState = {
     ceremonyName: ceremonyConfig.name,
     targetContributions: ceremonyConfig.targetContributions,
-    endDate: ceremonyConfig.endDate,
+    endDate,
     startedAt,
     circuits: circuitSummaries.map((c) => ({ id: c.circuitId })),
   };
@@ -213,7 +217,7 @@ async function main() {
       name: ceremonyConfig.name,
       slug: ceremonyConfig.slug,
       targetContributions: ceremonyConfig.targetContributions,
-      endDate: ceremonyConfig.endDate,
+      endDate,
       startedAt,
       initializedAt: new Date(startedAt).toISOString(),
       genesisChainHash: GENESIS_CHAIN_HASH,
@@ -239,7 +243,7 @@ async function main() {
   console.log(
     `  Target:        ${ceremonyConfig.targetContributions} contributions`,
   );
-  console.log(`  End date:      ${ceremonyConfig.endDate ?? "(none)"}`);
+  console.log(`  End date:      ${endDate ?? "(none)"}`);
   console.log(`  Genesis zkeys: public/genesis/*.genesis.zkey`);
   console.log(`  Transcript:    public/genesis/init-transcript.json`);
 
