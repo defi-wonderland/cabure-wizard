@@ -2,24 +2,20 @@ import * as snarkjs from "snarkjs";
 import { withTempDir, writeTempFile } from "./util.js";
 
 /**
- * Verify a single contribution by checking the full zkey against
- * the original circuit (r1cs) and Powers of Tau.
+ * Verify a single contribution against the original circuit (r1cs) and
+ * Powers of Tau.
  *
- * Note: this confirms `zkey` is a valid contribution chain extending the
- * genesis derivable from `(r1cs, ptau)`. It does NOT confirm that `zkey` is
- * the next contribution in any specific chain; see `verifyChain` for that.
+ * Confirms `zkey` is a valid contribution chain extending the genesis
+ * derivable from `(r1cs, ptau)`. It does NOT confirm `zkey` is the next
+ * contribution in any specific chain; use `verifyChain` for that.
  *
- * Total function: returns `false` for any malformed or invalid zkey. snarkjs
- * itself throws on parse errors and on several structural checks; callers
- * that expected a boolean would otherwise have to wrap every call in
- * try/catch to be safe (and the generated coordinator did not). Funneling
- * every failure mode into `false` keeps the `Promise<boolean>` contract
- * honest.
+ * Returns `false` for any malformed input. snarkjs throws on parse errors;
+ * we catch and map to `false` so the `Promise<boolean>` signature holds.
  *
  * @param r1cs - R1CS circuit definition.
  * @param ptau - Powers of Tau ceremony output.
  * @param zkey - The zkey to verify.
- * @returns `true` if valid, `false` otherwise (including malformed input).
+ * @returns `true` if valid, `false` otherwise.
  */
 export async function verify(
   r1cs: Uint8Array,
@@ -57,6 +53,9 @@ export async function verify(
  * If `latestZkey` is byte-equal to `initialZkey` (no contributions yet) the
  * function returns `true` without invoking snarkjs.
  *
+ * Returns `false` for any malformed input. Same total-function pattern as
+ * `verify`.
+ *
  * @param ptau - Powers of Tau ceremony output.
  * @param initialZkey - The genesis zkey, taken as trusted.
  * @param latestZkey - The most recently contributed zkey.
@@ -72,41 +71,42 @@ export async function verifyChain(
     return true;
   }
 
-  return withTempDir(async (dir) => {
-    const ptauPath = await writeTempFile(dir, "pot.ptau", ptau);
-    const initPath = await writeTempFile(dir, "genesis.zkey", initialZkey);
-    const zkeyPath = await writeTempFile(dir, "latest.zkey", latestZkey);
+  try {
+    return await withTempDir(async (dir) => {
+      const ptauPath = await writeTempFile(dir, "pot.ptau", ptau);
+      const initPath = await writeTempFile(dir, "genesis.zkey", initialZkey);
+      const zkeyPath = await writeTempFile(dir, "latest.zkey", latestZkey);
 
-    return snarkjs.zKey.verifyFromInit(initPath, ptauPath, zkeyPath);
-  });
+      return await snarkjs.zKey.verifyFromInit(initPath, ptauPath, zkeyPath);
+    });
+  } catch {
+    return false;
+  }
 }
 
 /**
  * Verify the full contribution chain AND bind it to a specific circuit.
  *
- * Composition of `verify(r1cs, ptau, initialZkey)` followed by
- * `verifyChain(ptau, initialZkey, latestZkey)`. Use this when you need the
- * safer (and usually correct) verification path: confirm the genesis matches
- * the circuit you expect, then confirm the chain extends that genesis.
+ * Composition of `verify(r1cs, ptau, initialZkey)` then
+ * `verifyChain(ptau, initialZkey, latestZkey)`. Use this instead of
+ * `verifyChain` alone when you need to confirm both that the genesis
+ * matches the expected circuit AND that the chain extends that genesis.
  *
- * In particular, this closes the only path through `verifyChain` that does
- * not invoke snarkjs: the empty-chain shortcut returns `true` when
- * `latestZkey === initialZkey`. Without circuit binding, that shortcut would
- * accept any two byte-equal inputs (including garbage). With binding, the
- * shortcut only fires after `initialZkey` is confirmed as a valid genesis
- * for `(r1cs, ptau)`.
+ * Closes the empty-chain shortcut in `verifyChain`: when `latestZkey` is
+ * byte-equal to `initialZkey`, that shortcut returns `true` without
+ * invoking snarkjs, so untrusted garbage as both arguments would pass.
+ * Here, the shortcut only fires after `initialZkey` is validated against
+ * the circuit.
  *
- * The ceremony coordinator should prefer this function over `verifyChain`
- * for per-contribution validation: it both confirms the new zkey extends
- * the current state AND prevents accidental acceptance of a fork from a
- * substituted genesis.
+ * Returns `false` on any failure mode (total by composition of `verify`
+ * and `verifyChain`).
  *
  * @param r1cs - R1CS circuit definition.
  * @param ptau - Powers of Tau ceremony output.
  * @param initialZkey - The genesis zkey (validated against `r1cs` here).
  * @param latestZkey - The most recently contributed zkey.
  * @returns true if `initialZkey` is a valid genesis for `(r1cs, ptau)` and
- *          the chain in `latestZkey` reaches `initialZkey` at its base.
+ *          the chain in `latestZkey` reaches `initialZkey`.
  */
 export async function verifyChainForCircuit(
   r1cs: Uint8Array,

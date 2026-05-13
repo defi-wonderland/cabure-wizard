@@ -50,16 +50,5 @@
     "@types/node": "22.19.11",
     "@types/snarkjs": "0.7.9"
   },
-  "overrides": {
-    "underscore@<=1.13.7": "1.13.8"
-  },
-  "pnpm": {
-    "overrides": {
-      "underscore@<=1.13.7": "1.13.8"
-    }
-  },
-  "resolutions": {
-    "underscore": "1.13.8"
-  },
   "license": "MIT"
 }

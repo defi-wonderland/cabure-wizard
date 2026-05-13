@@ -99,7 +99,7 @@ export function attachWorker(target: WorkerScope): void {
 }
 
 // Real worker entry. In Node (tests importing this module), `self` is
-// undefined and this is a no-op — tests call `attachWorker(mock)` directly.
+// undefined and this is a no-op; tests call `attachWorker(mock)` directly.
 if (typeof self !== "undefined") {
   attachWorker(self as unknown as WorkerScope);
 }

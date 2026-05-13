@@ -60,6 +60,12 @@ describe("browserContribute (direct)", () => {
     expect(r1.contributionHash).not.toBe(r2.contributionHash);
     expect(r1.zkeyHash).not.toBe(r2.zkeyHash);
   });
+
+  it("rejects empty entropy", async () => {
+    await expect(
+      browserContribute(genesis, new Uint8Array(0), "empty"),
+    ).rejects.toThrow(/entropy must not be empty/i);
+  });
 });
 
 describe("worker onmessage protocol", () => {

@@ -141,6 +141,13 @@ describe("verifyChain", () => {
     const valid = await verifyChain(ptau, genesis, tampered);
     expect(valid).toBe(false);
   });
+
+  it("returns false on a completely invalid latestZkey instead of throwing", async () => {
+    const genesis = await generateInitialZkey(ptau, r1cs);
+    const garbage = new Uint8Array(64).fill(0xde);
+    const valid = await verifyChain(ptau, genesis, garbage);
+    expect(valid).toBe(false);
+  });
 });
 
 describe("verifyChainForCircuit", () => {
@@ -197,6 +204,13 @@ describe("verifyChainForCircuit", () => {
     tampered[mid + 1] ^= 0xff;
 
     const valid = await verifyChainForCircuit(r1cs, ptau, genesis, tampered);
+    expect(valid).toBe(false);
+  });
+
+  it("returns false on a completely invalid latestZkey instead of throwing", async () => {
+    const genesis = await generateInitialZkey(ptau, r1cs);
+    const garbage = new Uint8Array(64).fill(0xde);
+    const valid = await verifyChainForCircuit(r1cs, ptau, genesis, garbage);
     expect(valid).toBe(false);
   });
 });

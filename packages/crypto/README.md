@@ -109,7 +109,7 @@ Transferring the buffers (rather than copying) means the main thread no longer h
 
 `@wonderland/cabure-crypto` depends on `snarkjs@0.7.5`. snarkjs pulls in `bfj -> jsonpath -> underscore`, and `underscore` versions `<= 1.13.7` carry the [GHSA-qpx9-hpmf-5gmw](https://github.com/jashkenas/underscore/security/advisories/GHSA-qpx9-hpmf-5gmw) advisory. The current logic of this package is not affected by the underlying vulnerability, but the dependency is flagged by `npm audit` and should not appear in your install graph.
 
-The Caburé monorepo and the project template emitted by `@wonderland/create-cabure-ceremony` already pin `underscore` to `1.13.8` via their override fields. If you install this package standalone, add the same override in your own `package.json`:
+This package intentionally does NOT ship an `overrides` field of its own: per the [npm docs](https://docs.npmjs.com/cli/v11/configuring-npm/package-json#overrides), overrides are only respected in the **consuming project's** root `package.json` and are ignored when defined inside an installed dependency. The Caburé monorepo and the project template emitted by `@wonderland/create-cabure-ceremony` pin `underscore` to `1.13.8` in their own root overrides. If you install this package standalone, add the same override in your `package.json`:
 
 ```jsonc
 // npm v8.3+

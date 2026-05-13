@@ -16,6 +16,13 @@ export async function browserContribute(
   entropy: Uint8Array,
   name: string,
 ): Promise<ContributionResult> {
+  if (entropy.length === 0) {
+    // Empty entropy would encode to "" and trigger snarkjs's interactive
+    // fallback path, which in a Web Worker has nowhere to read from and
+    // would hang. Reject explicitly. Mirrors the check in `contribute.ts`.
+    throw new Error("browserContribute: entropy must not be empty");
+  }
+
   const snarkjs = await import("snarkjs");
 
   const prevFile = { type: "mem" as const, data: prevZkey };
