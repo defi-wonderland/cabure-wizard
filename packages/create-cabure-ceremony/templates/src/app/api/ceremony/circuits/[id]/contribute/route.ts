@@ -10,14 +10,15 @@ import {
   getAllCircuitStates,
   getCircuitState,
   getManifest,
+  hasParticipantContributedToCircuit,
   isCeremonyActive,
+  kvKey,
   pruneExpiredEntries,
   readCircuitBytes,
   type ContributionReceipt,
-  circuitStatePath,
 } from "@/lib/ceremony-state";
 import { deleteBinary, putBinary } from "@/lib/blob-store";
-import { acquireLock, listPush, releaseLock, setJson } from "@/lib/kv-store";
+import { acquireLock, releaseLock, writeContribution } from "@/lib/kv-store";
 
 const BLOB_HOST_SUFFIX = ".public.blob.vercel-storage.com";
 
@@ -123,6 +124,14 @@ export async function POST(
       );
     }
 
+    if (await hasParticipantContributedToCircuit(participantId, id)) {
+      await deleteBinary(blobUrl).catch(() => {});
+      return NextResponse.json(
+        { error: "You have already contributed to this circuit" },
+        { status: 403 },
+      );
+    }
+
     const circuitConfig = config.circuits.find((c) => c.id === id);
     if (!circuitConfig) {
       await deleteBinary(blobUrl).catch(() => {});
@@ -185,10 +194,19 @@ export async function POST(
       timestamp,
     };
 
-    await Promise.all([
-      setJson(circuitStatePath(config.storage.circuitStatePrefix, id), circuit),
-      listPush(config.storage.receiptsPath, receipt),
-    ]);
+    await writeContribution({
+      circuitStateKey: kvKey(config.storage.circuitStatePrefix, id),
+      circuitState: circuit,
+      receiptsKey: config.storage.receiptsPath,
+      receipt,
+      participantContributionsKey: kvKey(
+        config.storage.participantContributionsPrefix,
+        participantId,
+      ),
+      circuitId: id,
+      participantsIndexKey: config.storage.participantsIndexPath,
+      participantId,
+    });
 
     return NextResponse.json({
       success: true,

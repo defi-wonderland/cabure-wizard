@@ -24,13 +24,37 @@ describe("validate helpers", () => {
   });
 
   test("validateEndDate accepts blank or proper yyyy-mm-dd", () => {
-    expect(validateEndDate("")).toBeNull();
-    expect(validateEndDate("2026-03-27")).toBe("2026-03-27");
+    const now = new Date("2026-01-15T12:00:00.000Z");
+    expect(validateEndDate("", now)).toBeNull();
+    expect(validateEndDate("2026-03-27", now)).toBe("2026-03-27");
+  });
+
+  test("validateEndDate accepts today", () => {
+    const now = new Date("2026-01-15T12:00:00.000Z");
+    expect(validateEndDate("2026-01-15", now)).toBe("2026-01-15");
+  });
+
+  test("validateEndDate compares against the UTC calendar date", () => {
+    const now = new Date("2026-01-15T01:30:00.000Z");
+    expect(validateEndDate("2026-01-15", now)).toBe("2026-01-15");
+    expect(() => validateEndDate("2026-01-14", now)).toThrowError(
+      "End date must be today or in the future.",
+    );
   });
 
   test("validateEndDate rejects invalid calendar dates", () => {
     expect(() => validateEndDate("2026-02-30")).toThrowError(
       "End date is not a valid calendar date.",
+    );
+  });
+
+  test("validateEndDate rejects past dates", () => {
+    const now = new Date("2026-01-15T12:00:00.000Z");
+    expect(() => validateEndDate("2023-01-29", now)).toThrowError(
+      "End date must be today or in the future.",
+    );
+    expect(() => validateEndDate("2026-01-14", now)).toThrowError(
+      "End date must be today or in the future.",
     );
   });
 
