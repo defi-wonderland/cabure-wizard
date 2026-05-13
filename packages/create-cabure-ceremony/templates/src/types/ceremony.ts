@@ -57,6 +57,8 @@ export interface CeremonyCopy {
     githubCta: string;
     beginCta: string;
     eligibilityLoadingCta: string;
+    downloadReceiptsCta: string;
+    downloadingReceiptsCta: string;
     alreadyContributedTitle: string;
     alreadyContributedDescription: string;
     endedSubtitle: string;

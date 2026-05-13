@@ -62,7 +62,10 @@ export interface ZkeyInfo {
   hash: string | null;
 }
 
-async function apiFetch<T>(input: RequestInfo | URL, init?: RequestInit): Promise<T> {
+async function apiFetch<T>(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+): Promise<T> {
   const response = await fetch(input, init);
   const contentType = response.headers.get("content-type") ?? "";
 
@@ -70,7 +73,8 @@ async function apiFetch<T>(input: RequestInfo | URL, init?: RequestInit): Promis
     const body = contentType.includes("application/json")
       ? ((await response.json()) as { error?: string })
       : { error: await response.text() };
-    const message = body.error || `Request failed with status ${response.status}.`;
+    const message =
+      body.error || `Request failed with status ${response.status}.`;
     throw new Error(message);
   }
 
@@ -90,6 +94,20 @@ export async function getParticipantEligibility(
 ): Promise<ParticipantEligibilityResponse> {
   return await apiFetch<ParticipantEligibilityResponse>(
     "/api/ceremony/participant/eligibility",
+    { signal },
+  );
+}
+
+export interface ParticipantReceiptsResponse {
+  participantId: string;
+  receipts: ReceiptResponse[];
+}
+
+export async function getMyReceipts(
+  signal?: AbortSignal,
+): Promise<ParticipantReceiptsResponse> {
+  return await apiFetch<ParticipantReceiptsResponse>(
+    "/api/ceremony/participant/receipts",
     { signal },
   );
 }
