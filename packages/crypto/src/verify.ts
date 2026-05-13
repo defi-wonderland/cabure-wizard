@@ -7,25 +7,36 @@ import { withTempDir, writeTempFile } from "./util.js";
  *
  * Note: this confirms `zkey` is a valid contribution chain extending the
  * genesis derivable from `(r1cs, ptau)`. It does NOT confirm that `zkey` is
- * the next contribution in any specific chain — for that, see `verifyChain`.
+ * the next contribution in any specific chain; see `verifyChain` for that.
  *
- * @param r1cs - R1CS circuit definition
- * @param ptau - Powers of Tau ceremony output
- * @param zkey - The zkey to verify
- * @returns true if valid
+ * Total function: returns `false` for any malformed or invalid zkey. snarkjs
+ * itself throws on parse errors and on several structural checks; callers
+ * that expected a boolean would otherwise have to wrap every call in
+ * try/catch to be safe (and the generated coordinator did not). Funneling
+ * every failure mode into `false` keeps the `Promise<boolean>` contract
+ * honest.
+ *
+ * @param r1cs - R1CS circuit definition.
+ * @param ptau - Powers of Tau ceremony output.
+ * @param zkey - The zkey to verify.
+ * @returns `true` if valid, `false` otherwise (including malformed input).
  */
 export async function verify(
   r1cs: Uint8Array,
   ptau: Uint8Array,
   zkey: Uint8Array,
 ): Promise<boolean> {
-  return withTempDir(async (dir) => {
-    const r1csPath = await writeTempFile(dir, "circuit.r1cs", r1cs);
-    const ptauPath = await writeTempFile(dir, "pot.ptau", ptau);
-    const zkeyPath = await writeTempFile(dir, "circuit.zkey", zkey);
+  try {
+    return await withTempDir(async (dir) => {
+      const r1csPath = await writeTempFile(dir, "circuit.r1cs", r1cs);
+      const ptauPath = await writeTempFile(dir, "pot.ptau", ptau);
+      const zkeyPath = await writeTempFile(dir, "circuit.zkey", zkey);
 
-    return snarkjs.zKey.verifyFromR1cs(r1csPath, ptauPath, zkeyPath);
-  });
+      return await snarkjs.zKey.verifyFromR1cs(r1csPath, ptauPath, zkeyPath);
+    });
+  } catch {
+    return false;
+  }
 }
 
 /**

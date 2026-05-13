@@ -1,4 +1,8 @@
-export type { EntropySource, ContributionResult } from "./types.js";
+export type {
+  EntropySource,
+  ContributionResult,
+  Groth16VerificationKey,
+} from "./types.js";
 export { generateInitialZkey } from "./generateInitialZkey.js";
 export { contribute } from "./contribute.js";
 export { verify, verifyChain } from "./verify.js";

@@ -87,11 +87,15 @@ describe("verify", () => {
     expect(valid).toBe(false);
   });
 
-  it("throws on a completely invalid zkey", async () => {
+  it("returns false on a completely invalid zkey instead of throwing", async () => {
     const garbage = new Uint8Array(64).fill(0xde);
-    await expect(verify(r1cs, ptau, garbage)).rejects.toThrow(
-      /invalid/i,
-    );
+    const valid = await verify(r1cs, ptau, garbage);
+    expect(valid).toBe(false);
+  });
+
+  it("returns false on an empty zkey", async () => {
+    const valid = await verify(r1cs, ptau, new Uint8Array(0));
+    expect(valid).toBe(false);
   });
 });
 
