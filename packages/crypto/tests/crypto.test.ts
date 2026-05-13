@@ -53,6 +53,13 @@ describe("contribute", () => {
 
     expect(result1.hash).not.toBe(result2.hash);
   });
+
+  it("rejects empty entropy", async () => {
+    const genesis = await generateInitialZkey(ptau, r1cs);
+    await expect(
+      contribute(genesis, new Uint8Array(0), "empty"),
+    ).rejects.toThrow(/entropy must not be empty/i);
+  });
 });
 
 describe("verify", () => {
@@ -214,10 +221,23 @@ describe("applyBeacon", () => {
     await expect(applyBeacon(zkey, "")).rejects.toThrow(/at least 32 bytes/i);
   });
 
+  it("rejects a beacon longer than 255 bytes (matches snarkjs upper bound)", async () => {
+    const genesis = await generateInitialZkey(ptau, r1cs);
+    const { zkey } = await contribute(genesis, new Uint8Array(32).fill(1));
+
+    await expect(applyBeacon(zkey, "00".repeat(256))).rejects.toThrow(
+      /at most 255 bytes/i,
+    );
+  });
+
   it("rejects out-of-range numIterationsExp", async () => {
     const genesis = await generateInitialZkey(ptau, r1cs);
     const { zkey } = await contribute(genesis, new Uint8Array(32).fill(1));
 
+    // Below the new lower bound of 10 (was 1 before; snarkjs rejects < 10).
+    await expect(applyBeacon(zkey, VALID_BEACON, 9)).rejects.toThrow(
+      /numIterationsExp/,
+    );
     await expect(applyBeacon(zkey, VALID_BEACON, 0)).rejects.toThrow(
       /numIterationsExp/,
     );

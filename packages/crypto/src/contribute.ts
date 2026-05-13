@@ -41,6 +41,13 @@ export async function contribute(
   entropy: Uint8Array,
   name: string = "contributor",
 ): Promise<ContributionResult> {
+  if (entropy.length === 0) {
+    // Empty entropy would encode to "" and trigger snarkjs's interactive
+    // fallback path, which silently asks for entropy on stdin. Reject it
+    // explicitly so callers see a clean error instead of a hang.
+    throw new Error("contribute: entropy must not be empty");
+  }
+
   // snarkjs encodes the entropy string via TextEncoder and mixes the bytes
   // into the contribution. We use a prefix-free hex encoding so this Node
   // path produces the same contribution as the browser worker for identical

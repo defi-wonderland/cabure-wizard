@@ -166,5 +166,9 @@ describe("worker onmessage protocol", () => {
     if (errorMsg.type !== ResponseType.Error) throw new Error("unreachable");
     expect(typeof errorMsg.message).toBe("string");
     expect(errorMsg.message.length).toBeGreaterThan(0);
+
+    // Entropy must be zeroed even on the failure branch (regression guard
+    // for the toxic-waste hygiene fix).
+    for (const byte of entropy) expect(byte).toBe(0);
   });
 });

@@ -3,7 +3,8 @@ import { withTempDir, writeTempFile, readFileAsBytes } from "./util.js";
 
 const DEFAULT_NUM_ITERATIONS_EXP = 10;
 const MIN_BEACON_BYTES = 32;
-const MIN_NUM_ITERATIONS_EXP = 1;
+const MAX_BEACON_BYTES = 255;
+const MIN_NUM_ITERATIONS_EXP = 10;
 const MAX_NUM_ITERATIONS_EXP = 32;
 
 /**
@@ -15,12 +16,21 @@ const MAX_NUM_ITERATIONS_EXP = 32;
  * Self-generated random bytes are NOT a valid beacon: the whole point of the
  * beacon is independent public verifiability.
  *
- * @param zkey - The last contributed zkey
+ * Input validation is intentionally a strict subset of snarkjs's bounds:
+ *
+ * - `beaconHash` must be 32 to 255 bytes. snarkjs rejects everything below 32
+ *   and everything 256 or above; we enforce the same window before any I/O.
+ * - `numIterationsExp` must be in `[10, 32]`. snarkjs accepts up to 63, but
+ *   2^32 SHA-256 iterations already pushes finalization into hours of CPU.
+ *   The default of 10 (1024 iterations) is what most ceremonies use.
+ *
+ * @param zkey - The last contributed zkey.
  * @param beaconHash - Hex-encoded beacon value, with or without `0x` prefix.
- *                    Must be ≥32 bytes (64 hex digits).
+ *                    Must be 32 to 255 bytes (64 to 510 hex digits).
  * @param numIterationsExp - Exponent for 2^N SHA-256 iterations
- *                           (default: 10 → 1024 iterations). Must be 1..32.
- * @returns Finalized zkey bytes
+ *                           (default: 10, yields 1024 iterations).
+ *                           Must be an integer in `[10, 32]`.
+ * @returns Finalized zkey bytes.
  */
 export async function applyBeacon(
   zkey: Uint8Array,
@@ -70,6 +80,12 @@ function validateBeaconHash(beaconHash: string): string {
     throw new Error(
       `applyBeacon: beaconHash must be at least ${MIN_BEACON_BYTES} bytes ` +
         `(${MIN_BEACON_BYTES * 2} hex digits); received ${hex.length / 2} bytes`,
+    );
+  }
+  if (hex.length > MAX_BEACON_BYTES * 2) {
+    throw new Error(
+      `applyBeacon: beaconHash must be at most ${MAX_BEACON_BYTES} bytes ` +
+        `(${MAX_BEACON_BYTES * 2} hex digits); received ${hex.length / 2} bytes`,
     );
   }
 
