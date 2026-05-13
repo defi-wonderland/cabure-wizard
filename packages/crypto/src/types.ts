@@ -6,12 +6,41 @@ export interface EntropySource {
   data: Uint8Array;
 }
 
-/** Result of a contribution */
+/** Result of a contribution. */
 export interface ContributionResult {
-  /** The new zkey after applying the contribution */
+  /** The new zkey after applying the contribution. */
   zkey: Uint8Array;
-  /** SHA-256 hash of the contribution as 0x-prefixed hex string */
-  hash: string;
+  /**
+   * snarkjs's own contribution hash, Blake2b over the contribution's public
+   * key as recorded in the zkey transcript. Returned by `snarkjs.zKey.contribute`
+   * and used as the contribution identifier across the ceremony log.
+   * Encoded as a 0x-prefixed lowercase hex string.
+   */
+  contributionHash: string;
+  /**
+   * SHA-256 of the new zkey binary as a 0x-prefixed lowercase hex string.
+   * Used by callers that want to integrity-check the zkey file independently
+   * of the snarkjs transcript hash above.
+   */
+  zkeyHash: string;
+}
+
+/** Result of finalizing a ceremony by applying the beacon. */
+export interface BeaconResult {
+  /** The finalized zkey after applying the public-randomness beacon. */
+  zkey: Uint8Array;
+  /**
+   * snarkjs's contribution hash for the beacon contribution, Blake2b over
+   * the beacon contribution's public key. Encoded as 0x-prefixed lowercase
+   * hex. Useful for the finalization transcript.
+   */
+  contributionHash: string;
+  /**
+   * SHA-256 of the finalized zkey binary as a 0x-prefixed lowercase hex
+   * string. Used by callers that want to integrity-check the published
+   * final zkey artifact.
+   */
+  zkeyHash: string;
 }
 
 /**

@@ -3,12 +3,13 @@
  * the Web Worker, but exported separately so it can be exercised directly by
  * Node tests without needing a real Worker runtime.
  *
- * Uses snarkjs's memFS (`{ type: "mem" }`) for I/O — no temp files. snarkjs
- * is dynamically imported so the bundler resolves to the consumer's
- * snarkjs build at runtime.
+ * Uses snarkjs's memFS (`{ type: "mem" }`) for I/O, so no temp files are
+ * created on disk. snarkjs is dynamically imported so the bundler resolves
+ * to the consumer's snarkjs build at runtime.
  */
 import type { ContributionResult } from "../types.js";
 import { bytesToHexRaw } from "../hex.js";
+import { sha256Hex } from "../sha256.js";
 
 export async function browserContribute(
   prevZkey: Uint8Array,
@@ -26,7 +27,7 @@ export async function browserContribute(
   // bytes into the contribution; a `0x` prefix would change the result.
   const entropyHex = bytesToHexRaw(entropy);
 
-  const hashBytes: Uint8Array = await snarkjs.zKey.contribute(
+  const contributionHashBytes: Uint8Array = await snarkjs.zKey.contribute(
     prevFile,
     newFile,
     name,
@@ -38,5 +39,11 @@ export async function browserContribute(
     throw new Error("snarkjs contribute produced no output data");
   }
 
-  return { zkey, hash: `0x${bytesToHexRaw(hashBytes)}` };
+  const zkeyHash = await sha256Hex(zkey);
+
+  return {
+    zkey,
+    contributionHash: `0x${bytesToHexRaw(contributionHashBytes)}`,
+    zkeyHash,
+  };
 }

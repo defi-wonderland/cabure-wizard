@@ -35,7 +35,8 @@ describe("browserContribute (direct)", () => {
 
     expect(result.zkey).toBeInstanceOf(Uint8Array);
     expect(result.zkey.length).toBeGreaterThan(0);
-    expect(result.hash).toMatch(/^0x[0-9a-f]{128}$/);
+    expect(result.contributionHash).toMatch(/^0x[0-9a-f]{128}$/);
+    expect(result.zkeyHash).toMatch(/^0x[0-9a-f]{64}$/);
 
     const valid = await verify(r1cs, ptau, result.zkey);
     expect(valid).toBe(true);
@@ -56,7 +57,8 @@ describe("browserContribute (direct)", () => {
     const e2 = new Uint8Array(32).fill(0xa5);
     const r1 = await browserContribute(genesis, e1, "test");
     const r2 = await browserContribute(genesis, e2, "test");
-    expect(r1.hash).not.toBe(r2.hash);
+    expect(r1.contributionHash).not.toBe(r2.contributionHash);
+    expect(r1.zkeyHash).not.toBe(r2.zkeyHash);
   });
 });
 
@@ -125,7 +127,8 @@ describe("worker onmessage protocol", () => {
     if (result.type !== ResponseType.Result) throw new Error("unreachable");
 
     expect(result.newZkey).toBeInstanceOf(Uint8Array);
-    expect(result.hash).toMatch(/^0x[0-9a-f]{128}$/);
+    expect(result.contributionHash).toMatch(/^0x[0-9a-f]{128}$/);
+    expect(result.zkeyHash).toMatch(/^0x[0-9a-f]{64}$/);
 
     expect(posted[2].transfer).toEqual([result.newZkey.buffer]);
 

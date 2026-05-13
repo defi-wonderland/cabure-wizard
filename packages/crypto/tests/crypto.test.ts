@@ -40,7 +40,8 @@ describe("contribute", () => {
     const result = await contribute(genesis, entropy, "test-contributor");
     expect(result.zkey).toBeInstanceOf(Uint8Array);
     expect(result.zkey.length).toBeGreaterThan(0);
-    expect(result.hash).toMatch(/^0x[0-9a-f]+$/);
+    expect(result.contributionHash).toMatch(/^0x[0-9a-f]{128}$/);
+    expect(result.zkeyHash).toMatch(/^0x[0-9a-f]{64}$/);
   });
 
   it("produces different zkeys for different entropy", async () => {
@@ -52,7 +53,8 @@ describe("contribute", () => {
     const result1 = await contribute(genesis, entropy1);
     const result2 = await contribute(genesis, entropy2);
 
-    expect(result1.hash).not.toBe(result2.hash);
+    expect(result1.contributionHash).not.toBe(result2.contributionHash);
+    expect(result1.zkeyHash).not.toBe(result2.zkeyHash);
   });
 
   it("rejects empty entropy", async () => {
@@ -226,14 +228,16 @@ describe("applyBeacon", () => {
   const VALID_BEACON =
     "0102030405060708091011121314151617181920212223242526272829303132";
 
-  it("produces a finalized zkey with a beacon", async () => {
+  it("produces a finalized zkey, contribution hash, and zkey hash", async () => {
     const genesis = await generateInitialZkey(ptau, r1cs);
     const { zkey } = await contribute(genesis, new Uint8Array(32).fill(1));
 
     const finalized = await applyBeacon(zkey, VALID_BEACON);
 
-    expect(finalized).toBeInstanceOf(Uint8Array);
-    expect(finalized.length).toBeGreaterThan(0);
+    expect(finalized.zkey).toBeInstanceOf(Uint8Array);
+    expect(finalized.zkey.length).toBeGreaterThan(0);
+    expect(finalized.contributionHash).toMatch(/^0x[0-9a-f]{128}$/);
+    expect(finalized.zkeyHash).toMatch(/^0x[0-9a-f]{64}$/);
   });
 
   it("produces deterministic output for the same beacon", async () => {
@@ -243,7 +247,11 @@ describe("applyBeacon", () => {
     const finalized1 = await applyBeacon(zkey, VALID_BEACON);
     const finalized2 = await applyBeacon(zkey, VALID_BEACON);
 
-    expect(Buffer.from(finalized1).equals(Buffer.from(finalized2))).toBe(true);
+    expect(
+      Buffer.from(finalized1.zkey).equals(Buffer.from(finalized2.zkey)),
+    ).toBe(true);
+    expect(finalized1.contributionHash).toBe(finalized2.contributionHash);
+    expect(finalized1.zkeyHash).toBe(finalized2.zkeyHash);
   });
 
   it("accepts a beacon with the 0x prefix", async () => {
@@ -251,7 +259,7 @@ describe("applyBeacon", () => {
     const { zkey } = await contribute(genesis, new Uint8Array(32).fill(1));
 
     const finalized = await applyBeacon(zkey, `0x${VALID_BEACON}`);
-    expect(finalized.length).toBeGreaterThan(0);
+    expect(finalized.zkey.length).toBeGreaterThan(0);
   });
 
   it("rejects non-hex beacon", async () => {
@@ -356,7 +364,7 @@ describe("exportVerificationKey", () => {
       "0102030405060708091011121314151617181920212223242526272829303132";
     const finalized = await applyBeacon(zkey, beaconHash);
 
-    const vkey = await exportVerificationKey(finalized);
+    const vkey = await exportVerificationKey(finalized.zkey);
 
     expect(vkey).toHaveProperty("protocol", "groth16");
     expect(vkey).toHaveProperty("curve");

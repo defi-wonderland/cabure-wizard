@@ -70,7 +70,8 @@ export function attachWorker(target: WorkerScope): void {
               {
                 type: ResponseType.Result,
                 newZkey: result.zkey,
-                hash: result.hash,
+                contributionHash: result.contributionHash,
+                zkeyHash: result.zkeyHash,
               },
               [result.zkey.buffer],
             );

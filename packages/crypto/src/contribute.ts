@@ -2,6 +2,7 @@ import * as snarkjs from "snarkjs";
 import type { ContributionResult } from "./types.js";
 import { withTempDir, writeTempFile, readFileAsBytes } from "./util.js";
 import { toHex, bytesToHexRaw } from "./hex.js";
+import { sha256Hex } from "./sha256.js";
 
 /**
  * Apply a contribution to a zkey using the provided entropy.
@@ -31,10 +32,11 @@ import { toHex, bytesToHexRaw } from "./hex.js";
  * Note: this function MUTATES the input `entropy` buffer (zeroes it on
  * return). Callers must not reuse the buffer after the call.
  *
- * @param prevZkey - The current zkey to contribute to
- * @param entropy - Random entropy bytes (will be zeroed on return)
- * @param name - Optional contributor name (default: "contributor")
- * @returns New zkey and 0x-prefixed contribution hash
+ * @param prevZkey - The current zkey to contribute to.
+ * @param entropy - Random entropy bytes (will be zeroed on return).
+ * @param name - Optional contributor name (default: "contributor").
+ * @returns The new zkey, snarkjs's contribution hash (Blake2b over the
+ *          contribution's public key), and SHA-256 of the new zkey binary.
  */
 export async function contribute(
   prevZkey: Uint8Array,
@@ -59,7 +61,7 @@ export async function contribute(
       const prevPath = await writeTempFile(dir, "prev.zkey", prevZkey);
       const newPath = `${dir}/new.zkey`;
 
-      const hash: Uint8Array = await snarkjs.zKey.contribute(
+      const contributionHashBytes: Uint8Array = await snarkjs.zKey.contribute(
         prevPath,
         newPath,
         name,
@@ -67,7 +69,12 @@ export async function contribute(
       );
 
       const zkey = await readFileAsBytes(newPath);
-      return { zkey, hash: toHex(hash) };
+      const zkeyHash = await sha256Hex(zkey);
+      return {
+        zkey,
+        contributionHash: toHex(contributionHashBytes),
+        zkeyHash,
+      };
     });
   } finally {
     entropy.fill(0);

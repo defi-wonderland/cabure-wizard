@@ -1,6 +1,7 @@
 export type {
   EntropySource,
   ContributionResult,
+  BeaconResult,
   Groth16VerificationKey,
 } from "./types.js";
 export { generateInitialZkey } from "./generateInitialZkey.js";
