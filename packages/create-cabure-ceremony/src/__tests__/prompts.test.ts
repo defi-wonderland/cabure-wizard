@@ -45,7 +45,8 @@ describe("wizard prompts", () => {
     expect(answers.targetContributions).toBe(250);
     expect(output).toContain("Target contributions must be a whole number.");
 
-    const tierMenuOccurrences = output.split("2) Target contributions").length - 1;
+    const tierMenuOccurrences =
+      output.split("2) Target contributions").length - 1;
     expect(tierMenuOccurrences).toBe(1);
 
     const customPromptOccurrences =

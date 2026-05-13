@@ -120,7 +120,8 @@ export async function contributeCommand(
 
     console.log("  Computing contribution...");
     const result = await contribute(prevZkey, entropy, participantName);
-    console.log(`  Contribution hash: ${result.hash}`);
+    console.log(`  Contribution hash: ${result.contributionHash}`);
+    console.log(`  Zkey hash: ${result.zkeyHash}`);
 
     console.log("  Uploading...");
     const blob = await upload(
@@ -138,8 +139,13 @@ export async function contributeCommand(
     const receipt = await client.submitContribution(
       circuitId,
       blob.url,
-      result.hash,
+      result.contributionHash,
     );
+    if (receipt.contributionHash.toLowerCase() !== result.zkeyHash.toLowerCase()) {
+      throw new Error(
+        `Receipt hash mismatch for ${circuitId}: expected ${result.zkeyHash}, got ${receipt.contributionHash}`,
+      );
+    }
 
     receipts.push(receipt);
     console.log(`  Contribution #${receipt.contributionIndex} accepted`);

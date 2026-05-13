@@ -6,7 +6,8 @@ import {
 
 export interface ContributionResult {
   zkey: Uint8Array;
-  hash: string;
+  contributionHash: string;
+  zkeyHash: string;
 }
 
 export async function runContribution(options: {
@@ -47,7 +48,11 @@ export async function runContribution(options: {
 
       if (msg.type === ResponseType.Result) {
         cleanup();
-        resolve({ zkey: msg.newZkey, hash: msg.hash });
+        resolve({
+          zkey: msg.newZkey,
+          contributionHash: msg.contributionHash,
+          zkeyHash: msg.zkeyHash,
+        });
       }
 
       if (msg.type === ResponseType.Error) {
