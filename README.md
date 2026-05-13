@@ -47,9 +47,15 @@ verify(r1cs: Uint8Array, ptau: Uint8Array, zkey: Uint8Array): Promise<boolean>
 
 // Verify the full contribution chain from genesis (snarkjs walks the
 // transcript embedded in latestZkey; intermediates are not needed).
-// initialZkey is taken as trusted — pair with verify(r1cs, ptau, initialZkey)
-// if you need to bind the chain to a specific circuit.
+// initialZkey is taken as trusted. For circuit-bound verification use
+// verifyChainForCircuit below, which also confirms initialZkey is a valid
+// genesis for (r1cs, ptau).
 verifyChain(ptau: Uint8Array, initialZkey: Uint8Array, latestZkey: Uint8Array): Promise<boolean>
+
+// Same as verifyChain but first validates initialZkey against (r1cs, ptau),
+// closing the empty-chain footgun where verifyChain returns true for any
+// two byte-equal inputs.
+verifyChainForCircuit(r1cs: Uint8Array, ptau: Uint8Array, initialZkey: Uint8Array, latestZkey: Uint8Array): Promise<boolean>
 
 // Generate entropy from available sources (CSPRNG + optional mouse/click data)
 generateEntropy(sources?: EntropySource[]): Promise<Uint8Array>

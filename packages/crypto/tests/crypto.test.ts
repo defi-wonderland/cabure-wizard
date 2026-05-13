@@ -6,6 +6,7 @@ import {
   contribute,
   verify,
   verifyChain,
+  verifyChainForCircuit,
   generateEntropy,
   applyBeacon,
   exportVerificationKey,
@@ -136,6 +137,64 @@ describe("verifyChain", () => {
     tampered[mid + 1] ^= 0xff;
 
     const valid = await verifyChain(ptau, genesis, tampered);
+    expect(valid).toBe(false);
+  });
+});
+
+describe("verifyChainForCircuit", () => {
+  it("validates a chain bound to the expected circuit", async () => {
+    const genesis = await generateInitialZkey(ptau, r1cs);
+    const { zkey: zkey1 } = await contribute(
+      genesis,
+      new Uint8Array(32).fill(1),
+    );
+    const { zkey: zkey2 } = await contribute(
+      zkey1,
+      new Uint8Array(32).fill(2),
+    );
+
+    const valid = await verifyChainForCircuit(r1cs, ptau, genesis, zkey2);
+    expect(valid).toBe(true);
+  });
+
+  it("validates the empty-chain case when the genesis matches the circuit", async () => {
+    const genesis = await generateInitialZkey(ptau, r1cs);
+    const valid = await verifyChainForCircuit(r1cs, ptau, genesis, genesis);
+    expect(valid).toBe(true);
+  });
+
+  it("rejects identical garbage inputs (closes the empty-chain footgun)", async () => {
+    const garbage = new Uint8Array(64).fill(0xde);
+    const valid = await verifyChainForCircuit(r1cs, ptau, garbage, garbage);
+    expect(valid).toBe(false);
+  });
+
+  it("rejects a genesis that does not correspond to the circuit", async () => {
+    const genesis = await generateInitialZkey(ptau, r1cs);
+    const tamperedGenesis = new Uint8Array(genesis);
+    const mid = Math.floor(tamperedGenesis.length / 2);
+    tamperedGenesis[mid] ^= 0xff;
+    tamperedGenesis[mid + 1] ^= 0xff;
+
+    const valid = await verifyChainForCircuit(
+      r1cs,
+      ptau,
+      tamperedGenesis,
+      tamperedGenesis,
+    );
+    expect(valid).toBe(false);
+  });
+
+  it("rejects a tampered tail even with a valid genesis", async () => {
+    const genesis = await generateInitialZkey(ptau, r1cs);
+    const { zkey } = await contribute(genesis, new Uint8Array(32).fill(9));
+
+    const tampered = new Uint8Array(zkey);
+    const mid = Math.floor(tampered.length / 2);
+    tampered[mid] ^= 0xff;
+    tampered[mid + 1] ^= 0xff;
+
+    const valid = await verifyChainForCircuit(r1cs, ptau, genesis, tampered);
     expect(valid).toBe(false);
   });
 });

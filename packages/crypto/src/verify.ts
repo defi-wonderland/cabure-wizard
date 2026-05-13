@@ -50,18 +50,18 @@ export async function verify(
  *
  * `initialZkey` is taken as trusted: this function does NOT confirm
  * `initialZkey` is the canonical genesis for any particular `r1cs`. Callers
- * that need to bind the chain to a specific circuit should additionally call
- * `verify(r1cs, ptau, initialZkey)` (or hash-pin `initialZkey` against a
- * known-good value).
+ * that need to bind the chain to a specific circuit should use
+ * `verifyChainForCircuit` instead (or hash-pin `initialZkey` against a
+ * known-good value before calling this).
  *
  * If `latestZkey` is byte-equal to `initialZkey` (no contributions yet) the
  * function returns `true` without invoking snarkjs.
  *
- * @param ptau - Powers of Tau ceremony output
- * @param initialZkey - The genesis zkey, taken as trusted
- * @param latestZkey - The most recently contributed zkey
+ * @param ptau - Powers of Tau ceremony output.
+ * @param initialZkey - The genesis zkey, taken as trusted.
+ * @param latestZkey - The most recently contributed zkey.
  * @returns true if every contribution embedded in `latestZkey` is valid and
- *          the chain reaches `initialZkey` at its base
+ *          the chain reaches `initialZkey` at its base.
  */
 export async function verifyChain(
   ptau: Uint8Array,
@@ -79,6 +79,47 @@ export async function verifyChain(
 
     return snarkjs.zKey.verifyFromInit(initPath, ptauPath, zkeyPath);
   });
+}
+
+/**
+ * Verify the full contribution chain AND bind it to a specific circuit.
+ *
+ * Composition of `verify(r1cs, ptau, initialZkey)` followed by
+ * `verifyChain(ptau, initialZkey, latestZkey)`. Use this when you need the
+ * safer (and usually correct) verification path: confirm the genesis matches
+ * the circuit you expect, then confirm the chain extends that genesis.
+ *
+ * In particular, this closes the only path through `verifyChain` that does
+ * not invoke snarkjs: the empty-chain shortcut returns `true` when
+ * `latestZkey === initialZkey`. Without circuit binding, that shortcut would
+ * accept any two byte-equal inputs (including garbage). With binding, the
+ * shortcut only fires after `initialZkey` is confirmed as a valid genesis
+ * for `(r1cs, ptau)`.
+ *
+ * The ceremony coordinator should prefer this function over `verifyChain`
+ * for per-contribution validation: it both confirms the new zkey extends
+ * the current state AND prevents accidental acceptance of a fork from a
+ * substituted genesis.
+ *
+ * @param r1cs - R1CS circuit definition.
+ * @param ptau - Powers of Tau ceremony output.
+ * @param initialZkey - The genesis zkey (validated against `r1cs` here).
+ * @param latestZkey - The most recently contributed zkey.
+ * @returns true if `initialZkey` is a valid genesis for `(r1cs, ptau)` and
+ *          the chain in `latestZkey` reaches `initialZkey` at its base.
+ */
+export async function verifyChainForCircuit(
+  r1cs: Uint8Array,
+  ptau: Uint8Array,
+  initialZkey: Uint8Array,
+  latestZkey: Uint8Array,
+): Promise<boolean> {
+  const initialValid = await verify(r1cs, ptau, initialZkey);
+  if (!initialValid) return false;
+
+  if (bytesEqual(initialZkey, latestZkey)) return true;
+
+  return verifyChain(ptau, initialZkey, latestZkey);
 }
 
 function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {

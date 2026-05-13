@@ -20,6 +20,7 @@ import {
   contribute,
   verify,
   verifyChain,
+  verifyChainForCircuit,
   generateEntropy,
   applyBeacon,
   exportVerificationKey,
@@ -32,6 +33,7 @@ import {
 | `contribute(prevZkey, entropy, name?)` | Apply a contribution; returns `{ zkey, hash }` |
 | `verify(r1cs, ptau, zkey)` | Verify a zkey extends a chain rooted in (r1cs, ptau) |
 | `verifyChain(ptau, initialZkey, latestZkey)` | Verify the chain embedded in `latestZkey` reaches `initialZkey` (taken as trusted) |
+| `verifyChainForCircuit(r1cs, ptau, initialZkey, latestZkey)` | Same as `verifyChain` but first checks `initialZkey` is a valid genesis for `(r1cs, ptau)` |
 | `generateEntropy(sources?)` | Combine WebCrypto CSPRNG with optional additional sources |
 | `applyBeacon(zkey, beaconHash, numIterationsExp?)` | Apply a public randomness beacon to finalize |
 | `exportVerificationKey(zkey)` | Extract the Groth16 verification key |
