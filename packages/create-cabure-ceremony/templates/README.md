@@ -18,7 +18,7 @@ Place your compiled `.r1cs` files in the `circuits/` folder, then run:
 npm run setup:ptau
 ```
 
-This reads each circuit's constraint count, downloads the correct [PPoT](https://github.com/privacy-ethereum/perpetualpowersoftau) `.ptau` file, verifies it with snarkjs, and updates `ceremony.config.ts` with the actual constraint values.
+This reads each circuit's constraint count, downloads the correct [PPoT](https://github.com/privacy-ethereum/perpetualpowersoftau) `.ptau` file, and updates `ceremony.config.ts` with the actual constraint values.
 
 > **Note:** If the circuit artifacts path was skipped in the wizard and circuits are being added now, `ceremony.config.ts` will have empty `circuits` and `tiers` arrays. These must be populated manually — see the [Configuration](#configuration) section below for the expected shape and examples.
 
@@ -82,7 +82,7 @@ The init script only needs to run once. After deploying, the API routes handle c
 
 | Script                      | Description                                                              |
 | --------------------------- | ------------------------------------------------------------------------ |
-| `npm run setup:ptau`        | Detect circuit constraints, download the correct PPoT ptau, and verify   |
+| `npm run setup:ptau`        | Detect circuit constraints, download the correct PPoT ptau, and update config |
 | `npm run init:ceremony`     | Generate genesis zkey, upload to Blob, write manifest to KV. Outputs to `public/genesis/` |
 | `npm run reset:ceremony`    | Wipe all KV keys and Blob zkeys for a fresh start |
 | `npm run finalize:ceremony` | Apply beacon (Ethereum RANDAO by default), verify zkeys. Outputs to `public/finalize/` |
@@ -90,9 +90,9 @@ The init script only needs to run once. After deploying, the API routes handle c
 ### Setup ptau
 
 ```bash
-npm run setup:ptau                  # download, verify, and update constraints
-npm run setup:ptau -- --force       # re-download even if ptau exists
-npm run setup:ptau -- --skip-verify # skip snarkjs verification (faster for large files)
+npm run setup:ptau             # download and update constraints
+npm run setup:ptau -- --force  # re-download even if ptau exists
+npm run setup:ptau -- --verify # also run snarkjs ptau verification
 ```
 
 ### Finalization
