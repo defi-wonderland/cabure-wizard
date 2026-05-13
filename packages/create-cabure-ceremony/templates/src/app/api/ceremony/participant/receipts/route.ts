@@ -10,9 +10,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   }
 
   const allReceipts = await getReceipts();
-  const receipts = allReceipts.filter(
-    (receipt) => receipt.participantId === participant.participantId,
-  );
+  const receipts = allReceipts
+    .filter((receipt) => receipt.participantId === participant.participantId)
+    .map((receipt) => ({ success: true as const, ...receipt }));
 
   return NextResponse.json({
     participantId: participant.participantId,
