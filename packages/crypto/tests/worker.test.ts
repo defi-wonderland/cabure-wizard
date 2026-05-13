@@ -156,6 +156,29 @@ describe("worker onmessage protocol", () => {
     expect(posted[0].transfer).toEqual([reply.data.buffer]);
   });
 
+  it("posts an Error response when entropy is empty", async () => {
+    // End-to-end coverage of the empty-entropy guard in `browserContribute`:
+    // the worker must turn the thrown error into a clean Error response
+    // instead of hanging or producing a silent no-op.
+    const garbage = new Uint8Array(64).fill(0xde);
+    const entropy = new Uint8Array(0);
+
+    await fireMessage({
+      type: RequestType.Contribute,
+      prevZkey: garbage,
+      entropy,
+      name: "empty-entropy",
+    });
+
+    expect(posted.length).toBeGreaterThanOrEqual(2);
+    expect(posted[0].msg.type).toBe(ResponseType.Progress);
+
+    const last = posted[posted.length - 1].msg;
+    expect(last.type).toBe(ResponseType.Error);
+    if (last.type !== ResponseType.Error) throw new Error("unreachable");
+    expect(last.message).toMatch(/entropy must not be empty/i);
+  });
+
   it("posts an Error response when contribute throws", async () => {
     const garbage = new Uint8Array(0);
     const entropy = new Uint8Array(32).fill(0x01);
