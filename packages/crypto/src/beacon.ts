@@ -1,9 +1,13 @@
 import * as snarkjs from "snarkjs";
+import type { BeaconResult } from "./types.js";
 import { withTempDir, writeTempFile, readFileAsBytes } from "./util.js";
+import { toHex } from "./hex.js";
+import { sha256Hex } from "./sha256.js";
 
 const DEFAULT_NUM_ITERATIONS_EXP = 10;
 const MIN_BEACON_BYTES = 32;
-const MIN_NUM_ITERATIONS_EXP = 1;
+const MAX_BEACON_BYTES = 255;
+const MIN_NUM_ITERATIONS_EXP = 10;
 const MAX_NUM_ITERATIONS_EXP = 32;
 
 /**
@@ -15,18 +19,29 @@ const MAX_NUM_ITERATIONS_EXP = 32;
  * Self-generated random bytes are NOT a valid beacon: the whole point of the
  * beacon is independent public verifiability.
  *
- * @param zkey - The last contributed zkey
+ * Input validation is intentionally a strict subset of snarkjs's bounds:
+ *
+ * - `beaconHash` must be 32 to 255 bytes. snarkjs rejects everything below 32
+ *   and everything 256 or above; we enforce the same window before any I/O.
+ * - `numIterationsExp` must be in `[10, 32]`. snarkjs accepts up to 63, but
+ *   2^32 SHA-256 iterations already pushes finalization into hours of CPU.
+ *   The default of 10 (1024 iterations) is what most ceremonies use.
+ *
+ * @param zkey - The last contributed zkey.
  * @param beaconHash - Hex-encoded beacon value, with or without `0x` prefix.
- *                    Must be ≥32 bytes (64 hex digits).
+ *                    Must be 32 to 255 bytes (64 to 510 hex digits).
  * @param numIterationsExp - Exponent for 2^N SHA-256 iterations
- *                           (default: 10 → 1024 iterations). Must be 1..32.
- * @returns Finalized zkey bytes
+ *                           (default: 10, yields 1024 iterations).
+ *                           Must be an integer in `[10, 32]`.
+ * @returns The finalized zkey, snarkjs's beacon contribution hash
+ *          (Blake2b over the beacon contribution's public key), and SHA-256
+ *          of the finalized zkey binary.
  */
 export async function applyBeacon(
   zkey: Uint8Array,
   beaconHash: string,
   numIterationsExp: number = DEFAULT_NUM_ITERATIONS_EXP,
-): Promise<Uint8Array> {
+): Promise<BeaconResult> {
   const validatedHex = validateBeaconHash(beaconHash);
   validateNumIterationsExp(numIterationsExp);
 
@@ -42,12 +57,21 @@ export async function applyBeacon(
       numIterationsExp,
     );
 
-    // snarkjs returns false on validation failures it catches itself.
+    // snarkjs returns false on validation failures it catches itself, and
+    // the contribution hash bytes on success.
     if (result === false) {
       throw new Error("applyBeacon: snarkjs rejected the beacon parameters");
     }
+    const contributionHashBytes = result as Uint8Array;
 
-    return readFileAsBytes(finalPath);
+    const finalZkey = await readFileAsBytes(finalPath);
+    const zkeyHash = await sha256Hex(finalZkey);
+
+    return {
+      zkey: finalZkey,
+      contributionHash: toHex(contributionHashBytes),
+      zkeyHash,
+    };
   });
 }
 
@@ -70,6 +94,12 @@ function validateBeaconHash(beaconHash: string): string {
     throw new Error(
       `applyBeacon: beaconHash must be at least ${MIN_BEACON_BYTES} bytes ` +
         `(${MIN_BEACON_BYTES * 2} hex digits); received ${hex.length / 2} bytes`,
+    );
+  }
+  if (hex.length > MAX_BEACON_BYTES * 2) {
+    throw new Error(
+      `applyBeacon: beaconHash must be at most ${MAX_BEACON_BYTES} bytes ` +
+        `(${MAX_BEACON_BYTES * 2} hex digits); received ${hex.length / 2} bytes`,
     );
   }
 

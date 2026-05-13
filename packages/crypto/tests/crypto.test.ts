@@ -6,6 +6,7 @@ import {
   contribute,
   verify,
   verifyChain,
+  verifyChainForCircuit,
   generateEntropy,
   applyBeacon,
   exportVerificationKey,
@@ -39,7 +40,8 @@ describe("contribute", () => {
     const result = await contribute(genesis, entropy, "test-contributor");
     expect(result.zkey).toBeInstanceOf(Uint8Array);
     expect(result.zkey.length).toBeGreaterThan(0);
-    expect(result.hash).toMatch(/^0x[0-9a-f]+$/);
+    expect(result.contributionHash).toMatch(/^0x[0-9a-f]{128}$/);
+    expect(result.zkeyHash).toMatch(/^0x[0-9a-f]{64}$/);
   });
 
   it("produces different zkeys for different entropy", async () => {
@@ -51,7 +53,15 @@ describe("contribute", () => {
     const result1 = await contribute(genesis, entropy1);
     const result2 = await contribute(genesis, entropy2);
 
-    expect(result1.hash).not.toBe(result2.hash);
+    expect(result1.contributionHash).not.toBe(result2.contributionHash);
+    expect(result1.zkeyHash).not.toBe(result2.zkeyHash);
+  });
+
+  it("rejects empty entropy", async () => {
+    const genesis = await generateInitialZkey(ptau, r1cs);
+    await expect(
+      contribute(genesis, new Uint8Array(0), "empty"),
+    ).rejects.toThrow(/entropy must not be empty/i);
   });
 });
 
@@ -80,11 +90,15 @@ describe("verify", () => {
     expect(valid).toBe(false);
   });
 
-  it("throws on a completely invalid zkey", async () => {
+  it("returns false on a completely invalid zkey instead of throwing", async () => {
     const garbage = new Uint8Array(64).fill(0xde);
-    await expect(verify(r1cs, ptau, garbage)).rejects.toThrow(
-      /invalid/i,
-    );
+    const valid = await verify(r1cs, ptau, garbage);
+    expect(valid).toBe(false);
+  });
+
+  it("returns false on an empty zkey", async () => {
+    const valid = await verify(r1cs, ptau, new Uint8Array(0));
+    expect(valid).toBe(false);
   });
 });
 
@@ -127,6 +141,78 @@ describe("verifyChain", () => {
     const valid = await verifyChain(ptau, genesis, tampered);
     expect(valid).toBe(false);
   });
+
+  it("returns false on a completely invalid latestZkey instead of throwing", async () => {
+    const genesis = await generateInitialZkey(ptau, r1cs);
+    const garbage = new Uint8Array(64).fill(0xde);
+    const valid = await verifyChain(ptau, genesis, garbage);
+    expect(valid).toBe(false);
+  });
+});
+
+describe("verifyChainForCircuit", () => {
+  it("validates a chain bound to the expected circuit", async () => {
+    const genesis = await generateInitialZkey(ptau, r1cs);
+    const { zkey: zkey1 } = await contribute(
+      genesis,
+      new Uint8Array(32).fill(1),
+    );
+    const { zkey: zkey2 } = await contribute(
+      zkey1,
+      new Uint8Array(32).fill(2),
+    );
+
+    const valid = await verifyChainForCircuit(r1cs, ptau, genesis, zkey2);
+    expect(valid).toBe(true);
+  });
+
+  it("validates the empty-chain case when the genesis matches the circuit", async () => {
+    const genesis = await generateInitialZkey(ptau, r1cs);
+    const valid = await verifyChainForCircuit(r1cs, ptau, genesis, genesis);
+    expect(valid).toBe(true);
+  });
+
+  it("rejects identical garbage inputs (closes the empty-chain footgun)", async () => {
+    const garbage = new Uint8Array(64).fill(0xde);
+    const valid = await verifyChainForCircuit(r1cs, ptau, garbage, garbage);
+    expect(valid).toBe(false);
+  });
+
+  it("rejects a genesis that does not correspond to the circuit", async () => {
+    const genesis = await generateInitialZkey(ptau, r1cs);
+    const tamperedGenesis = new Uint8Array(genesis);
+    const mid = Math.floor(tamperedGenesis.length / 2);
+    tamperedGenesis[mid] ^= 0xff;
+    tamperedGenesis[mid + 1] ^= 0xff;
+
+    const valid = await verifyChainForCircuit(
+      r1cs,
+      ptau,
+      tamperedGenesis,
+      tamperedGenesis,
+    );
+    expect(valid).toBe(false);
+  });
+
+  it("rejects a tampered tail even with a valid genesis", async () => {
+    const genesis = await generateInitialZkey(ptau, r1cs);
+    const { zkey } = await contribute(genesis, new Uint8Array(32).fill(9));
+
+    const tampered = new Uint8Array(zkey);
+    const mid = Math.floor(tampered.length / 2);
+    tampered[mid] ^= 0xff;
+    tampered[mid + 1] ^= 0xff;
+
+    const valid = await verifyChainForCircuit(r1cs, ptau, genesis, tampered);
+    expect(valid).toBe(false);
+  });
+
+  it("returns false on a completely invalid latestZkey instead of throwing", async () => {
+    const genesis = await generateInitialZkey(ptau, r1cs);
+    const garbage = new Uint8Array(64).fill(0xde);
+    const valid = await verifyChainForCircuit(r1cs, ptau, genesis, garbage);
+    expect(valid).toBe(false);
+  });
 });
 
 describe("generateEntropy", () => {
@@ -156,14 +242,16 @@ describe("applyBeacon", () => {
   const VALID_BEACON =
     "0102030405060708091011121314151617181920212223242526272829303132";
 
-  it("produces a finalized zkey with a beacon", async () => {
+  it("produces a finalized zkey, contribution hash, and zkey hash", async () => {
     const genesis = await generateInitialZkey(ptau, r1cs);
     const { zkey } = await contribute(genesis, new Uint8Array(32).fill(1));
 
     const finalized = await applyBeacon(zkey, VALID_BEACON);
 
-    expect(finalized).toBeInstanceOf(Uint8Array);
-    expect(finalized.length).toBeGreaterThan(0);
+    expect(finalized.zkey).toBeInstanceOf(Uint8Array);
+    expect(finalized.zkey.length).toBeGreaterThan(0);
+    expect(finalized.contributionHash).toMatch(/^0x[0-9a-f]{128}$/);
+    expect(finalized.zkeyHash).toMatch(/^0x[0-9a-f]{64}$/);
   });
 
   it("produces deterministic output for the same beacon", async () => {
@@ -173,7 +261,11 @@ describe("applyBeacon", () => {
     const finalized1 = await applyBeacon(zkey, VALID_BEACON);
     const finalized2 = await applyBeacon(zkey, VALID_BEACON);
 
-    expect(Buffer.from(finalized1).equals(Buffer.from(finalized2))).toBe(true);
+    expect(
+      Buffer.from(finalized1.zkey).equals(Buffer.from(finalized2.zkey)),
+    ).toBe(true);
+    expect(finalized1.contributionHash).toBe(finalized2.contributionHash);
+    expect(finalized1.zkeyHash).toBe(finalized2.zkeyHash);
   });
 
   it("accepts a beacon with the 0x prefix", async () => {
@@ -181,7 +273,7 @@ describe("applyBeacon", () => {
     const { zkey } = await contribute(genesis, new Uint8Array(32).fill(1));
 
     const finalized = await applyBeacon(zkey, `0x${VALID_BEACON}`);
-    expect(finalized.length).toBeGreaterThan(0);
+    expect(finalized.zkey.length).toBeGreaterThan(0);
   });
 
   it("rejects non-hex beacon", async () => {
@@ -214,10 +306,23 @@ describe("applyBeacon", () => {
     await expect(applyBeacon(zkey, "")).rejects.toThrow(/at least 32 bytes/i);
   });
 
+  it("rejects a beacon longer than 255 bytes (matches snarkjs upper bound)", async () => {
+    const genesis = await generateInitialZkey(ptau, r1cs);
+    const { zkey } = await contribute(genesis, new Uint8Array(32).fill(1));
+
+    await expect(applyBeacon(zkey, "00".repeat(256))).rejects.toThrow(
+      /at most 255 bytes/i,
+    );
+  });
+
   it("rejects out-of-range numIterationsExp", async () => {
     const genesis = await generateInitialZkey(ptau, r1cs);
     const { zkey } = await contribute(genesis, new Uint8Array(32).fill(1));
 
+    // Below the new lower bound of 10 (was 1 before; snarkjs rejects < 10).
+    await expect(applyBeacon(zkey, VALID_BEACON, 9)).rejects.toThrow(
+      /numIterationsExp/,
+    );
     await expect(applyBeacon(zkey, VALID_BEACON, 0)).rejects.toThrow(
       /numIterationsExp/,
     );
@@ -273,7 +378,7 @@ describe("exportVerificationKey", () => {
       "0102030405060708091011121314151617181920212223242526272829303132";
     const finalized = await applyBeacon(zkey, beaconHash);
 
-    const vkey = await exportVerificationKey(finalized);
+    const vkey = await exportVerificationKey(finalized.zkey);
 
     expect(vkey).toHaveProperty("protocol", "groth16");
     expect(vkey).toHaveProperty("curve");

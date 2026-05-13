@@ -35,7 +35,8 @@ describe("browserContribute (direct)", () => {
 
     expect(result.zkey).toBeInstanceOf(Uint8Array);
     expect(result.zkey.length).toBeGreaterThan(0);
-    expect(result.hash).toMatch(/^0x[0-9a-f]{128}$/);
+    expect(result.contributionHash).toMatch(/^0x[0-9a-f]{128}$/);
+    expect(result.zkeyHash).toMatch(/^0x[0-9a-f]{64}$/);
 
     const valid = await verify(r1cs, ptau, result.zkey);
     expect(valid).toBe(true);
@@ -56,7 +57,14 @@ describe("browserContribute (direct)", () => {
     const e2 = new Uint8Array(32).fill(0xa5);
     const r1 = await browserContribute(genesis, e1, "test");
     const r2 = await browserContribute(genesis, e2, "test");
-    expect(r1.hash).not.toBe(r2.hash);
+    expect(r1.contributionHash).not.toBe(r2.contributionHash);
+    expect(r1.zkeyHash).not.toBe(r2.zkeyHash);
+  });
+
+  it("rejects empty entropy", async () => {
+    await expect(
+      browserContribute(genesis, new Uint8Array(0), "empty"),
+    ).rejects.toThrow(/entropy must not be empty/i);
   });
 });
 
@@ -125,7 +133,8 @@ describe("worker onmessage protocol", () => {
     if (result.type !== ResponseType.Result) throw new Error("unreachable");
 
     expect(result.newZkey).toBeInstanceOf(Uint8Array);
-    expect(result.hash).toMatch(/^0x[0-9a-f]{128}$/);
+    expect(result.contributionHash).toMatch(/^0x[0-9a-f]{128}$/);
+    expect(result.zkeyHash).toMatch(/^0x[0-9a-f]{64}$/);
 
     expect(posted[2].transfer).toEqual([result.newZkey.buffer]);
 
@@ -147,6 +156,29 @@ describe("worker onmessage protocol", () => {
     expect(posted[0].transfer).toEqual([reply.data.buffer]);
   });
 
+  it("posts an Error response when entropy is empty", async () => {
+    // End-to-end coverage of the empty-entropy guard in `browserContribute`:
+    // the worker must turn the thrown error into a clean Error response
+    // instead of hanging or producing a silent no-op.
+    const garbage = new Uint8Array(64).fill(0xde);
+    const entropy = new Uint8Array(0);
+
+    await fireMessage({
+      type: RequestType.Contribute,
+      prevZkey: garbage,
+      entropy,
+      name: "empty-entropy",
+    });
+
+    expect(posted.length).toBeGreaterThanOrEqual(2);
+    expect(posted[0].msg.type).toBe(ResponseType.Progress);
+
+    const last = posted[posted.length - 1].msg;
+    expect(last.type).toBe(ResponseType.Error);
+    if (last.type !== ResponseType.Error) throw new Error("unreachable");
+    expect(last.message).toMatch(/entropy must not be empty/i);
+  });
+
   it("posts an Error response when contribute throws", async () => {
     const garbage = new Uint8Array(0);
     const entropy = new Uint8Array(32).fill(0x01);
@@ -166,5 +198,9 @@ describe("worker onmessage protocol", () => {
     if (errorMsg.type !== ResponseType.Error) throw new Error("unreachable");
     expect(typeof errorMsg.message).toBe("string");
     expect(errorMsg.message.length).toBeGreaterThan(0);
+
+    // Entropy must be zeroed even on the failure branch (regression guard
+    // for the toxic-waste hygiene fix).
+    for (const byte of entropy) expect(byte).toBe(0);
   });
 });

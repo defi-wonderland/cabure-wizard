@@ -27,7 +27,10 @@ export type WorkerResponse =
   | {
       type: ResponseType.Result;
       newZkey: Uint8Array;
-      hash: string;
+      /** snarkjs contribution hash (Blake2b over the contribution pubkey). */
+      contributionHash: string;
+      /** SHA-256 of the new zkey binary. */
+      zkeyHash: string;
     }
   | {
       type: ResponseType.Entropy;

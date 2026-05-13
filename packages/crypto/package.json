@@ -37,6 +37,7 @@
   "scripts": {
     "build": "node build.mjs",
     "test": "vitest run",
+    "audit": "pnpm audit --prod --audit-level high",
     "clean": "rm -rf dist"
   },
   "dependencies": {

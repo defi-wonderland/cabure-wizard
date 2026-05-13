@@ -20,6 +20,7 @@ import {
   contribute,
   verify,
   verifyChain,
+  verifyChainForCircuit,
   generateEntropy,
   applyBeacon,
   exportVerificationKey,
@@ -29,11 +30,12 @@ import {
 | Function | Purpose |
 | --- | --- |
 | `generateInitialZkey(ptau, r1cs)` | Generate the genesis zkey from Powers of Tau + R1CS |
-| `contribute(prevZkey, entropy, name?)` | Apply a contribution; returns `{ zkey, hash }` |
+| `contribute(prevZkey, entropy, name?)` | Apply a contribution; returns `{ zkey, contributionHash, zkeyHash }` |
 | `verify(r1cs, ptau, zkey)` | Verify a zkey extends a chain rooted in (r1cs, ptau) |
 | `verifyChain(ptau, initialZkey, latestZkey)` | Verify the chain embedded in `latestZkey` reaches `initialZkey` (taken as trusted) |
+| `verifyChainForCircuit(r1cs, ptau, initialZkey, latestZkey)` | Same as `verifyChain` but first checks `initialZkey` is a valid genesis for `(r1cs, ptau)` |
 | `generateEntropy(sources?)` | Combine WebCrypto CSPRNG with optional additional sources |
-| `applyBeacon(zkey, beaconHash, numIterationsExp?)` | Apply a public randomness beacon to finalize |
+| `applyBeacon(zkey, beaconHash, numIterationsExp?)` | Apply a public randomness beacon to finalize; returns `{ zkey, contributionHash, zkeyHash }` |
 | `exportVerificationKey(zkey)` | Extract the Groth16 verification key |
 
 ### Browser worker
@@ -56,9 +58,11 @@ const worker = new Worker(
 
 Use the typed `WorkerRequest` / `WorkerResponse` discriminated unions when posting messages. The worker implements `contribute()` and a CSPRNG `generateEntropy` request.
 
-## Determinism across Node and browser
+## Entropy encoding across Node and browser
 
-Identical entropy bytes produce identical snarkjs contribution hashes whether `contribute()` is called via the Node API or via the browser worker. Both code paths encode entropy as lowercase hex without a `0x` prefix. snarkjs encodes that string via `TextEncoder` and mixes the bytes into its RNG, so any divergence in the encoding would change the contribution; the shared `bytesToHexRaw` helper guards against this drift.
+`contribute()` is non-deterministic by design. snarkjs combines the user-supplied entropy with 64 fresh bytes from `getRandomBytes()` via Blake2b before deriving the trapdoor, so two runs with identical user entropy on the same machine produce different contribution hashes. This is the property the `produces different zkeys on repeat calls with identical entropy` test guards against regressions.
+
+What the Node API and the browser worker DO share is the encoding of user entropy before it reaches snarkjs. Both paths use the prefix-free lowercase hex encoder `bytesToHexRaw` from `hex.ts`; the `0x`-prefixed `toHex` is reserved for hash outputs and display. snarkjs reads the entropy string via `TextEncoder`, so a divergence between Node and browser in the literal characters would change snarkjs's RNG mixing input on one path only. Keeping a single encoder is a regression guard for encoder parity, not a determinism claim about the output contribution.
 
 ## Toxic waste and zeroization
 
@@ -100,6 +104,43 @@ worker.terminate();
 ```
 
 Transferring the buffers (rather than copying) means the main thread no longer holds the entropy after `postMessage`. Terminating the worker after the result kills the only context that still holds the snarkjs internals.
+
+## Dependencies and standalone installs
+
+`@wonderland/cabure-crypto` depends on `snarkjs@0.7.5`. snarkjs pulls in `bfj -> jsonpath -> underscore`, and `underscore` versions `<= 1.13.7` carry the [GHSA-qpx9-hpmf-5gmw](https://github.com/jashkenas/underscore/security/advisories/GHSA-qpx9-hpmf-5gmw) advisory. The current logic of this package is not affected by the underlying vulnerability, but the dependency is flagged by `npm audit` and should not appear in your install graph.
+
+This package intentionally does NOT ship an `overrides` field of its own: per the [npm docs](https://docs.npmjs.com/cli/v11/configuring-npm/package-json#overrides), overrides are only respected in the **consuming project's** root `package.json` and are ignored when defined inside an installed dependency. The Caburé monorepo and the project template emitted by `@wonderland/create-cabure-ceremony` pin `underscore` to `1.13.8` in their own root overrides. If you install this package standalone, add the same override in your `package.json`:
+
+```jsonc
+// npm v8.3+
+{
+  "overrides": {
+    "underscore@<=1.13.7": "1.13.8"
+  }
+}
+
+// pnpm
+{
+  "pnpm": {
+    "overrides": {
+      "underscore@<=1.13.7": "1.13.8"
+    }
+  }
+}
+
+// yarn
+{
+  "resolutions": {
+    "underscore": "1.13.8"
+  }
+}
+```
+
+Verify the install graph is clean:
+
+```bash
+pnpm --filter @wonderland/cabure-crypto audit  # or `npm audit --omit=dev`
+```
 
 ## License
 

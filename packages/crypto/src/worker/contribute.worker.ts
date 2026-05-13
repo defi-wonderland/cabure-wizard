@@ -47,26 +47,40 @@ export function attachWorker(target: WorkerScope): void {
     try {
       switch (msg.type) {
         case RequestType.Contribute: {
-          post({ type: ResponseType.Progress, stage: "computing", percent: 0 });
+          try {
+            post({
+              type: ResponseType.Progress,
+              stage: "computing",
+              percent: 0,
+            });
 
-          const result = await browserContribute(
-            msg.prevZkey,
-            msg.entropy,
-            msg.name ?? "contributor",
-          );
+            const result = await browserContribute(
+              msg.prevZkey,
+              msg.entropy,
+              msg.name ?? "contributor",
+            );
 
-          post({ type: ResponseType.Progress, stage: "done", percent: 100 });
+            post({
+              type: ResponseType.Progress,
+              stage: "done",
+              percent: 100,
+            });
 
-          post(
-            {
-              type: ResponseType.Result,
-              newZkey: result.zkey,
-              hash: result.hash,
-            },
-            [result.zkey.buffer],
-          );
-
-          msg.entropy.fill(0);
+            post(
+              {
+                type: ResponseType.Result,
+                newZkey: result.zkey,
+                contributionHash: result.contributionHash,
+                zkeyHash: result.zkeyHash,
+              },
+              [result.zkey.buffer],
+            );
+          } finally {
+            // Zero the entropy buffer on success and on failure. Pairs with
+            // the outer try/catch that turns thrown errors into Error
+            // responses; the buffer is wiped before the response is posted.
+            msg.entropy.fill(0);
+          }
           break;
         }
 
@@ -85,7 +99,7 @@ export function attachWorker(target: WorkerScope): void {
 }
 
 // Real worker entry. In Node (tests importing this module), `self` is
-// undefined and this is a no-op — tests call `attachWorker(mock)` directly.
+// undefined and this is a no-op; tests call `attachWorker(mock)` directly.
 if (typeof self !== "undefined") {
   attachWorker(self as unknown as WorkerScope);
 }
