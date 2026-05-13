@@ -4,12 +4,18 @@ import {
   getAllCircuitStates,
   getCircuitState,
   getManifest,
+  getParticipantContributedCircuitIds,
   isCeremonyActive,
+  kvKey,
   pruneExpiredEntries,
-  circuitStatePath,
   selectCircuitsForTier,
 } from "@/lib/ceremony-state";
-import { getCeremonyConfig, type TierId } from "@/lib/ceremony-config";
+import {
+  getCeremonyConfig,
+  type CeremonyCircuitConfig,
+  type CeremonyTierConfig,
+  type TierId,
+} from "@/lib/ceremony-config";
 import { getParticipant } from "@/lib/participant-auth";
 import { acquireLock, releaseLock, setJson } from "@/lib/kv-store";
 
@@ -44,7 +50,27 @@ export async function POST(request: NextRequest) {
   }
 
   let resolvedIds: string[];
-  if (payload.tierId && config.tiersEnabled && config.tiers) {
+  if (payload.tierId) {
+    if (!config.tiersEnabled || !config.tiers || config.tiers.length === 0) {
+      return NextResponse.json(
+        { error: "This ceremony does not have tiers configured" },
+        { status: 400 },
+      );
+    }
+    const tierExists = config.tiers.some(
+      (t: CeremonyTierConfig) => t.id === payload.tierId,
+    );
+    if (!tierExists) {
+      const availableTiers = config.tiers
+        .map((t: CeremonyTierConfig) => t.id)
+        .join(", ");
+      return NextResponse.json(
+        {
+          error: `Invalid tier '${payload.tierId}'. Available tiers are: ${availableTiers}`,
+        },
+        { status: 400 },
+      );
+    }
     resolvedIds = selectCircuitsForTier(
       payload.tierId,
       config.tiers,
@@ -77,6 +103,38 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  const contributedCircuitIds =
+    await getParticipantContributedCircuitIds(participantId);
+  const isCircuitEligible = (circuitConfig: CeremonyCircuitConfig): boolean => {
+    if (contributedCircuitIds.has(circuitConfig.id)) {
+      return false;
+    }
+
+    const circuit = allCircuits.find((state) => state.id === circuitConfig.id);
+    return (
+      !circuit || circuit.totalContributions < circuitConfig.targetContributions
+    );
+  };
+  const eligibleResolvedIds = resolvedIds.filter((circuitId) => {
+    const circuitConfig = config.circuits.find((c) => c.id === circuitId);
+    return circuitConfig ? isCircuitEligible(circuitConfig) : false;
+  });
+
+  if (eligibleResolvedIds.length === 0) {
+    const fallbackCircuitId = config.circuits.find(isCircuitEligible)?.id;
+
+    if (!fallbackCircuitId) {
+      return NextResponse.json(
+        { error: "You have already contributed to every available circuit." },
+        { status: 403 },
+      );
+    }
+
+    resolvedIds = [fallbackCircuitId];
+  } else {
+    resolvedIds = eligibleResolvedIds;
+  }
+
   const now = Date.now();
   const positions: QueuePosition[] = [];
   for (const circuitId of resolvedIds) {
@@ -92,7 +150,7 @@ export async function POST(request: NextRequest) {
 
     try {
       const circuit = await getCircuitState(circuitId);
-      const key = circuitStatePath(config.storage.circuitStatePrefix, circuitId);
+      const key = kvKey(config.storage.circuitStatePrefix, circuitId);
 
       const pruned = pruneExpiredEntries(
         circuit.queue,
@@ -166,7 +224,7 @@ export async function GET(request: NextRequest) {
   if (pruned.length < circuit.queue.length) {
     circuit.queue = pruned;
     await setJson(
-      circuitStatePath(config.storage.circuitStatePrefix, circuitId),
+      kvKey(config.storage.circuitStatePrefix, circuitId),
       circuit,
     );
   }

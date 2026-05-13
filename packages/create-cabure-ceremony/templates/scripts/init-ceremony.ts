@@ -7,7 +7,13 @@ import { put } from "@vercel/blob";
 import { loadEnvConfig } from "@next/env";
 import { generateInitialZkey } from "@wonderland/cabure-crypto";
 
-import { getJson, listClear, setJson } from "@/lib/kv-store";
+import { getEndDateDeadlineMs } from "@/lib/ceremony-state";
+import {
+  clearParticipantContributions,
+  getJson,
+  listClear,
+  setJson,
+} from "@/lib/kv-store";
 import { ceremonyConfig } from "../ceremony.config";
 
 // snarkjs/fastfile does not always close file handles explicitly. Node 25+
@@ -108,12 +114,15 @@ async function main() {
     }
   }
 
+  const endDate = ceremonyConfig.endDate?.trim() || null;
+  getEndDateDeadlineMs(endDate);
+
   console.log(`Ceremony:    ${ceremonyConfig.name}`);
   console.log(`Circuits:    ${ceremonyConfig.circuits.length}`);
   console.log(
     `Target:      ${ceremonyConfig.targetContributions} contributions`,
   );
-  console.log(`End date:    ${ceremonyConfig.endDate ?? "(none)"}`);
+  console.log(`End date:    ${endDate ?? "(none)"}`);
   console.log();
 
   await mkdir(OUTPUT_DIR, { recursive: true });
@@ -195,7 +204,7 @@ async function main() {
   const manifest: ManifestState = {
     ceremonyName: ceremonyConfig.name,
     targetContributions: ceremonyConfig.targetContributions,
-    endDate: ceremonyConfig.endDate,
+    endDate,
     startedAt,
     circuits: circuitSummaries.map((c) => ({ id: c.circuitId })),
   };
@@ -205,6 +214,15 @@ async function main() {
 
   await listClear(ceremonyConfig.storage.receiptsPath);
   console.log(`Receipts list cleared: ${ceremonyConfig.storage.receiptsPath}`);
+
+  const clearedParticipants = await clearParticipantContributions({
+    participantsIndexKey: ceremonyConfig.storage.participantsIndexPath,
+    participantContributionsPrefix:
+      ceremonyConfig.storage.participantContributionsPrefix,
+  });
+  console.log(
+    `Contribution index cleared: ${clearedParticipants} participant(s).`,
+  );
   console.log();
 
   console.log("Generating initialization transcript...");
@@ -213,7 +231,7 @@ async function main() {
       name: ceremonyConfig.name,
       slug: ceremonyConfig.slug,
       targetContributions: ceremonyConfig.targetContributions,
-      endDate: ceremonyConfig.endDate,
+      endDate,
       startedAt,
       initializedAt: new Date(startedAt).toISOString(),
       genesisChainHash: GENESIS_CHAIN_HASH,
@@ -223,6 +241,9 @@ async function main() {
       manifestPath: ceremonyConfig.storage.manifestPath,
       circuitStatePrefix: ceremonyConfig.storage.circuitStatePrefix,
       receiptsPath: ceremonyConfig.storage.receiptsPath,
+      participantContributionsPrefix:
+        ceremonyConfig.storage.participantContributionsPrefix,
+      participantsIndexPath: ceremonyConfig.storage.participantsIndexPath,
       zkeyPrefix: ceremonyConfig.storage.zkeyPrefix,
     },
   };
@@ -239,7 +260,7 @@ async function main() {
   console.log(
     `  Target:        ${ceremonyConfig.targetContributions} contributions`,
   );
-  console.log(`  End date:      ${ceremonyConfig.endDate ?? "(none)"}`);
+  console.log(`  End date:      ${endDate ?? "(none)"}`);
   console.log(`  Genesis zkeys: public/genesis/*.genesis.zkey`);
   console.log(`  Transcript:    public/genesis/init-transcript.json`);
 

@@ -23,10 +23,15 @@ export const defaultCopy: CeremonyCopy = {
       circuitsLabel: "Circuits",
       progressLabel: "Progress",
     },
-    authNote:
-      "Sign in with GitHub to prevent spam and join the queue.",
+    authNote: "Sign in with GitHub to prevent spam and join the queue.",
     githubCta: "CONTINUE WITH GITHUB",
     beginCta: "BEGIN CONTRIBUTION",
+    eligibilityLoadingCta: "CHECKING ELIGIBILITY...",
+    downloadReceiptsCta: "DOWNLOAD MY RECEIPTS",
+    downloadingReceiptsCta: "PREPARING DOWNLOAD...",
+    alreadyContributedTitle: "You have already contributed",
+    alreadyContributedDescription:
+      "This GitHub account has contributed to every available circuit. You can still verify your receipts.",
     endedSubtitle: "This ceremony has concluded",
     endedDescription:
       "Thank you to everyone who contributed. The ceremony has reached its target. You can still verify existing receipts below.",
@@ -50,8 +55,13 @@ export const defaultCopy: CeremonyCopy = {
     description:
       "Choose how many circuits to contribute to. More circuits = stronger ceremony.",
     cta: "JOIN QUEUE",
+    joiningCta: "JOINING QUEUE...",
     tierLabelPrefix: "Tier",
     timeSuffix: "min",
+    pillWillRun: "will run",
+    pillAlreadyContributed: "already contributed",
+    pillTargetReached: "target reached",
+    pillNextAvailable: "next available",
   },
   progress: {
     title: "Contribution in progress",
@@ -120,9 +130,14 @@ export const defaultCopy: CeremonyCopy = {
       '{"circuitId":"multiplier","participantId":"...","contributionIndex":1}',
     cta: "VERIFY RECEIPT",
     verifyingCta: "VERIFYING...",
-    note: "This PoC verifies receipt presence in the coordinator state. Full cryptographic verification is not implemented yet.",
+    note: "This check confirms that the receipt's contribution hash matches the coordinator's record.",
     successTitle: "Receipt verified",
     invalidReceipt: "Receipt JSON is missing required fields.",
+    duplicateReceipt:
+      "Receipt list contains duplicate entries for the same contribution.",
+    hashMismatch:
+      "Submitted hash does not match the coordinator's record for {{circuitId}} #{{contributionIndex}}.",
+    errorLabel: "Error",
     backCta: "BACK TO LANDING",
   },
 };

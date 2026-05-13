@@ -19,6 +19,25 @@ export interface StatusResponse {
   circuits: CircuitStatus[];
 }
 
+export type CircuitPreviewState =
+  | "willRun"
+  | "alreadyContributed"
+  | "targetReached"
+  | "fallback";
+
+export interface TierPreview {
+  tierId: string;
+  items: Array<{ circuitId: string; state: CircuitPreviewState }>;
+}
+
+export interface ParticipantEligibilityResponse {
+  participantId: string;
+  contributedCircuitIds: string[];
+  eligibleCircuitIds: string[];
+  hasEligibleCircuits: boolean;
+  tierPreviews: TierPreview[];
+}
+
 export interface QueuePosition {
   participantId: string;
   circuitId: string;
@@ -43,7 +62,10 @@ export interface ZkeyInfo {
   hash: string | null;
 }
 
-async function apiFetch<T>(input: RequestInfo | URL, init?: RequestInit): Promise<T> {
+async function apiFetch<T>(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+): Promise<T> {
   const response = await fetch(input, init);
   const contentType = response.headers.get("content-type") ?? "";
 
@@ -51,7 +73,8 @@ async function apiFetch<T>(input: RequestInfo | URL, init?: RequestInit): Promis
     const body = contentType.includes("application/json")
       ? ((await response.json()) as { error?: string })
       : { error: await response.text() };
-    const message = body.error || `Request failed with status ${response.status}.`;
+    const message =
+      body.error || `Request failed with status ${response.status}.`;
     throw new Error(message);
   }
 
@@ -64,6 +87,29 @@ async function apiFetch<T>(input: RequestInfo | URL, init?: RequestInit): Promis
 
 export async function getStatus(signal?: AbortSignal): Promise<StatusResponse> {
   return await apiFetch<StatusResponse>("/api/ceremony/status", { signal });
+}
+
+export async function getParticipantEligibility(
+  signal?: AbortSignal,
+): Promise<ParticipantEligibilityResponse> {
+  return await apiFetch<ParticipantEligibilityResponse>(
+    "/api/ceremony/participant/eligibility",
+    { signal },
+  );
+}
+
+export interface ParticipantReceiptsResponse {
+  participantId: string;
+  receipts: ReceiptResponse[];
+}
+
+export async function getMyReceipts(
+  signal?: AbortSignal,
+): Promise<ParticipantReceiptsResponse> {
+  return await apiFetch<ParticipantReceiptsResponse>(
+    "/api/ceremony/participant/receipts",
+    { signal },
+  );
 }
 
 export async function joinQueue(options: {
@@ -150,6 +196,7 @@ export async function getReceipt(options: {
   circuitId: string;
   participantId: string;
   contributionIndex: number;
+  contributionHash?: string;
   signal?: AbortSignal;
 }): Promise<ReceiptResponse> {
   const params = new URLSearchParams({
@@ -157,6 +204,9 @@ export async function getReceipt(options: {
     participantId: options.participantId,
     contributionIndex: String(options.contributionIndex),
   });
+  if (options.contributionHash) {
+    params.set("contributionHash", options.contributionHash);
+  }
   return await apiFetch<ReceiptResponse>(
     `/api/ceremony/receipt?${params.toString()}`,
     { signal: options.signal },
