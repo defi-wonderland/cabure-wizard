@@ -55,6 +55,7 @@ export const defaultCopy: CeremonyCopy = {
     description:
       "Choose how many circuits to contribute to. More circuits = stronger ceremony.",
     cta: "JOIN QUEUE",
+    joiningCta: "JOINING QUEUE...",
     tierLabelPrefix: "Tier",
     timeSuffix: "min",
     pillWillRun: "will run",
