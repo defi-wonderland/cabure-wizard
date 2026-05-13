@@ -13,11 +13,12 @@ const MAX_NUM_ITERATIONS_EXP = 32;
 /**
  * Apply a public randomness beacon to finalize the ceremony.
  *
- * The beacon should be a value that no participant could have predicted or
- * influenced before the ceremony's contribution window closed (e.g. a future
- * Ethereum RANDAO reveal, drand round, or a hash of a public event).
- * Self-generated random bytes are NOT a valid beacon: the whole point of the
- * beacon is independent public verifiability.
+ * The beacon must be a value that no participant could have predicted or
+ * influenced before the ceremony's contribution window closed. Caburé
+ * ceremonies use the next Ethereum beacon-chain RANDAO reveal as the
+ * canonical source; that is the only blessed beacon for this project.
+ * Self-generated random bytes are NOT a valid beacon: the whole point of
+ * the beacon is independent public verifiability.
  *
  * Input validation is intentionally a strict subset of snarkjs's bounds:
  *
