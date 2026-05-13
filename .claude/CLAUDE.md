@@ -41,15 +41,25 @@ contribute(
   entropy: Uint8Array,
   name?: string,
 ): Promise<ContributionResult>
-// ContributionResult = { zkey: Uint8Array; hash: string }
+// ContributionResult = {
+//   zkey: Uint8Array;
+//   contributionHash: string;  // snarkjs Blake2b hash over the contribution pubkey
+//   zkeyHash: string;          // SHA-256 of the new zkey binary
+// }
 
 verify(r1cs: Uint8Array, ptau: Uint8Array, zkey: Uint8Array): Promise<boolean>
 
 verifyChain(
+  ptau: Uint8Array,
+  initialZkey: Uint8Array,
+  latestZkey: Uint8Array,
+): Promise<boolean>
+
+verifyChainForCircuit(
   r1cs: Uint8Array,
   ptau: Uint8Array,
   initialZkey: Uint8Array,
-  contributions: Uint8Array[],
+  latestZkey: Uint8Array,
 ): Promise<boolean>
 
 generateEntropy(sources?: EntropySource[]): Promise<Uint8Array>
@@ -58,7 +68,12 @@ applyBeacon(
   zkey: Uint8Array,
   beaconHash: string,
   numIterationsExp?: number,
-): Promise<Uint8Array>
+): Promise<BeaconResult>
+// BeaconResult = {
+//   zkey: Uint8Array;
+//   contributionHash: string;  // snarkjs Blake2b hash for the beacon contribution
+//   zkeyHash: string;          // SHA-256 of the finalized zkey binary
+// }
 
 exportVerificationKey(zkey: Uint8Array): Promise<object>
 ```
