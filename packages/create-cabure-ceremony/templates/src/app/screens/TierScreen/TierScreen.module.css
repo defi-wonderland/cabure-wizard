@@ -122,12 +122,28 @@
   font-family: var(--font-mono), monospace;
 }
 
-.chipComplete {
-  opacity: 0.5;
-  text-decoration: line-through;
+.chipWillRun {
+  border-color: var(--color-accent);
+  color: var(--color-accent-dark);
+  background: rgba(149, 194, 58, 0.08);
+}
+
+.chipFallback {
+  border-color: var(--color-accent);
+  color: var(--color-accent-dark);
+  background: rgba(149, 194, 58, 0.12);
+}
+
+.chipSkipped {
+  opacity: 0.55;
 }
 
 .chipProgress {
   margin-left: 0.125rem;
   opacity: 0.7;
+}
+
+.chipStatus {
+  margin-left: 0.25rem;
+  opacity: 0.8;
 }

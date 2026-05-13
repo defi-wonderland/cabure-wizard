@@ -152,7 +152,7 @@ async function updateConfigConstraints(
 
 async function main() {
   const force = process.argv.includes("--force");
-  const skipVerify = process.argv.includes("--skip-verify");
+  const verify = process.argv.includes("--verify");
 
   console.log("=== Setup PPoT Phase 2 file ===\n");
 
@@ -191,7 +191,7 @@ async function main() {
     console.log(`  Saved to ${PTAU_DEST} (${formatBytes(size)})\n`);
   }
 
-  if (!skipVerify) {
+  if (verify) {
     console.log("Verifying ptau file (this may take a while for large files)...");
     // @ts-expect-error snarkjs types are wrong: actual signature is verify(filename, logger)
     const valid = await snarkjs.powersOfTau.verify(PTAU_DEST);
@@ -203,7 +203,7 @@ async function main() {
     }
     console.log("  Verification passed.\n");
   } else {
-    console.log("Skipping ptau verification (--skip-verify).\n");
+    console.log("Skipping ptau verification by default. Use --verify to enable it.\n");
   }
 
   console.log("Updating ceremony config...");
@@ -215,7 +215,7 @@ async function main() {
   console.log(`  Max constraints: ${maxConstraints.toLocaleString("en-US")}`);
   console.log(`  Ptau degree: ${degree}`);
   console.log(`  Ptau file:   ${PTAU_DEST}`);
-  console.log(`  Verified:    ${!skipVerify}`);
+  console.log(`  Verified:    ${verify}`);
 
   process.exit(0);
 }

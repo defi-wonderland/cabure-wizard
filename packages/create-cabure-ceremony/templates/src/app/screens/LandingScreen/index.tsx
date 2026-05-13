@@ -1,8 +1,12 @@
 "use client";
 
+import { useState } from "react";
+
 import { useCeremonyConfig } from "@/hooks/useCeremonyConfig";
 import { useCeremonyStatus } from "@/hooks/useCeremonyStatus";
 import { useParticipant } from "@/hooks/useParticipant";
+import { useParticipantEligibility } from "@/hooks/useParticipantEligibility";
+import { getMyReceipts } from "@/lib/api";
 import { cn } from "@/utils/cn";
 import { Button } from "@/app/components/Button";
 import { ScreenWrapper } from "@/app/components/ScreenWrapper";
@@ -20,6 +24,8 @@ export function LandingScreen({
   const config = useCeremonyConfig();
   const { status } = useCeremonyStatus();
   const { isAuthenticated } = useParticipant();
+  const { eligibility, eligibilityLoading } = useParticipantEligibility();
+  const [downloadingReceipts, setDownloadingReceipts] = useState(false);
 
   const { copy } = config;
   const totalContributions = status?.totalContributions ?? 0;
@@ -33,6 +39,31 @@ export function LandingScreen({
     : 0;
   const isActive = status?.isActive ?? true;
   const footerLines = copy.landing.footer.split("\n");
+  const hasEligibleCircuits = eligibility?.hasEligibleCircuits ?? true;
+  const hasReceipts = (eligibility?.contributedCircuitIds.length ?? 0) > 0;
+  const beginCta = eligibilityLoading
+    ? copy.landing.eligibilityLoadingCta
+    : copy.landing.beginCta;
+
+  const handleDownloadReceipts = async () => {
+    if (downloadingReceipts) return;
+    setDownloadingReceipts(true);
+    try {
+      const data = await getMyReceipts();
+      const payload = JSON.stringify(data.receipts, null, 2);
+      const blob = new Blob([payload], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = copy.complete.receiptFilename;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      /* surfaced via re-enabling the button; no inline error UI on landing */
+    } finally {
+      setDownloadingReceipts(false);
+    }
+  };
 
   const statsData = [
     {
@@ -88,7 +119,37 @@ export function LandingScreen({
       )}
 
       {isAuthenticated && (
-        <Button onClick={onBegin}>{copy.landing.beginCta}</Button>
+        <>
+          {!hasEligibleCircuits && (
+            <div className={cn("card", styles.alreadyContributedCard)}>
+              <h3 className={styles.alreadyContributedTitle}>
+                {copy.landing.alreadyContributedTitle}
+              </h3>
+              <p className={styles.alreadyContributedText}>
+                {copy.landing.alreadyContributedDescription}
+              </p>
+            </div>
+          )}
+
+          {hasEligibleCircuits && (
+            <Button onClick={onBegin} disabled={eligibilityLoading}>
+              {beginCta}
+            </Button>
+          )}
+        </>
+      )}
+
+      {isAuthenticated && hasReceipts && (
+        <Button
+          variant="secondary"
+          size="small"
+          onClick={handleDownloadReceipts}
+          disabled={downloadingReceipts}
+        >
+          {downloadingReceipts
+            ? copy.landing.downloadingReceiptsCta
+            : copy.landing.downloadReceiptsCta}
+        </Button>
       )}
 
       <Button variant="secondary" size="small" onClick={onVerify}>

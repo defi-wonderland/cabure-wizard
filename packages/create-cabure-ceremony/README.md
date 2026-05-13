@@ -44,7 +44,7 @@ npm run dev
 
 | Script                      | Description                                                            |
 | --------------------------- | ---------------------------------------------------------------------- |
-| `npm run setup:ptau`        | Detect circuit constraints, download the correct PPoT ptau, and verify |
+| `npm run setup:ptau`        | Detect circuit constraints, download the correct PPoT ptau, and update config |
 | `npm run init:ceremony`     | Generate genesis zkey, upload to Blob, write manifest to KV. Saves local copies and transcript to `public/genesis/` |
 | `npm run finalize:ceremony` | Apply beacon (Ethereum RANDAO by default), verify zkeys. Saves final zkeys, vkeys, and transcript to `public/finalize/` |
 | `npm run reset:ceremony`    | Wipe all KV keys and Blob zkeys for a fresh start |

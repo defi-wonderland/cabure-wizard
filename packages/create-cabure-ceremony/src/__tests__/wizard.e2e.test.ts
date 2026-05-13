@@ -150,6 +150,9 @@ describe("wizard scaffold e2e", async () => {
       );
       expect(generatedConfig).toContain('id: "core"');
       expect(generatedConfig).toContain('id: "all"');
+      expect(generatedConfig).toContain(
+        'participantContributionsPrefix: "ceremony:contributions:participants"',
+      );
       expect(copiedR1cs).toBe("deposit-r1cs");
     },
   );

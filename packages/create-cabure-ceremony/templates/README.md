@@ -18,7 +18,9 @@ Place your compiled `.r1cs` files in the `circuits/` folder, then run:
 npm run setup:ptau
 ```
 
-This reads each circuit's constraint count, downloads the correct [PPoT](https://github.com/privacy-ethereum/perpetualpowersoftau) `.ptau` file, verifies it with snarkjs, and updates `ceremony.config.ts` with the actual constraint values.
+This reads each circuit's constraint count, downloads the correct [PPoT](https://github.com/privacy-ethereum/perpetualpowersoftau) `.ptau` file, and updates `ceremony.config.ts` with the actual constraint values.
+
+> **Note:** If the circuit artifacts path was skipped in the wizard and circuits are being added now, `ceremony.config.ts` will have empty `circuits` and `tiers` arrays. These must be populated manually — see the [Configuration](#configuration) section below for the expected shape and examples.
 
 ### 3. Configure environment variables
 
@@ -80,7 +82,7 @@ The init script only needs to run once. After deploying, the API routes handle c
 
 | Script                      | Description                                                              |
 | --------------------------- | ------------------------------------------------------------------------ |
-| `npm run setup:ptau`        | Detect circuit constraints, download the correct PPoT ptau, and verify   |
+| `npm run setup:ptau`        | Detect circuit constraints, download the correct PPoT ptau, and update config |
 | `npm run init:ceremony`     | Generate genesis zkey, upload to Blob, write manifest to KV. Outputs to `public/genesis/` |
 | `npm run reset:ceremony`    | Wipe all KV keys and Blob zkeys for a fresh start |
 | `npm run finalize:ceremony` | Apply beacon (Ethereum RANDAO by default), verify zkeys. Outputs to `public/finalize/` |
@@ -88,9 +90,9 @@ The init script only needs to run once. After deploying, the API routes handle c
 ### Setup ptau
 
 ```bash
-npm run setup:ptau                  # download, verify, and update config
-npm run setup:ptau -- --force       # re-download even if ptau exists
-npm run setup:ptau -- --skip-verify # skip snarkjs verification (faster for large files)
+npm run setup:ptau             # download and update constraints
+npm run setup:ptau -- --force  # re-download even if ptau exists
+npm run setup:ptau -- --verify # also run snarkjs ptau verification
 ```
 
 ### Finalization
@@ -124,4 +126,48 @@ Running `finalize:ceremony` generates `public/finalize/`:
 
 ## Configuration
 
-Edit `ceremony.config.ts` to customize the ceremony name, circuits, tiers, contribution targets, and UI copy.
+Edit `ceremony.config.ts` to customize the ceremony name, circuits, tiers, contribution targets, and UI copy. The full shape is defined by `CeremonyConfig` in `src/types/ceremony.ts`.
+
+### Circuits
+
+Each entry in `circuits` describes one zkey chain that contributors will extend. `setup:ptau` populates `constraints` automatically once the `.r1cs` files are in place.
+
+```ts
+circuits: [
+  {
+    id: "multiplier",                       // unique, stable ID used in receipts and storage paths
+    label: "Multiplier",                    // display name in the UI
+    description: "2-input multiplier proof",
+    constraints: "1024",                    // filled in by `npm run setup:ptau`
+    targetContributions: 100,               // per-circuit target; overrides the top-level value
+    artifacts: {
+      r1csPath: "circuits/multiplier.r1cs", // path relative to the project root
+      ptauPath: PTAU_PATH,                  // points to circuits/pot_final.ptau, downloaded by `setup:ptau`
+    },
+  },
+],
+```
+
+### Tiers
+
+Tiers group circuits so contributors can pick a smaller commitment on the tier selection screen. Set `tiersEnabled: false` and omit `tiers` to skip the tier screen entirely and contribute to every circuit. `circuitIds` must reference IDs defined in `circuits`.
+
+```ts
+tiersEnabled: true,
+tiers: [
+  {
+    id: "core",                                     // must be one of: "core" | "popular" | "all"
+    label: "Core circuits",
+    description: "Fast contribution — essential circuits only",
+    estimatedMinutes: 5,
+    circuitIds: ["multiplier"],
+  },
+  {
+    id: "all",
+    label: "Full ceremony",
+    description: "Contribute to every circuit",
+    estimatedMinutes: 30,
+    circuitIds: ["multiplier"],             // add more IDs here after defining matching circuits above
+  },
+],
+```

@@ -57,3 +57,45 @@
   flex-direction: column;
   gap: 0.5rem;
 }
+
+.textareaError {
+  border-color: var(--color-error);
+}
+
+.textareaError:focus {
+  border-color: var(--color-error);
+  box-shadow: 0 0 0 1px rgba(224, 82, 82, 0.25);
+}
+
+.errorCard {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-start;
+  background: rgba(224, 82, 82, 0.08);
+  border: 1px solid var(--color-error);
+  border-radius: 0.5rem;
+  padding: 0.75rem 1rem;
+  font-size: 0.75rem;
+  color: var(--color-error);
+}
+
+.errorIcon {
+  flex-shrink: 0;
+  width: 1rem;
+  height: 1rem;
+  margin-top: 0.125rem;
+}
+
+.errorBody {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  min-width: 0;
+  word-break: break-word;
+}
+
+.errorLabel {
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
