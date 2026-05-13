@@ -58,9 +58,11 @@ const worker = new Worker(
 
 Use the typed `WorkerRequest` / `WorkerResponse` discriminated unions when posting messages. The worker implements `contribute()` and a CSPRNG `generateEntropy` request.
 
-## Determinism across Node and browser
+## Entropy encoding across Node and browser
 
-Identical entropy bytes produce identical snarkjs contribution hashes whether `contribute()` is called via the Node API or via the browser worker. Both code paths encode entropy as lowercase hex without a `0x` prefix. snarkjs encodes that string via `TextEncoder` and mixes the bytes into its RNG, so any divergence in the encoding would change the contribution; the shared `bytesToHexRaw` helper guards against this drift.
+`contribute()` is non-deterministic by design. snarkjs combines the user-supplied entropy with 64 fresh bytes from `getRandomBytes()` via Blake2b before deriving the trapdoor, so two runs with identical user entropy on the same machine produce different contribution hashes. This is the property the `produces different zkeys on repeat calls with identical entropy` test guards against regressions.
+
+What the Node API and the browser worker DO share is the encoding of user entropy before it reaches snarkjs. Both paths use the prefix-free lowercase hex encoder `bytesToHexRaw` from `hex.ts`; the `0x`-prefixed `toHex` is reserved for hash outputs and display. snarkjs reads the entropy string via `TextEncoder`, so a divergence between Node and browser in the literal characters would change snarkjs's RNG mixing input on one path only. Keeping a single encoder is a regression guard for encoder parity, not a determinism claim about the output contribution.
 
 ## Toxic waste and zeroization
 

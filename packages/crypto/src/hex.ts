@@ -20,10 +20,15 @@ export function toHex(bytes: Uint8Array): string {
  * Encode bytes as a lowercase hex string with no `0x` prefix.
  *
  * snarkjs encodes its `entropy` parameter via `TextEncoder` and mixes the
- * resulting bytes into the contribution. The literal `0` and `x` characters
- * of a `0x`-prefixed string would change the contribution. Both Node and
- * browser code paths must use the same prefix-free encoding so that
- * identical entropy bytes produce identical contributions.
+ * resulting bytes into its RNG. The literal `0` and `x` characters of a
+ * `0x`-prefixed string would change what snarkjs sees. Both Node and
+ * browser code paths must use the same prefix-free encoding so the bytes
+ * snarkjs mixes are identical for the same user entropy.
+ *
+ * The output contribution is non-deterministic regardless: snarkjs also
+ * mixes 64 fresh bytes from its own `getRandomBytes` via Blake2b. What
+ * this helper guarantees is encoder parity (the input snarkjs sees on
+ * each path), not output parity (the contribution snarkjs emits).
  */
 export function bytesToHexRaw(bytes: Uint8Array): string {
   let out = "";

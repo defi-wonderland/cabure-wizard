@@ -22,9 +22,11 @@ export async function browserContribute(
   const newFile = { type: "mem" as const };
 
   // Use the prefix-free hex encoding shared with the Node `contribute()` so
-  // identical entropy bytes produce identical contributions across both code
-  // paths. snarkjs encodes the entropy string via TextEncoder and mixes the
-  // bytes into the contribution; a `0x` prefix would change the result.
+  // both code paths feed identical bytes into snarkjs's RNG mixing for the
+  // same user entropy. The output contribution is non-deterministic either
+  // way (snarkjs mixes its own getRandomBytes via Blake2b), but a `0x`
+  // prefix here would change snarkjs's input on one path only, which is the
+  // drift the shared encoder guards against.
   const entropyHex = bytesToHexRaw(entropy);
 
   const contributionHashBytes: Uint8Array = await snarkjs.zKey.contribute(
