@@ -56,6 +56,10 @@ export default function CeremonyPage() {
     authenticate(method);
   };
 
+  const handleBeginContribution = () => {
+    setStep("entropy");
+  };
+
   const handleEntropyComplete = (seed: Uint8Array) => {
     setEntropySeed(seed);
     if (tiersEnabled) {
@@ -189,7 +193,7 @@ export default function CeremonyPage() {
             {step === "landing" && status && (
               <LandingScreen
                 onAuth={handleAuth}
-                onBegin={() => setStep("entropy")}
+                onBegin={handleBeginContribution}
                 onVerify={() => setStep("verify")}
               />
             )}

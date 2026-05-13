@@ -8,7 +8,7 @@ import {
   type CeremonyTierConfig,
   type TierId,
 } from "./ceremony-config";
-import { getJson, listRange } from "./kv-store";
+import { getJson, listRange, setIsMember, setMembers } from "./kv-store";
 
 const GENESIS_CHAIN_HASH = `0x${"0".repeat(64)}`;
 const END_DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
@@ -63,7 +63,7 @@ export async function getCircuitState(
 ): Promise<CircuitState> {
   const config = getCeremonyConfig();
   const state = await getJson<CircuitState>(
-    circuitStatePath(config.storage.circuitStatePrefix, circuitId),
+    kvKey(config.storage.circuitStatePrefix, circuitId),
   );
   if (!state) {
     throw new Error(
@@ -83,6 +83,27 @@ export async function getAllCircuitStates(): Promise<CircuitState[]> {
 export async function getReceipts(): Promise<ContributionReceipt[]> {
   const config = getCeremonyConfig();
   return await listRange<ContributionReceipt>(config.storage.receiptsPath);
+}
+
+export async function getParticipantContributedCircuitIds(
+  participantId: string,
+): Promise<Set<string>> {
+  const config = getCeremonyConfig();
+  const circuitIds = await setMembers(
+    kvKey(config.storage.participantContributionsPrefix, participantId),
+  );
+  return new Set(circuitIds);
+}
+
+export async function hasParticipantContributedToCircuit(
+  participantId: string,
+  circuitId: string,
+): Promise<boolean> {
+  const config = getCeremonyConfig();
+  return await setIsMember(
+    kvKey(config.storage.participantContributionsPrefix, participantId),
+    circuitId,
+  );
 }
 
 export function getEndDateDeadlineMs(endDate: string | null): number | null {
@@ -231,8 +252,8 @@ export function pruneExpiredEntries(
   return queue.filter((entry) => now - entry.joinedAt < timeoutMs);
 }
 
-export function circuitStatePath(prefix: string, circuitId: string): string {
-  return `${prefix}:${circuitId}`;
+export function kvKey(prefix: string, suffix: string): string {
+  return `${prefix}:${suffix}`;
 }
 
 export async function readCircuitBytes(

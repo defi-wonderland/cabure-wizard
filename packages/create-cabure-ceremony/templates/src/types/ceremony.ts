@@ -56,6 +56,9 @@ export interface CeremonyCopy {
     authNote: string;
     githubCta: string;
     beginCta: string;
+    eligibilityLoadingCta: string;
+    alreadyContributedTitle: string;
+    alreadyContributedDescription: string;
     endedSubtitle: string;
     endedDescription: string;
     verifyCta: string;
@@ -78,6 +81,10 @@ export interface CeremonyCopy {
     joiningCta: string;
     tierLabelPrefix: string;
     timeSuffix: string;
+    pillWillRun: string;
+    pillAlreadyContributed: string;
+    pillTargetReached: string;
+    pillNextAvailable: string;
   };
   progress: {
     title: string;
@@ -166,6 +173,8 @@ export interface CeremonyConfig {
     manifestPath: string;
     circuitStatePrefix: string;
     receiptsPath: string;
+    participantContributionsPrefix: string;
+    participantsIndexPath: string;
     zkeyPrefix: string;
   };
   copy: CeremonyCopy;

@@ -227,6 +227,8 @@ ${circuitEntries}
     manifestPath: "ceremony:manifest",
     circuitStatePrefix: "ceremony:circuits",
     receiptsPath: "ceremony:receipts",
+    participantContributionsPrefix: "ceremony:contributions:participants",
+    participantsIndexPath: "ceremony:contributions:participants:index",
     zkeyPrefix: ${JSON.stringify(`${context.projectSlug}/zkeys`)},
   },
   copy: defaultCopy,

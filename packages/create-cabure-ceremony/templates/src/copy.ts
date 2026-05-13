@@ -26,6 +26,10 @@ export const defaultCopy: CeremonyCopy = {
     authNote: "Sign in with GitHub to prevent spam and join the queue.",
     githubCta: "CONTINUE WITH GITHUB",
     beginCta: "BEGIN CONTRIBUTION",
+    eligibilityLoadingCta: "CHECKING ELIGIBILITY...",
+    alreadyContributedTitle: "You have already contributed",
+    alreadyContributedDescription:
+      "This GitHub account has contributed to every available circuit. You can still verify your receipts.",
     endedSubtitle: "This ceremony has concluded",
     endedDescription:
       "Thank you to everyone who contributed. The ceremony has reached its target. You can still verify existing receipts below.",
@@ -52,6 +56,10 @@ export const defaultCopy: CeremonyCopy = {
     joiningCta: "JOINING QUEUE...",
     tierLabelPrefix: "Tier",
     timeSuffix: "min",
+    pillWillRun: "will run",
+    pillAlreadyContributed: "already contributed",
+    pillTargetReached: "target reached",
+    pillNextAvailable: "next available",
   },
   progress: {
     title: "Contribution in progress",

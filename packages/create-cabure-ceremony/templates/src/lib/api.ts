@@ -19,6 +19,25 @@ export interface StatusResponse {
   circuits: CircuitStatus[];
 }
 
+export type CircuitPreviewState =
+  | "willRun"
+  | "alreadyContributed"
+  | "targetReached"
+  | "fallback";
+
+export interface TierPreview {
+  tierId: string;
+  items: Array<{ circuitId: string; state: CircuitPreviewState }>;
+}
+
+export interface ParticipantEligibilityResponse {
+  participantId: string;
+  contributedCircuitIds: string[];
+  eligibleCircuitIds: string[];
+  hasEligibleCircuits: boolean;
+  tierPreviews: TierPreview[];
+}
+
 export interface QueuePosition {
   participantId: string;
   circuitId: string;
@@ -64,6 +83,15 @@ async function apiFetch<T>(input: RequestInfo | URL, init?: RequestInit): Promis
 
 export async function getStatus(signal?: AbortSignal): Promise<StatusResponse> {
   return await apiFetch<StatusResponse>("/api/ceremony/status", { signal });
+}
+
+export async function getParticipantEligibility(
+  signal?: AbortSignal,
+): Promise<ParticipantEligibilityResponse> {
+  return await apiFetch<ParticipantEligibilityResponse>(
+    "/api/ceremony/participant/eligibility",
+    { signal },
+  );
 }
 
 export async function joinQueue(options: {

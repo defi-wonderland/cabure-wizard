@@ -1,7 +1,9 @@
+import process from "node:process";
+
 import { del, list } from "@vercel/blob";
 import { loadEnvConfig } from "@next/env";
-import { listClear } from "@/lib/kv-store";
-import process from "node:process";
+
+import { clearParticipantContributions, listClear } from "@/lib/kv-store";
 import { ceremonyConfig } from "../ceremony.config";
 
 async function main() {
@@ -26,19 +28,21 @@ async function main() {
   const redisKeys = [
     storage.manifestPath,
     storage.receiptsPath,
-    ...circuits.map(
-      (c) => `${storage.circuitStatePrefix}:${c.id}`,
-    ),
-    ...circuits.map(
-      (c) => `${storage.manifestPath}:lock:${c.id}`,
-    ),
+    ...circuits.map((c) => `${storage.circuitStatePrefix}:${c.id}`),
+    ...circuits.map((c) => `${storage.manifestPath}:lock:${c.id}`),
   ];
 
   const deletedCounts = await Promise.all(
     redisKeys.map((key) => listClear(key)),
   );
+  const clearedParticipants = await clearParticipantContributions({
+    participantsIndexKey: storage.participantsIndexPath,
+    participantContributionsPrefix: storage.participantContributionsPrefix,
+  });
   const deletedKeys = deletedCounts.reduce((sum, n) => sum + n, 0);
-  console.log(`  Deleted ${deletedKeys} keys.`);
+  console.log(
+    `  Deleted ${deletedKeys} keys and ${clearedParticipants} participant index entries.`,
+  );
 
   console.log("Deleting Vercel Blob zkeys...");
 
