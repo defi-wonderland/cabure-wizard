@@ -103,6 +103,43 @@ worker.terminate();
 
 Transferring the buffers (rather than copying) means the main thread no longer holds the entropy after `postMessage`. Terminating the worker after the result kills the only context that still holds the snarkjs internals.
 
+## Dependencies and standalone installs
+
+`@wonderland/cabure-crypto` depends on `snarkjs@0.7.5`. snarkjs pulls in `bfj -> jsonpath -> underscore`, and `underscore` versions `<= 1.13.7` carry the [GHSA-qpx9-hpmf-5gmw](https://github.com/jashkenas/underscore/security/advisories/GHSA-qpx9-hpmf-5gmw) advisory. The current logic of this package is not affected by the underlying vulnerability, but the dependency is flagged by `npm audit` and should not appear in your install graph.
+
+The Caburé monorepo and the project template emitted by `@wonderland/create-cabure-ceremony` already pin `underscore` to `1.13.8` via their override fields. If you install this package standalone, add the same override in your own `package.json`:
+
+```jsonc
+// npm v8.3+
+{
+  "overrides": {
+    "underscore@<=1.13.7": "1.13.8"
+  }
+}
+
+// pnpm
+{
+  "pnpm": {
+    "overrides": {
+      "underscore@<=1.13.7": "1.13.8"
+    }
+  }
+}
+
+// yarn
+{
+  "resolutions": {
+    "underscore": "1.13.8"
+  }
+}
+```
+
+Verify the install graph is clean:
+
+```bash
+pnpm --filter @wonderland/cabure-crypto audit  # or `npm audit --omit=dev`
+```
+
 ## License
 
 MIT
