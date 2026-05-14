@@ -7,6 +7,7 @@ import { loadEnvConfig } from "@next/env";
 import {
   applyBeacon,
   exportVerificationKey,
+  type Groth16VerificationKey,
   verify,
 } from "@wonderland/cabure-crypto";
 
@@ -64,7 +65,7 @@ interface ContributionReceipt {
 
 const OUTPUT_DIR = path.resolve(process.cwd(), "public", "finalize");
 
-interface BeaconResult {
+interface ResolvedBeacon {
   hex: string;
   source: string;
   slot?: number;
@@ -80,9 +81,9 @@ function parseBeaconFlag(): string | null {
     );
   }
   const hex = value.startsWith("0x") ? value.slice(2) : value;
-  if (!/^[0-9a-fA-F]+$/.test(hex) || hex.length < 16) {
+  if (!/^[0-9a-fA-F]+$/.test(hex) || hex.length < 64) {
     throw new Error(
-      "Invalid beacon: provide at least 8 bytes of hex (e.g. --beacon 0xabc123...)",
+      "Invalid beacon: provide at least 32 bytes of hex (e.g. --beacon 0x<64 hex chars>)",
     );
   }
   return hex;
@@ -143,7 +144,7 @@ async function fetchRandaoReveal(
   return { hex, slot: resolvedSlot };
 }
 
-async function resolveBeacon(): Promise<BeaconResult> {
+async function resolveBeacon(): Promise<ResolvedBeacon> {
   const explicitHex = parseBeaconFlag();
   if (explicitHex) {
     return { hex: explicitHex, source: "user-supplied (--beacon)" };
@@ -317,8 +318,10 @@ async function main() {
     circuitId: string;
     totalContributions: number;
     finalChainHash: string;
+    finalContributionHash: string;
+    finalZkeyHash: string;
     finalZkeyPath: string;
-    verificationKey: object;
+    verificationKey: Groth16VerificationKey;
   }> = [];
 
   for (const circuitConfig of circuitConfigs) {
@@ -337,7 +340,10 @@ async function main() {
     const currentZkey = await downloadZkey(state.currentZkeyUrl);
 
     console.log(`  Applying beacon...`);
-    const finalZkey = await applyBeacon(currentZkey, beaconHex);
+    const beaconResult = await applyBeacon(currentZkey, beaconHex);
+    const finalZkey = beaconResult.zkey;
+    console.log(`  Beacon contribution hash: ${beaconResult.contributionHash}`);
+    console.log(`  Final zkey hash: ${beaconResult.zkeyHash}`);
 
     console.log(`  Loading circuit artifacts for verification...`);
     const r1cs = await readArtifact(circuitConfig.artifacts.r1csPath);
@@ -369,6 +375,8 @@ async function main() {
       circuitId: circuitConfig.id,
       totalContributions: state.totalContributions,
       finalChainHash: state.chainHash,
+      finalContributionHash: beaconResult.contributionHash,
+      finalZkeyHash: beaconResult.zkeyHash,
       finalZkeyPath: `public/finalize/${finalZkeyFile}`,
       verificationKey: vkey,
     });

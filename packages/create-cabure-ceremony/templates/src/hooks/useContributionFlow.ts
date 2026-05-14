@@ -163,10 +163,15 @@ export function useContributionFlow(options: {
 
       const receipt = await submitContribution({
         circuitId,
-        contributionHash: result.hash,
+        contributionHash: result.contributionHash,
         blobUrl,
         signal: controller.signal,
       });
+      if (receipt.contributionHash.toLowerCase() !== result.zkeyHash.toLowerCase()) {
+        throw new Error(
+          "Receipt hash mismatch: the coordinator stored a different zkey than the client uploaded.",
+        );
+      }
 
       return receipt;
     },
