@@ -13,7 +13,7 @@
   },
   "dependencies": {
     "@vercel/blob": "2.3.3",
-    "@wonderland/cabure-crypto": "2.0.0",
+    "@wonderland/cabure-crypto": "workspace:2.0.0",
     "commander": "13.1.0"
   },
   "devDependencies": {
