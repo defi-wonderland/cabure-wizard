@@ -2,6 +2,12 @@
   "name": "@wonderland/cabure-crypto",
   "version": "2.0.0",
   "description": "Typed exports for all Groth16 Phase 2 ceremony operations",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/defi-wonderland/cabure-wizard.git",
+    "directory": "packages/crypto"
+  },
+  "author": "Wonderland",
   "type": "module",
   "main": "./dist/cjs/index.cjs",
   "module": "./dist/esm/index.js",
