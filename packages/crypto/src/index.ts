@@ -7,7 +7,7 @@ export type {
 export { generateInitialZkey } from "./generateInitialZkey.js";
 export { contribute } from "./contribute.js";
 export { verify, verifyChain, verifyChainForCircuit } from "./verify.js";
-export { generateEntropy } from "./entropy.js";
+export { generateEntropy, deriveSeed } from "./entropy.js";
 export { applyBeacon } from "./beacon.js";
 export { exportVerificationKey } from "./exportVerificationKey.js";
 export { RequestType, ResponseType } from "./worker/index.js";

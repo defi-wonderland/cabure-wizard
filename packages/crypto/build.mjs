@@ -64,8 +64,32 @@ await build({
   sourcemap: true,
 });
 
+// Entropy bundle – ESM (browser-safe, neutral platform)
+// The shared HKDF primitive consumed by generated projects' browser hooks.
+await build({
+  entryPoints: ["src/entropy.ts"],
+  bundle: true,
+  format: "esm",
+  platform: "neutral",
+  target: "es2022",
+  outfile: "dist/entropy/index.js",
+  sourcemap: true,
+});
+
+// Entropy bundle – CJS
+await build({
+  entryPoints: ["src/entropy.ts"],
+  bundle: true,
+  format: "cjs",
+  platform: "neutral",
+  target: "es2022",
+  outfile: "dist/entropy/index.cjs",
+  sourcemap: true,
+});
+
 // Copy .d.ts → .d.cts for CJS consumers
 copyFileSync("dist/esm/index.d.ts", "dist/cjs/index.d.cts");
 copyFileSync("dist/esm/worker/protocol.d.ts", "dist/worker/protocol.d.cts");
+copyFileSync("dist/esm/entropy.d.ts", "dist/entropy/index.d.cts");
 
 console.log("Build complete: ESM + CJS + Worker");

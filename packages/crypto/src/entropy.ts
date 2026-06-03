@@ -1,7 +1,46 @@
-import { webcrypto } from "node:crypto";
 import type { EntropySource } from "./types.js";
 
-const ENTROPY_LENGTH = 64; // 512 bits
+const SEED_LENGTH = 64; // 512 bits
+
+/**
+ * HKDF-SHA256: stretch input keying material into a fixed-length seed.
+ *
+ * Uses Web Crypto via the global `crypto.subtle`, which is available in
+ * Node 20+ and in browser Web Workers, so this function is safe to call
+ * from both code paths the package supports.
+ *
+ * @param ikm - input keying material (CSPRNG output mixed with user entropy)
+ * @param info - optional domain-separation label (e.g. a circuit id)
+ * @param length - output length in bytes (default 64)
+ * @returns Derived seed as Uint8Array
+ */
+export async function deriveSeed(
+  ikm: Uint8Array,
+  info: Uint8Array = new Uint8Array(),
+  length = SEED_LENGTH,
+): Promise<Uint8Array> {
+  // TS 5.9 typed Web Crypto's inputs as `ArrayBufferView<ArrayBuffer>`, i.e.
+  // it disallows views backed by a SharedArrayBuffer. All callers here pass
+  // non-shared buffers, so we cast through unknown to bypass the narrowing.
+  const key = await crypto.subtle.importKey(
+    "raw",
+    ikm as unknown as BufferSource,
+    "HKDF",
+    false,
+    ["deriveBits"],
+  );
+  const bits = await crypto.subtle.deriveBits(
+    {
+      name: "HKDF",
+      hash: "SHA-256",
+      salt: new Uint8Array(),
+      info: info as unknown as BufferSource,
+    },
+    key,
+    length * 8,
+  );
+  return new Uint8Array(bits);
+}
 
 /**
  * Generate entropy by combining CSPRNG output with optional additional sources.
@@ -16,49 +55,25 @@ export async function generateEntropy(
   sources?: EntropySource[],
 ): Promise<Uint8Array> {
   // Start with CSPRNG
-  const csprng = new Uint8Array(ENTROPY_LENGTH);
-  (webcrypto as typeof globalThis.crypto).getRandomValues(csprng);
+  const csprng = new Uint8Array(SEED_LENGTH);
+  crypto.getRandomValues(csprng);
 
   if (!sources || sources.length === 0) {
     return csprng;
   }
 
-  // Mix additional entropy sources using SHA-256
-  const combined = await mixEntropy(csprng, sources);
-  return combined;
+  // Mix additional entropy sources via HKDF
+  const ikm = concat(csprng, ...sources.map((s) => s.data));
+  return deriveSeed(ikm);
 }
 
-async function mixEntropy(
-  base: Uint8Array,
-  sources: EntropySource[],
-): Promise<Uint8Array> {
-  // Concatenate all entropy sources
-  const totalLen =
-    base.length + sources.reduce((acc, s) => acc + s.data.length, 0);
-  const buf = new Uint8Array(totalLen);
+function concat(...chunks: Uint8Array[]): Uint8Array {
+  const total = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+  const output = new Uint8Array(total);
   let offset = 0;
-
-  buf.set(base, offset);
-  offset += base.length;
-
-  for (const source of sources) {
-    buf.set(source.data, offset);
-    offset += source.data.length;
+  for (const chunk of chunks) {
+    output.set(chunk, offset);
+    offset += chunk.length;
   }
-
-  // Hash the combined data to fixed-length output
-  const hash = await webcrypto.subtle.digest("SHA-256", buf);
-  const hashBytes = new Uint8Array(hash);
-
-  // Expand to ENTROPY_LENGTH by hashing again with a counter
-  const result = new Uint8Array(ENTROPY_LENGTH);
-  result.set(hashBytes, 0);
-
-  const second = await webcrypto.subtle.digest(
-    "SHA-256",
-    new Uint8Array([...hashBytes, 0x01]),
-  );
-  result.set(new Uint8Array(second), 32);
-
-  return result;
+  return output;
 }
