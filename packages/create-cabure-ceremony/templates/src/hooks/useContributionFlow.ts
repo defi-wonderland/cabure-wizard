@@ -18,7 +18,8 @@ import type {
 } from "@/app/screens/ProgressScreen";
 import type { ClientCircuitConfig } from "@/lib/ceremony-config";
 import { runContribution } from "@/lib/worker-client";
-import { deriveEntropy, sha256 } from "@/utils/entropy";
+import { sha256 } from "@/utils/entropy";
+import { deriveCircuitEntropy } from "@wonderland/cabure-crypto/entropy";
 
 export interface ContributionFlowState {
   circuitRuns: CircuitRunItem[];
@@ -139,7 +140,7 @@ export function useContributionFlow(options: {
       setContributionProgress(15);
       setContributionPhase("computing");
 
-      const entropy = await deriveEntropy(seed, circuitId);
+      const entropy = await deriveCircuitEntropy(seed, circuitId);
       const result = await runContribution({
         prevZkey: zkey,
         entropy,
