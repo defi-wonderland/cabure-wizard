@@ -1,87 +1,126 @@
-Walk a new contributor through the Caburé project onboarding. This is for anyone joining the project who needs to understand the full picture — crypto, dev, QA, or general contributor.
+Walk a new contributor through Caburé onboarding. This is for anyone joining the project who needs the full picture across crypto, wizard, generated app, CLI, QA, or operations.
 
-Read `CLAUDE.md` at the project root first, then guide them through these steps:
+Read `.claude/CLAUDE.md` first, then guide them through these steps:
 
 ## 1. What is Caburé?
 
 Explain in plain terms:
-- Groth16 is a type of zero-knowledge proof. Before a Groth16 circuit can be used in production, it needs a "trusted setup ceremony" where many people contribute randomness. The more contributors, the stronger the security guarantee — as long as ONE participant was honest, the ceremony is secure.
-- Caburé is the toolkit that makes running these ceremonies easy. An operator runs one command (`npx @wonderland/create-cabure-ceremony`) and gets a fully deployable ceremony project. Contributors visit a website or use a CLI tool to participate.
-- It replaces p0tion + DefinitelySetup, which are in maintenance mode and had significant UX and infrastructure issues.
+- Groth16 is a zero-knowledge proof system. Before a Groth16 circuit can be used in production, it needs a trusted setup ceremony where many people contribute randomness.
+- Caburé makes these ceremonies easier to run. An operator runs `npx @wonderland/create-cabure-ceremony` and gets a deployable ceremony app.
+- Contributors participate through the website or with the headless `cabure` CLI. The ceremony is secure as long as one participant honestly contributed and destroyed their secret randomness.
 
 ## 2. The Three Packages
 
-Walk through each package and who owns it:
+Walk through each package:
 
-**`@wonderland/cabure-crypto`** (Lumi)
-- The cryptographic engine. Typed exports for every ceremony operation: generate initial zkey, contribute, verify, verify chain, generate entropy, apply beacon.
-- Uses snarkjs 0.7.5 under the hood with in-memory I/O (`Uint8Array` in, `{ type: "mem" }` out).
-- Includes a WASM build for browser Web Workers.
-- This is a published npm package — shared by the wizard, frontend, and CLI.
+**`@wonderland/create-cabure-ceremony`**
+- The primary operator entrypoint.
+- Asks 4 questions: project name, target contributions, optional end date, optional circuit artifacts path.
+- Scaffolds a single Next.js app from `packages/create-cabure-ceremony/templates`.
+- Always creates `circuits/`; copies discovered `.r1cs` files when a circuit artifacts path is provided.
 
-**`@wonderland/create-cabure-ceremony`** (Ardy)
-- The CLI wizard. Asks 7 questions, scaffolds a complete ceremony project.
-- Generated project has three independent parts: stateless coordinator (serverless), static frontend (6-screen ceremony flow), and crypto layer (imports from `@wonderland/cabure-crypto`).
-- The generated code is yours — edit freely. Only the crypto layer is a dependency.
+**`@wonderland/cabure-crypto`**
+- The cryptographic engine.
+- Typed exports for generating initial zkeys, contributing, verifying, verifying chains, generating entropy, applying beacons, and exporting verification keys.
+- Used by the generated app and the CLI. Browser contributions run in a Web Worker.
 
-**`@wonderland/cabure-cli`** (Ardy)
-- Headless CLI contributor tool for VMs and servers.
-- URL-based discovery: `npx @wonderland/cabure-cli contribute https://ceremony.example.com`
-- GitHub OAuth device flow for auth without a browser redirect.
-- Streaming support for large circuits (>100 MB zkeys).
+**`@wonderland/cabure-cli`**
+- Headless contributor tool for VMs, servers, and terminal-first contributors.
+- Actual bin name is `cabure`, with commands such as `cabure status <url>` and `cabure contribute <url>`.
+- Uses GitHub OAuth device flow through the ceremony app.
 
 ## 3. Architecture at a Glance
 
-Present the separated architecture:
+Present the generated app structure:
 
-```
+```text
 my-ceremony/
-├── coordinator/     ← Stateless serverless function (Cloudflare Worker / Vercel Edge / Docker)
-├── frontend/        ← Static site (IPFS / Vercel / GitHub Pages)
-├── crypto/          ← Imports from @wonderland/cabure-crypto
-├── ceremony.config.json
+├── ceremony.config.ts
 ├── circuits/
-├── deploy/
-└── README.md
+├── package.json
+├── scripts/
+│   ├── setup-ptau.ts
+│   ├── init-ceremony.ts
+│   ├── finalize-ceremony.ts
+│   └── reset-ceremony.ts
+└── src/
+    ├── app/
+    │   ├── api/
+    │   │   ├── auth/[...nextauth]/
+    │   │   └── ceremony/
+    │   ├── screens/
+    │   └── components/
+    ├── hooks/
+    ├── lib/
+    ├── types/
+    ├── utils/
+    ├── copy.ts
+    └── middleware.ts
 ```
 
 Key points:
-- Coordinator and frontend deploy **separately**
-- Storage is **IPFS-first** (ceremony state + zkeys content-addressed), S3 as alternative
-- Coordinator is **stateless** — reads/writes a JSON state file on IPFS
-- Entropy requires **user interaction** (mouse/clicks mandatory, CSPRNG alone is not enough)
-- Tier assignment is **interactive** (operator chooses during scaffolding)
+- Generated projects are single Next.js 15 apps, not separate coordinator/frontend deployments.
+- Vercel Blob stores zkey binaries.
+- Upstash Redis/Vercel KV stores manifest, circuit state, queues, receipts, participant contribution sets, and locks.
+- `ceremony.config.ts` is the primary config surface.
+- Tiers are auto-generated from discovered circuits; contributors choose a tier in the UI.
+- Entropy requires mouse/click interaction in the browser.
 
 ## 4. How a Ceremony Works
 
 Walk through the lifecycle:
-1. Operator runs `npx @wonderland/create-cabure-ceremony`, answers prompts, deploys
-2. Contributors visit the frontend → GitHub OAuth → join queue → collect entropy → compute contribution in Web Worker → upload
-3. Or contributors use `npx @wonderland/cabure-cli contribute <url>` from the terminal
-4. Coordinator verifies each contribution, updates IPFS state, maintains SHA-256 chain hash
-5. When target contributions reached, operator applies drand Quicknet beacon to finalize
-6. Final zkey is ready for production use
+1. Operator runs `npx @wonderland/create-cabure-ceremony` and answers the 4 prompts.
+2. Operator adds or confirms `.r1cs` files in `circuits/`.
+3. Operator provisions Vercel Blob and KV, then runs `npm run setup:ptau` and `npm run init:ceremony`.
+4. Contributors authenticate, join the queue, collect entropy, compute the contribution in a Web Worker or CLI, upload the result, and receive a receipt.
+5. The server stores promoted zkeys in Blob, updates KV state, and maintains a SHA-256 chain hash.
+6. When ready, the operator runs `npm run finalize:ceremony` to verify the chain and apply an Ethereum RANDAO beacon.
 
-## 5. Useful Commands
+## 5. Development Workflow
+
+For repository work, use pnpm from the monorepo root:
+
+```bash
+pnpm install
+pnpm format
+pnpm build
+pnpm test
+pnpm test:e2e
+```
+
+For generated app work, use npm inside the generated project:
+
+```bash
+npm install
+npm run setup:ptau
+npm run init:ceremony
+npm run dev
+```
+
+## 6. Useful Commands
 
 Point them to the other Claude Code commands available:
-- `/cabure-status` — check Linear milestones and issues
-- `/cabure-context` — quick orientation for a dev session
-- `/dev-onboarding` — deep dive for TypeScript developers (architecture, conventions, assignments)
-- `/qa-onboarding` — deep dive for QA engineers (test plan, environment setup, priorities)
+- `/cabure-status` — check live Linear milestones and issues.
+- `/cabure-context` — quick orientation for a dev session.
+- `/dev-onboarding` — deep dive for TypeScript developers.
+- `/qa-onboarding` — deep dive for QA engineers.
 
 ## 7. Key Resources
 
-- **Notion Idea Draft** — central planning document with scope, tasks, and team assignments
-- **Notion Tech Design** — detailed technical specification for @wonderland/create-cabure-ceremony and @wonderland/cabure-cli
-- **Linear project** — issue tracking across 6 milestones
-- **Brebaje** (github.com/p0tion-tools/brebaje) — Nico Serrano's complementary p0tion rebuild, potential future merge
+- `.claude/CLAUDE.md` — canonical agent/dev brief.
+- `README.md` — public repository overview.
+- `packages/create-cabure-ceremony/README.md` — wizard usage and local testing.
+- `packages/create-cabure-ceremony/templates/README.md` — generated app operator workflow.
+- `packages/crypto/README.md` — crypto API and security notes.
+- `packages/cli/README.md` — headless CLI usage.
+- Linear project — live issue tracking.
+- Brebaje (github.com/p0tion-tools/brebaje) — complementary p0tion rebuild and possible future alignment.
 
 ## 8. Questions
 
 Ask:
-1. What's your role on the project? (This helps tailor follow-up — point devs to `/dev-onboarding`, QA to `/qa-onboarding`)
-2. Are you familiar with Groth16 / trusted setup ceremonies, or would you like a deeper explanation?
+1. What is your role on the project?
+2. Are you familiar with Groth16 trusted setup ceremonies, or would you like a deeper explanation?
 3. What would you like to start with?
 
-If $ARGUMENTS contains a role (e.g. "dev", "qa", "crypto"), suggest they also run the specialized onboarding command for that role
+If $ARGUMENTS contains a role such as "dev", "qa", "crypto", "operator", or "cli", suggest the specialized onboarding path for that role.

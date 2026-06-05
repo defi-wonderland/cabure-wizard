@@ -4,162 +4,202 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What is Caburé
 
-Caburé is an open-source CLI wizard and toolkit for running Groth16 Phase 2 trusted setup ceremonies, replacing p0tion + DefinitelySetup.
+Caburé is an open-source CLI wizard and toolkit for running Groth16 Phase 2 trusted setup ceremonies. It replaces p0tion + DefinitelySetup with a single-command scaffolding experience, a reusable crypto package, and a headless contributor CLI.
+
+## Repository Workflow
+
+This repository is a pnpm workspace. Application source lives under `packages/`; the root orchestrates scripts and shared TypeScript settings.
+
+Prerequisites:
+- Node.js >= 20
+- pnpm >= 9 (`packageManager` pins `pnpm@9.15.4`)
+
+Common commands from the repository root:
+
+```bash
+pnpm install
+pnpm format
+pnpm build
+pnpm test
+pnpm test:e2e
+pnpm clean
+```
+
+Useful filtered commands:
+
+```bash
+pnpm --filter @wonderland/create-cabure-ceremony build
+pnpm --filter @wonderland/create-cabure-ceremony test
+pnpm --filter @wonderland/create-cabure-ceremony test:e2e
+pnpm --filter @wonderland/cabure-crypto build
+pnpm --filter @wonderland/cabure-crypto test
+pnpm --filter @wonderland/cabure-cli build
+pnpm --filter @wonderland/cabure-cli test
+```
+
+Quality gate for changes: run format, build, then tests. `pnpm format` currently delegates to package format scripts and only `@wonderland/create-cabure-ceremony` defines one.
 
 ## Packages
 
-| Package | Purpose |
-|---------|---------|
-| `@wonderland/cabure-crypto` | Published npm package — typed exports for all Groth16 Phase 2 ceremony operations |
-| `@wonderland/create-cabure-ceremony` | CLI wizard that scaffolds a fully deployable ceremony project |
-| `@wonderland/cabure-cli` | CLI contributor tool for headless/VM environments |
+| Package | Path | Purpose |
+|---------|------|---------|
+| `@wonderland/create-cabure-ceremony` | `packages/create-cabure-ceremony` | CLI wizard that scaffolds a fully deployable ceremony project |
+| `@wonderland/cabure-crypto` | `packages/crypto` | Published npm package with typed exports for Groth16 Phase 2 ceremony operations |
+| `@wonderland/cabure-cli` | `packages/cli` | CLI contributor tool for headless/VM environments |
 
-**Naming**: Always use these exact names. Never use `elixir-wizard`, `elixir-ceremony`, `@wonderland/elixir-wizard`, `@cabure/crypto`, or `@cabure/cli` — those are outdated.
+Always use these exact names. Never use `elixir-wizard`, `elixir-ceremony`, `@wonderland/elixir-wizard`, `@cabure/crypto`, or `@cabure/cli`; those are outdated.
 
-## Architecture Constraints (non-negotiable)
+Package implementation map:
+- `packages/create-cabure-ceremony/src/index.ts` orchestrates the wizard.
+- `packages/create-cabure-ceremony/src/prompts.ts` owns the four interactive prompts.
+- `packages/create-cabure-ceremony/src/validate.ts` owns input validation and slug generation.
+- `packages/create-cabure-ceremony/src/circuits.ts` owns recursive `.r1cs` discovery/copying and filename de-duplication.
+- `packages/create-cabure-ceremony/src/scaffold.ts` copies templates and renders `ceremony.config.ts`.
+- `packages/create-cabure-ceremony/templates` is the generated Next.js app.
+- `packages/crypto/src` contains the crypto API, worker entrypoint, and shared protocol types.
+- `packages/cli/src` contains the `cabure` CLI commands, auth, HTTP client, and shared types.
 
-1. **`@wonderland/cabure-crypto` is a published dependency** — shared across wizard, frontend, CLI. Never embed or vendor it.
-2. **Single Next.js application** — Generated projects are a single Next.js app containing both the UI and API routes:
-   - `src/app/api/ceremony/` — API routes managing queue, contributions, verification, receipts
-   - `src/app/screens/` — Participant-facing screens (Landing, Entropy, Tier, Progress, Complete, Verify)
-   - `src/hooks/` — Contribution flow, entropy collection, ceremony status
-   - `src/lib/` — Server utilities (auth, blob storage, KV, ceremony state)
-3. **Vercel-first storage** — Zkey files stored in Vercel Blob, ceremony state and receipts in Upstash Redis (Vercel KV). No IPFS.
-4. **User interaction required for entropy** — Minimum threshold of mouse movement/click entropy. Passive CSPRNG alone is insufficient.
-5. **GitHub OAuth device flow** for CLI — Enables headless/VM auth without browser redirect.
-6. **Target contribution options**: 100 (default) / 500 / 1,000 / custom.
+## Architecture Constraints
 
-## @wonderland/cabure-crypto API
+1. `@wonderland/cabure-crypto` is a published dependency shared by generated apps and `@wonderland/cabure-cli`. Do not embed or vendor it into templates.
+2. Generated projects are a single Next.js app containing both participant UI and API routes.
+3. Storage is Vercel-first: zkey files in Vercel Blob, ceremony state/queues/receipts in Upstash Redis (Vercel KV). No IPFS.
+4. Browser entropy requires user interaction. Passive CSPRNG alone is insufficient.
+5. The headless CLI uses GitHub OAuth device flow through the ceremony server.
+6. Target contribution options are 100 (default), 500, 1,000, or custom.
+7. `ceremony.config.ts` is the primary generated config surface.
 
-All functions accept `Uint8Array` inputs. snarkjs file I/O is handled internally via temp directories.
+## Wizard Contract
 
-```typescript
-generateInitialZkey(ptau: Uint8Array, r1cs: Uint8Array): Promise<Uint8Array>
+`npx @wonderland/create-cabure-ceremony` asks exactly four questions:
 
-contribute(
-  prevZkey: Uint8Array,
-  entropy: Uint8Array,
-  name?: string,
-): Promise<ContributionResult>
-// ContributionResult = {
-//   zkey: Uint8Array;
-//   contributionHash: string;  // snarkjs Blake2b hash over the contribution pubkey
-//   zkeyHash: string;          // SHA-256 of the new zkey binary
-// }
+1. Project name
+2. Target contributions: 100 (default), 500, 1,000, or custom
+3. Optional end date in `YYYY-MM-DD`
+4. Optional circuit artifacts path
 
-verify(r1cs: Uint8Array, ptau: Uint8Array, zkey: Uint8Array): Promise<boolean>
+The target contributions step defaults to 100 when the user presses Enter. Do not add prompts for ptau. The wizard always creates a `circuits/` folder; if a circuit artifacts path is provided, discovered `.r1cs` files are copied into it, otherwise it remains ready for manual setup later.
 
-verifyChain(
-  ptau: Uint8Array,
-  initialZkey: Uint8Array,
-  latestZkey: Uint8Array,
-): Promise<boolean>
+When `.r1cs` files are discovered, the wizard auto-generates circuit config entries and three tiers:
+- `core`: the first circuit after sorting
+- `popular`: the first half of sorted circuits
+- `all`: all circuits
 
-verifyChainForCircuit(
-  r1cs: Uint8Array,
-  ptau: Uint8Array,
-  initialZkey: Uint8Array,
-  latestZkey: Uint8Array,
-): Promise<boolean>
-
-generateEntropy(sources?: EntropySource[]): Promise<Uint8Array>
-
-applyBeacon(
-  zkey: Uint8Array,
-  beaconHash: string,
-  numIterationsExp?: number,
-): Promise<BeaconResult>
-// BeaconResult = {
-//   zkey: Uint8Array;
-//   contributionHash: string;  // snarkjs Blake2b hash for the beacon contribution
-//   zkeyHash: string;          // SHA-256 of the finalized zkey binary
-// }
-
-exportVerificationKey(zkey: Uint8Array): Promise<object>
-```
+If no circuits are present at scaffold time, `tiersEnabled` is `false` and `tiers` is empty.
 
 ## Generated Project Structure
 
-`npx @wonderland/create-cabure-ceremony` outputs:
+`npx @wonderland/create-cabure-ceremony` outputs a single Next.js 15 app:
 
-```
+```text
 my-ceremony/
-├── src/
-│   ├── app/
-│   │   ├── api/ceremony/       # API routes
-│   │   │   ├── status/         # GET ceremony status
-│   │   │   ├── queue/          # POST join queue
-│   │   │   ├── circuits/[id]/  # zkey download, upload, contribute
-│   │   │   └── receipt/        # GET contribution receipt
-│   │   ├── screens/            # Landing, Entropy, Tier, Progress, Complete, Verify
-│   │   └── components/         # Header, Button, ScreenWrapper, ErrorBoundary
-│   ├── hooks/                  # useContributionFlow, useEntropyCollector, etc.
-│   ├── lib/                    # api, auth, blob-store, kv-store, ceremony-state
-│   ├── types/                  # ceremony types, next-auth extensions
-│   └── utils/                  # cn, entropy, format helpers
-├── scripts/                    # setup-ptau, init-ceremony, finalize-ceremony, reset-ceremony
-├── circuits/                   # .r1cs files and downloaded .ptau
-├── ceremony.config.ts          # Ceremony name, circuits, tiers, storage keys
+├── ceremony.config.ts
+├── circuits/
 ├── package.json
-└── README.md
+├── next.config.ts
+├── .env.example
+├── README.md
+├── public/
+│   ├── genesis/
+│   └── finalize/
+├── scripts/
+│   ├── setup-ptau.ts
+│   ├── init-ceremony.ts
+│   ├── finalize-ceremony.ts
+│   └── reset-ceremony.ts
+└── src/
+    ├── app/
+    │   ├── api/
+    │   │   ├── auth/[...nextauth]/
+    │   │   └── ceremony/
+    │   ├── components/
+    │   ├── screens/
+    │   ├── globals.css
+    │   ├── layout.tsx
+    │   └── page.tsx
+    ├── hooks/
+    ├── lib/
+    ├── types/
+    ├── utils/
+    ├── copy.ts
+    └── middleware.ts
 ```
+
+The generated app uses CSS modules plus design tokens in `globals.css`; it does not use Tailwind.
 
 ## Ceremony API Endpoints
 
-API routes live under `src/app/api/ceremony/` in the generated project.
+API routes live in the generated project under `src/app/api/`.
 
 | Route | Method | Purpose |
 |-------|--------|---------|
-| `/api/ceremony/status` | GET | Ceremony progress, circuit states, queue lengths |
-| `/api/ceremony/queue` | POST | Join the contribution queue (GitHub OAuth required) |
-| `/api/ceremony/queue` | GET | Get authenticated participant's queue position (`?circuitId=...`) |
-| `/api/ceremony/circuits/[id]/zkey` | GET | Download current zkey (binary or JSON info) |
-| `/api/ceremony/circuits/[id]/upload` | POST | Upload contributed zkey to Vercel Blob |
-| `/api/ceremony/circuits/[id]/contribute` | POST | Submit contribution (verify, store, advance chain) |
-| `/api/ceremony/receipt` | GET | Retrieve contribution receipt for a participant |
+| `/api/auth/[...nextauth]` | GET/POST | NextAuth GitHub OAuth |
+| `/api/ceremony/status` | GET | Public ceremony progress, circuit states, queue lengths |
+| `/api/ceremony/queue` | POST | Join the contribution queue |
+| `/api/ceremony/queue` | GET | Get authenticated participant queue position |
+| `/api/ceremony/circuits/[id]/zkey` | GET | Download current zkey or return JSON info with `?format=json` |
+| `/api/ceremony/circuits/[id]/upload` | POST | Create a Vercel Blob client upload token for the queue head |
+| `/api/ceremony/circuits/[id]/contribute` | POST | Promote uploaded contribution, verify if enabled, write receipt, advance state |
+| `/api/ceremony/receipt` | GET | Public receipt lookup |
+| `/api/ceremony/participant/eligibility` | GET | Authenticated tier/circuit eligibility preview |
+| `/api/ceremony/participant/receipts` | GET | Authenticated participant receipts |
+| `/api/ceremony/auth/cli` | POST/GET | CLI GitHub device-flow initiation and polling |
 
-## Wizard Prompts (4 questions)
-
-1. **Project name** — Displayed in the ceremony UI
-2. **Target contributions** — Select from 100 (default) / 500 / 1,000 / custom
-3. **End date** — Optional YYYY-MM-DD deadline
-4. **Circuit artifacts path** — Optional path to .r1cs files; if provided, files are copied into `circuits/`
-
-The target contributions step defaults to 100 when the user presses Enter.
+`src/middleware.ts` protects queue, participant, contribute, and upload routes. Public routes include status, receipt lookup, and zkey download.
 
 ## Ceremony Scripts
 
-Generated projects include four operator scripts in `scripts/`:
+Generated projects include four operator scripts:
 
 | Script | npm command | Purpose |
 |--------|-------------|---------|
-| `setup-ptau.ts` | `npm run setup:ptau` | Download matching Powers of Tau file for each circuit |
-| `init-ceremony.ts` | `npm run init:ceremony` | Generate genesis zkeys, upload to Blob, write manifest to KV. Saves local copies and transcript to `public/genesis/` |
-| `finalize-ceremony.ts` | `npm run finalize:ceremony` | Apply Ethereum RANDAO beacon, export verification keys. Saves final zkeys and transcript to `public/finalize/` |
-| `reset-ceremony.ts` | `npm run reset:ceremony` | Clear all KV state and Blob storage for a fresh start |
+| `setup-ptau.ts` | `npm run setup:ptau` | Download matching Powers of Tau file for the configured circuits |
+| `init-ceremony.ts` | `npm run init:ceremony` | Generate genesis zkeys, upload to Blob, write manifest to KV, save local transcript under `public/genesis/` |
+| `finalize-ceremony.ts` | `npm run finalize:ceremony` | Verify the chain, apply Ethereum RANDAO beacon, export verification keys, save outputs under `public/finalize/` |
+| `reset-ceremony.ts` | `npm run reset:ceremony` | Clear configured KV state and Blob zkeys for a fresh start |
+
+Generated projects use npm scripts, not pnpm scripts.
 
 ## Ceremony Flow
 
-Operator scaffolds → runs `setup:ptau` → runs `init:ceremony` → deploys to Vercel → contributors visit the UI or use CLI → each contribution: download zkey → collect entropy → compute in Web Worker/CLI → upload → verify → when target is reached, operator runs `finalize:ceremony` to apply an Ethereum RANDAO beacon and produce final parameters.
+Operator scaffolds the app, adds or confirms `.r1cs` circuits, runs `setup:ptau`, runs `init:ceremony`, deploys to Vercel, then contributors use the browser UI or `cabure contribute <url>`. Each contribution downloads the current zkey, collects entropy, computes in a Web Worker or CLI process, uploads to Blob, and asks the server to promote the contribution. When the target is reached, the operator runs `finalize:ceremony` to apply an Ethereum RANDAO beacon and produce final parameters.
 
-## Verification
+## Verification and Integrity
 
-- Per-contribution BN254 pairing checks are optional, configurable via `verifyContributions` in `ceremony.config.ts` (default: `false` due to serverless timeouts)
-- The finalize script always verifies the full contribution chain before applying the beacon
-- SHA-256 hash chain from genesis to latest
-- SHA-256 integrity check on every zkey download (genesis hash seeded at init)
-- Ethereum RANDAO beacon for finalization randomness
+- Public crypto APIs use `Uint8Array` inputs/outputs. Avoid `Buffer` in public APIs.
+- Per-contribution BN254 pairing checks are optional via `verifyContributions` in `ceremony.config.ts` and default to `false` because serverless timeouts are likely on larger circuits.
+- The finalize script verifies the full chain before applying the beacon.
+- Prefer `verifyChainForCircuit` when circuit binding matters; it validates that the initial zkey belongs to the expected `(r1cs, ptau)` pair before checking the transcript.
+- The server computes zkey SHA-256 hashes from uploaded bytes and treats client-provided hashes as untrusted.
+- Chain hash input format is `${previousChainHash}:${contributionHash}:${participantId}:${timestamp}`.
+- Genesis previous hash is `0x` followed by 64 zeros.
+- Toxic waste and entropy buffers should be zeroed in `finally` blocks where practical.
+
+## CI and Publishing
+
+CI runs on pushes and pull requests to `dev` and `main`. It builds and tests `@wonderland/cabure-crypto` first, then builds/tests `@wonderland/create-cabure-ceremony` and `@wonderland/cabure-cli`. The crypto job also runs a high-severity production audit.
+
+Publishing workflows release packages in dependency order: crypto, create-cabure-ceremony, then CLI. `dev` publishes snapshot versions; `main` and release tags publish stable versions.
+
+## Source Documents
+
+- Root overview: `README.md`
+- Wizard docs: `packages/create-cabure-ceremony/README.md`
+- Generated app docs: `packages/create-cabure-ceremony/templates/README.md`
+- Crypto docs: `packages/crypto/README.md`
+- CLI docs: `packages/cli/README.md`
 
 ## Linear Project
 
-- Team: **Internal / Public Goods** (key: BES)
-- Project: **Caburé** (target: Mar 27, 2026)
-- 6 milestones: Idea Draft, Tech Design, @wonderland/cabure-crypto Development, @wonderland/create-cabure-ceremony Development, CLI Contributor Development, QA
+- Team: Internal / Public Goods (key: BES)
+- Project: Caburé
+- Use Linear MCP for live status. Do not duplicate stale issue state in onboarding answers.
 
 ## Brebaje Alignment
 
 Nico Serrano's Brebaje (github.com/p0tion-tools/brebaje) is a complementary p0tion rebuild. Caburé focuses on wizard + CLI contributor; future merge is possible but not decided.
 
 ## Commits
-- Always use commitlint convention.
-- NEVER add coauthors.
+
+- Use Conventional Commits style for commit messages.
+- Never add coauthors.
