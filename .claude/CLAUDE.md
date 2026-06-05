@@ -47,7 +47,7 @@ Quality gate for changes: run format, build, then tests. `pnpm format` currently
 | `@wonderland/cabure-crypto` | `packages/crypto` | Published npm package with typed exports for Groth16 Phase 2 ceremony operations |
 | `@wonderland/cabure-cli` | `packages/cli` | CLI contributor tool for headless/VM environments |
 
-Always use these exact names. Never use `elixir-wizard`, `elixir-ceremony`, `@wonderland/elixir-wizard`, `@cabure/crypto`, or `@cabure/cli`; those are outdated.
+Always use these exact names. Do not reintroduce legacy pre-rename project or package identifiers.
 
 Package implementation map:
 - `packages/create-cabure-ceremony/src/index.ts` orchestrates the wizard.
