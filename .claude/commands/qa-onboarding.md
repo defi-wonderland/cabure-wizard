@@ -1,6 +1,6 @@
 Walk the QA engineer through the Caburé project onboarding. This is designed for Laruku but works for any QA person joining the project.
 
-Read `CLAUDE.md` at the project root first, then guide the QA engineer through these steps:
+Read `.claude/CLAUDE.md` first, then guide the QA engineer through these steps:
 
 ## 1. What You're Testing
 
@@ -17,6 +17,8 @@ The generated project is a **single Next.js app** — UI screens and API routes 
 
 - **`src/app/screens/`** — participant-facing screens (Landing, Entropy, Tier, Progress, Complete, Verify). Test: entropy collection, Web Worker computation, browser compatibility, screen flow, error states.
 - **`src/app/api/ceremony/`** — API routes managing queue, contributions, verification, receipts. Test: queue management, contribution verification, auth flows, timeout handling, race conditions.
+- **`src/app/api/auth/[...nextauth]/`** — GitHub OAuth via NextAuth. Test: sign-in, session expiration, protected routes, callback failures.
+- **`src/app/api/ceremony/auth/cli`** — CLI device-flow auth. Test: device code polling, expiration, denial, token usage.
 - **`@wonderland/cabure-cli`** — headless contributor. Test: GitHub device flow auth, large circuit streaming, progress reporting, error recovery.
 
 Storage is Vercel-first:
@@ -24,47 +26,50 @@ Storage is Vercel-first:
 - **Upstash Redis (Vercel KV)** holds ceremony state (manifest, queue, receipts, chain hashes).
 
 Key things to watch for:
-- API routes read/write KV on every request — race conditions on queue/state are possible.
+- API routes read/write KV on every request; race conditions on queue/state are possible.
 - Entropy requires user interaction (mouse/clicks). The UI should NOT let you proceed without enough entropy.
 - Test what happens when KV or Blob is slow, rate-limited, or returns stale data.
 - Chain hash integrity — verify the SHA-256 chain is tamper-evident across contributions.
 - Per-contribution BN254 pairing verification is optional (`verifyContributions` in `ceremony.config.ts`, default `false`). The finalize script always verifies the full chain before applying the beacon.
+- Participant routes include `/api/ceremony/participant/eligibility` and `/api/ceremony/participant/receipts`; test both browser session auth and CLI bearer-token behavior where applicable.
 
 ## 3. Your Test Plan
 
-Check Linear for QA issues. Use the Linear MCP to list issues in the Caburé project assigned to the QA engineer. Present them with priorities:
+Check Linear for QA issues. Use the Linear MCP to list current issues in the Caburé project assigned to the QA engineer or matching the requested $ARGUMENTS focus. Treat Linear as the live source of truth and do not rely on old hard-coded issue IDs or dates.
 
-- **BES-1356** (Urgent) — End-to-end ceremony test + failure scenarios
-  - Full ceremony with toy circuit and 3+ contributors
-  - Contributor drops mid-contribution
-  - Queue timeout scenarios
-  - KV or Blob unavailable during contribution
-  - Duplicate contribution attempts
+Present the current QA plan grouped by priority/status and cover these areas:
 
-- **BES-1357** (High) — Browser compatibility + CLI tools testing
-  - WASM in Chrome, Firefox, Safari (Web Worker must not block main thread)
-  - CLI wizard: prompts, scaffolding, deploy scripts
-  - CLI contributor: device flow auth, large file streaming, receipt generation
+- End-to-end ceremony with a toy circuit and multiple contributors.
+- Contributor drop-off, queue timeout, duplicate contribution, and replay attempts.
+- Browser compatibility in Chrome, Firefox, and Safari.
+- Web Worker behavior and main-thread responsiveness during contribution computation.
+- CLI wizard prompts, scaffolding, circuit copy, and generated scripts.
+- CLI contributor status/contribute flows, device-flow auth, receipts, and recovery paths.
+- Storage failures: unavailable KV, unavailable Blob, stale state, corrupted zkeys, swapped Blob URLs.
+- Security checks: protected route access, fake contribution hashes, participant receipt access, auth bypass attempts.
+- Performance checks with larger zkeys and many queued contributors.
+- Final sign-off: finalized zkey, exported verification key, full chain verification, and Ethereum RANDAO beacon application.
 
-- **BES-1358** (High) — Security review + performance testing
-  - Auth bypass attempts (skip queue, fake contribution hash, replay attacks)
-  - State tampering (modified KV manifest, swapped Blob URLs, corrupted zkeys)
-  - Entropy quality (is the UI actually enforcing the mouse/click threshold?)
-  - Large circuits (>100 MB zkeys) — memory, timing, streaming
-  - Many contributors (simulate 50+ concurrent queue entries)
-
-- **BES-1359** (Urgent, due Mar 27) — Final sign-off
-  - Complete ceremony from `npx @wonderland/create-cabure-ceremony` to finalized zkey
-  - Every screen works, every API route works, chain hash is valid, RANDAO beacon is applied
-  - This is the gate — nothing ships without your sign-off
+For each live Linear issue, show the identifier, title, priority, assignee, status, and any blocker.
 
 ## 4. Test Environment Setup
 
-Guide them through getting a local test environment running:
+Guide them through repository checks first:
+
+```bash
+pnpm install
+pnpm format
+pnpm build
+pnpm test
+pnpm test:e2e
+```
+
+Then guide them through getting a local generated app running:
+
 ```bash
 # 1. Scaffold a test ceremony
 npx @wonderland/create-cabure-ceremony
-# Use: "QA Test Ceremony", small custom target (e.g. 10), no tiers
+# Use: "QA Test Ceremony", small custom target (e.g. 10), optional end date, and a toy .r1cs artifacts path when available
 
 # 2. Provision Vercel storage
 cd my-ceremony
@@ -82,16 +87,22 @@ npm run dev
 # App: http://localhost:3000
 
 # 4. Test the CLI contributor against the local app
+npx @wonderland/cabure-cli status http://localhost:3000
 npx @wonderland/cabure-cli contribute http://localhost:3000
+# Or, after installation, use the actual bin:
+cabure contribute http://localhost:3000
 ```
 
-For the toy circuit, use the smallest possible r1cs file to keep iteration fast. Save the production-size circuits for BES-1358 performance testing.
+For the toy circuit, use the smallest possible `.r1cs` file to keep iteration fast. Save production-size circuits and large zkeys for performance testing. If no circuit path is provided during scaffolding, `circuits/` is still created and can be populated manually before running `npm run setup:ptau`.
 
 ## 5. What to Prioritize
 
-Testing window is Mar 16 – Mar 27 (2 weeks). Suggested order:
-1. **Week 1 (Mar 16–20):** BES-1356 (e2e) + BES-1357 (browser/CLI) — get the happy path solid first
-2. **Week 2 (Mar 23–27):** BES-1358 (security/perf) + BES-1359 (final sign-off) — break things, then certify
+Use current Linear status and release timing to prioritize. A sensible order is:
+1. Happy-path e2e ceremony with toy circuits.
+2. Browser and CLI compatibility.
+3. Queue, auth, storage, and contribution failure scenarios.
+4. Security and tamper checks.
+5. Larger circuit performance and final sign-off.
 
 ## 6. Questions
 

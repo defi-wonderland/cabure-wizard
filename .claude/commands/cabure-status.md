@@ -1,5 +1,7 @@
 Check the current status of the Caburé project in Linear.
 
+Use Linear as the live source of truth for milestones, assignments, priorities, and dates. Do not copy stale status into onboarding docs; link people back to this command when they need current project state.
+
 1. Get the Caburé project from Linear (team: "Internal / Public Goods", project name: "Caburé")
 2. List all milestones and their progress
 3. List all issues grouped by milestone, showing:

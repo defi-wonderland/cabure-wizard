@@ -3,6 +3,7 @@
     "allow": [
       "Bash(npm:*)",
       "Bash(npx:*)",
+      "Bash(pnpm:*)",
       "Bash(node:*)",
       "Bash(tsc:*)",
       "Bash(vitest:*)",
