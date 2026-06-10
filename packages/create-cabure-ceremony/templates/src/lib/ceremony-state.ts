@@ -36,6 +36,11 @@ export interface CircuitState {
   queue: QueueEntry[];
   currentZkeyPath: string;
   currentZkeyUrl: string;
+  // Genesis zkey, pinned at init and never overwritten. Lets the contribution
+  // and finalize paths check that a chain really extends the original
+  // parameters instead of trusting the mutable `current` pointer.
+  initialZkeyHash: string;
+  initialZkeyUrl: string;
 }
 
 export interface ManifestState {
@@ -231,6 +236,8 @@ export function createCircuitState(options: {
   id: string;
   zkeyPath: string;
   zkeyUrl: string;
+  initialZkeyHash: string;
+  initialZkeyUrl: string;
 }): CircuitState {
   return {
     id: options.id,
@@ -240,6 +247,8 @@ export function createCircuitState(options: {
     queue: [],
     currentZkeyPath: options.zkeyPath,
     currentZkeyUrl: options.zkeyUrl,
+    initialZkeyHash: options.initialZkeyHash,
+    initialZkeyUrl: options.initialZkeyUrl,
   };
 }
 
