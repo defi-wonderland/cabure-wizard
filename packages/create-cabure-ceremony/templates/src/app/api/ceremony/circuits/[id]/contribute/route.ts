@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createHash } from "node:crypto";
 
-import { verify } from "@wonderland/cabure-crypto";
+import { verifyChain } from "@wonderland/cabure-crypto";
 
 import { getCeremonyConfig } from "@/lib/ceremony-config";
 import { getParticipant } from "@/lib/participant-auth";
@@ -141,27 +141,53 @@ export async function POST(
       );
     }
 
-    // Per-contribution verification is opt-in: loading r1cs + ptau and running
-    // pairing checks can easily exceed serverless timeouts for large circuits.
-    // The finalize script verifies the full contribution chain before applying
-    // the beacon, so integrity is guaranteed before finalization.
-    if (config.verifyContributions) {
-      const [r1cs, ptau] = await Promise.all([
-        readCircuitBytes(circuitConfig.artifacts.r1csPath),
-        readCircuitBytes(circuitConfig.artifacts.ptauPath),
-      ]);
+    const computedHash = `0x${createHash("sha256").update(body).digest("hex")}`;
 
-      const isValid = await verify(r1cs, ptau, body);
-      if (!isValid) {
+    // Verify the contribution extends the CURRENT chain, not merely that it is
+    // a valid chain from genesis. A takeover rebuild (re-run every contribution
+    // from genesis with the attacker's own randomness) is a valid chain from
+    // genesis, so checking against genesis alone would accept it and silently
+    // drop every honest contribution. verifyChain(ptau, currentZkey, body)
+    // proves `body` continues the exact zkey we are currently serving.
+    //
+    // On by default. It is the only request-path defense against the takeover,
+    // so disabling it (development only) leaves the chain unprotected until the
+    // finalize script runs its full chain verify. The pairing verify is
+    // O(circuit size); for a large circuit on a short serverless timeout this
+    // can be slow — size the deployment's function timeout accordingly.
+    if (config.verifyContributions) {
+      const ptau = await readCircuitBytes(circuitConfig.artifacts.ptauPath);
+
+      const currentResponse = await fetch(circuit.currentZkeyUrl);
+      if (!currentResponse.ok) {
         await deleteBinary(blobUrl).catch(() => {});
         return NextResponse.json(
-          { error: "Invalid contribution: verification failed" },
+          { error: "Could not load the current zkey to verify against" },
+          { status: 502 },
+        );
+      }
+      const currentZkey = new Uint8Array(await currentResponse.arrayBuffer());
+
+      // verifyChain treats byte-equal inputs as a valid empty chain, so a
+      // resubmission of the current zkey would pass. A contribution must change
+      // the parameters; reject one that does not.
+      if (computedHash === circuit.latestContributionHash) {
+        await deleteBinary(blobUrl).catch(() => {});
+        return NextResponse.json(
+          { error: "Contribution does not add anything to the current zkey" },
+          { status: 400 },
+        );
+      }
+
+      const extendsChain = await verifyChain(ptau, currentZkey, body);
+      if (!extendsChain) {
+        await deleteBinary(blobUrl).catch(() => {});
+        return NextResponse.json(
+          { error: "Contribution does not extend the current chain" },
           { status: 400 },
         );
       }
     }
-
-    const computedHash = `0x${createHash("sha256").update(body).digest("hex")}`;
 
     const contributionIndex = circuit.totalContributions + 1;
     const timestamp = Date.now();

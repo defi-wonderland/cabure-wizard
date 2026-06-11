@@ -211,7 +211,12 @@ export const ceremonyConfig: CeremonyConfig = {
   targetContributions: ${context.targetContributions},
   endDate: ${context.endDate ? JSON.stringify(context.endDate) : "null"},
   queueTimeoutSeconds: 300,
-  verifyContributions: false,
+  // Verify each contribution extends the current chain before accepting it.
+  // On by default: it is the only request-path defense against a takeover
+  // rebuild. Turn off only for local development; verification is O(circuit
+  // size), so for a large circuit ensure the deployment's function timeout is
+  // generous enough.
+  verifyContributions: true,
   tiersEnabled: ${context.tiers.length > 0},
   tiers: [
 ${tierEntries}
