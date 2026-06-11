@@ -41,6 +41,14 @@ export interface CircuitState {
   // parameters instead of trusting the mutable `current` pointer.
   initialZkeyHash: string;
   initialZkeyUrl: string;
+  // Circuit (constraint system) hash, fixed by the r1cs. Read from the genesis
+  // zkey at init. A submitted zkey must carry the same `csHash` to belong to
+  // this circuit. See the contribute route's continuity check.
+  csHash: string;
+  // Blake2b transcript of the most recent contribution, read from the zkey
+  // itself (not the operator-controlled chain hash). A valid next contribution
+  // must still carry this transcript at its old index. `null` at genesis.
+  latestTranscript: string | null;
 }
 
 export interface ManifestState {
@@ -238,6 +246,7 @@ export function createCircuitState(options: {
   zkeyUrl: string;
   initialZkeyHash: string;
   initialZkeyUrl: string;
+  csHash: string;
 }): CircuitState {
   return {
     id: options.id,
@@ -249,6 +258,8 @@ export function createCircuitState(options: {
     currentZkeyUrl: options.zkeyUrl,
     initialZkeyHash: options.initialZkeyHash,
     initialZkeyUrl: options.initialZkeyUrl,
+    csHash: options.csHash,
+    latestTranscript: null,
   };
 }
 

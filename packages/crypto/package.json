@@ -47,6 +47,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
+    "@iden3/binfileutils": "0.0.12",
     "snarkjs": "0.7.5"
   },
   "devDependencies": {

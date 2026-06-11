@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createHash } from "node:crypto";
 
-import { verify } from "@wonderland/cabure-crypto";
+import {
+  readContributionChain,
+  verify,
+  type ContributionChain,
+} from "@wonderland/cabure-crypto";
 
 import { getCeremonyConfig } from "@/lib/ceremony-config";
 import { getParticipant } from "@/lib/participant-auth";
@@ -87,6 +91,20 @@ export async function POST(
     );
   }
 
+  // Read the contribution chain embedded in the uploaded zkey. This is a cheap
+  // parse (no pairings, no curve point deserialization). A malformed file
+  // throws here and is rejected before it can touch ceremony state.
+  let chain: ContributionChain;
+  try {
+    chain = await readContributionChain(body);
+  } catch {
+    await deleteBinary(blobUrl).catch(() => {});
+    return NextResponse.json(
+      { error: "Uploaded file is not a readable zkey" },
+      { status: 400 },
+    );
+  }
+
   const config = getCeremonyConfig();
   const manifest = await getManifest();
   const lockKey = `${config.storage.manifestPath}:lock:${id}`;
@@ -141,6 +159,38 @@ export async function POST(
       );
     }
 
+    // Continuity (cheap, no pairings): the submission must be for this circuit,
+    // be exactly one contribution longer than the recorded chain, and still
+    // carry the recorded latest transcript at its old position. Because each
+    // transcript folds in every earlier one, matching the latest transcript
+    // commits to the entire prefix — a chain that drops or replaces an earlier
+    // contribution cannot pass.
+    if (chain.csHash !== circuit.csHash) {
+      await deleteBinary(blobUrl).catch(() => {});
+      return NextResponse.json(
+        { error: "Contribution is for a different circuit" },
+        { status: 400 },
+      );
+    }
+    if (chain.transcripts.length !== circuit.totalContributions + 1) {
+      await deleteBinary(blobUrl).catch(() => {});
+      return NextResponse.json(
+        { error: "Contribution does not extend the current chain" },
+        { status: 409 },
+      );
+    }
+    if (
+      circuit.totalContributions > 0 &&
+      chain.transcripts[circuit.totalContributions - 1] !==
+        circuit.latestTranscript
+    ) {
+      await deleteBinary(blobUrl).catch(() => {});
+      return NextResponse.json(
+        { error: "Contribution does not extend the current chain" },
+        { status: 409 },
+      );
+    }
+
     // Per-contribution verification is opt-in: loading r1cs + ptau and running
     // pairing checks can easily exceed serverless timeouts for large circuits.
     // The finalize script verifies the full contribution chain before applying
@@ -180,6 +230,7 @@ export async function POST(
     circuit.totalContributions += 1;
     circuit.latestContributionHash = computedHash;
     circuit.chainHash = chainHash;
+    circuit.latestTranscript = chain.transcripts[contributionIndex - 1];
     circuit.queue.shift();
     circuit.currentZkeyPath = stored.pathname;
     circuit.currentZkeyUrl = stored.url;

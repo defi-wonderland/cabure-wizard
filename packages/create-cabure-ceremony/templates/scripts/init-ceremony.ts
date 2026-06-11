@@ -5,7 +5,11 @@ import process from "node:process";
 
 import { put } from "@vercel/blob";
 import { loadEnvConfig } from "@next/env";
-import { generateInitialZkey, verify } from "@wonderland/cabure-crypto";
+import {
+  generateInitialZkey,
+  readContributionChain,
+  verify,
+} from "@wonderland/cabure-crypto";
 
 import { getEndDateDeadlineMs } from "@/lib/ceremony-state";
 import {
@@ -47,6 +51,8 @@ type CircuitState = {
   currentZkeyUrl: string;
   initialZkeyHash: string;
   initialZkeyUrl: string;
+  csHash: string;
+  latestTranscript: string | null;
 };
 
 type ManifestState = {
@@ -153,6 +159,9 @@ async function main() {
     console.log(`  Running Phase 2 setup...`);
     const zkey = await generateInitialZkey(ptau, r1cs);
     const genesisHash = sha256hex(zkey);
+    // Circuit hash, fixed by the r1cs. Pinned now so the contribute route can
+    // reject a submission built against a different circuit.
+    const { csHash } = await readContributionChain(zkey);
 
     console.log(`  Genesis zkey size: ${formatBytes(zkey.length)}`);
     console.log(`  Genesis zkey hash: ${genesisHash}`);
@@ -207,6 +216,8 @@ async function main() {
       currentZkeyUrl: zkeyUpload.url,
       initialZkeyHash: genesisHash,
       initialZkeyUrl: genesisUpload.url,
+      csHash,
+      latestTranscript: null,
     };
 
     const kvKey = `${ceremonyConfig.storage.circuitStatePrefix}:${circuit.id}`;

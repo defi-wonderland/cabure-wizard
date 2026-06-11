@@ -10,6 +10,7 @@ import {
   generateEntropy,
   applyBeacon,
   exportVerificationKey,
+  readContributionChain,
 } from "../src/index.js";
 import { bytesToHexRaw, toHex } from "../src/hex.js";
 
@@ -388,5 +389,57 @@ describe("exportVerificationKey", () => {
     expect(vkey).toHaveProperty("vk_gamma_2");
     expect(vkey).toHaveProperty("vk_delta_2");
     expect(vkey).toHaveProperty("IC");
+  });
+});
+
+describe("readContributionChain", () => {
+  it("reports no contributions for a genesis zkey", async () => {
+    const genesis = await generateInitialZkey(ptau, r1cs);
+    const chain = await readContributionChain(genesis);
+    expect(chain.transcripts).toHaveLength(0);
+    expect(chain.csHash).toMatch(/^0x[0-9a-f]{128}$/);
+  });
+
+  it("grows by one transcript per contribution and keeps the prefix stable", async () => {
+    const genesis = await generateInitialZkey(ptau, r1cs);
+    const first = await contribute(genesis, new Uint8Array(32).fill(1));
+    const second = await contribute(first.zkey, new Uint8Array(32).fill(2));
+
+    const afterGenesis = await readContributionChain(genesis);
+    const afterFirst = await readContributionChain(first.zkey);
+    const afterSecond = await readContributionChain(second.zkey);
+
+    expect(afterFirst.transcripts).toHaveLength(1);
+    expect(afterSecond.transcripts).toHaveLength(2);
+
+    // The circuit hash never changes across the chain.
+    expect(afterFirst.csHash).toBe(afterGenesis.csHash);
+    expect(afterSecond.csHash).toBe(afterGenesis.csHash);
+
+    // A valid extension keeps every earlier transcript at its old index.
+    expect(afterSecond.transcripts[0]).toBe(afterFirst.transcripts[0]);
+  });
+
+  it("rejects a file that is not a zkey", async () => {
+    await expect(readContributionChain(new Uint8Array(64))).rejects.toThrow();
+  });
+
+  it("distinguishes a genuine extension from a takeover rebuild", async () => {
+    const genesis = await generateInitialZkey(ptau, r1cs);
+    const honest1 = await contribute(genesis, new Uint8Array(32).fill(1));
+    // A genuine next contribution, built on top of honest1.
+    const honest2 = await contribute(honest1.zkey, new Uint8Array(32).fill(2));
+    // A takeover: a fresh chain rebuilt from genesis with the attacker's own
+    // randomness, dropping honest1.
+    const attacker = await contribute(genesis, new Uint8Array(32).fill(9));
+
+    const c1 = await readContributionChain(honest1.zkey);
+    const c2 = await readContributionChain(honest2.zkey);
+    const att = await readContributionChain(attacker.zkey);
+
+    // The genuine extension carries honest1's transcript at its old index.
+    expect(c2.transcripts[0]).toBe(c1.transcripts[0]);
+    // The takeover does not — so the continuity check rejects it.
+    expect(att.transcripts[0]).not.toBe(c1.transcripts[0]);
   });
 });
