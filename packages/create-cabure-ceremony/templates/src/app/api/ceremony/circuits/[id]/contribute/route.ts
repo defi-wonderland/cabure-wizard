@@ -21,7 +21,7 @@ import {
   readCircuitBytes,
   type ContributionReceipt,
 } from "@/lib/ceremony-state";
-import { deleteBinary, putBinary } from "@/lib/blob-store";
+import { deleteBinary } from "@/lib/blob-store";
 import { acquireLock, releaseLock, writeContribution } from "@/lib/kv-store";
 
 const BLOB_HOST_SUFFIX = ".public.blob.vercel-storage.com";
@@ -40,6 +40,10 @@ function isValidPendingBlobUrl(url: string, circuitId: string): boolean {
   } catch {
     return false;
   }
+}
+
+function blobPathname(url: string): string {
+  return new URL(url).pathname.replace(/^\//, "");
 }
 
 export async function POST(
@@ -222,18 +226,20 @@ export async function POST(
       timestamp,
     });
 
-    const zkeyPath = `${config.storage.zkeyPrefix}/${id}/current.zkey`;
-    const stored = await putBinary(zkeyPath, body);
-
-    await deleteBinary(blobUrl).catch(() => {});
+    // The uploaded blob already sits at its own immutable, random-suffixed
+    // path. Promote it in place instead of overwriting a shared current.zkey:
+    // Vercel Blob serves public blobs as immutable, so overwriting the same
+    // path leaves the CDN returning stale bytes — a later contributor then
+    // downloads the wrong zkey and fails the integrity check.
+    const previousZkeyUrl = circuit.currentZkeyUrl;
 
     circuit.totalContributions += 1;
     circuit.latestContributionHash = computedHash;
     circuit.chainHash = chainHash;
     circuit.latestTranscript = chain.transcripts[contributionIndex - 1];
     circuit.queue.shift();
-    circuit.currentZkeyPath = stored.pathname;
-    circuit.currentZkeyUrl = stored.url;
+    circuit.currentZkeyPath = blobPathname(blobUrl);
+    circuit.currentZkeyUrl = blobUrl;
 
     const receipt: ContributionReceipt = {
       circuitId: id,
@@ -258,6 +264,12 @@ export async function POST(
       participantsIndexKey: config.storage.participantsIndexPath,
       participantId,
     });
+
+    // Drop the superseded zkey now that the pointer has moved — never the
+    // genesis, which finalize and download integrity both depend on.
+    if (previousZkeyUrl && previousZkeyUrl !== circuit.initialZkeyUrl) {
+      await deleteBinary(previousZkeyUrl).catch(() => {});
+    }
 
     return NextResponse.json({
       success: true,
