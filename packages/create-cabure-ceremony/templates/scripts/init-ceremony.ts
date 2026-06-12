@@ -177,9 +177,12 @@ async function main() {
       );
     }
 
-    // Immutable copy: contributions overwrite `current.zkey`, so the original
-    // parameters must live at their own path to stay checkable for the whole
-    // ceremony. `current.zkey` is the mutable live pointer.
+    // Genesis lives at its own immutable path for the whole ceremony. The live
+    // `currentZkeyUrl` starts out pointing AT the genesis — there is no separate
+    // mutable `current.zkey`. Each contribution moves the pointer to its own
+    // unique uploaded blob (see the contribute route). Vercel Blob serves public
+    // blobs as immutable, so a fixed, overwritten path would serve stale bytes;
+    // unique paths avoid that entirely.
     console.log(`  Uploading genesis zkey to Vercel Blob...`);
     const genesisBlobPath = `${ceremonyConfig.storage.zkeyPrefix}/${circuit.id}/genesis.zkey`;
     const genesisUpload = await put(genesisBlobPath, Buffer.from(zkey), {
@@ -190,16 +193,6 @@ async function main() {
       allowOverwrite: true,
     });
     console.log(`  Genesis pinned at: ${genesisUpload.url}`);
-
-    const blobPath = `${ceremonyConfig.storage.zkeyPrefix}/${circuit.id}/current.zkey`;
-    const zkeyUpload = await put(blobPath, Buffer.from(zkey), {
-      access: "public",
-      token,
-      contentType: "application/octet-stream",
-      addRandomSuffix: false,
-      allowOverwrite: true,
-    });
-    console.log(`  Uploaded live pointer to: ${zkeyUpload.url}`);
 
     const localZkeyFile = `${circuit.id}.genesis.zkey`;
     const localZkeyPath = path.join(OUTPUT_DIR, localZkeyFile);
@@ -212,8 +205,8 @@ async function main() {
       latestContributionHash: genesisHash,
       chainHash: GENESIS_CHAIN_HASH,
       queue: [],
-      currentZkeyPath: zkeyUpload.pathname,
-      currentZkeyUrl: zkeyUpload.url,
+      currentZkeyPath: genesisUpload.pathname,
+      currentZkeyUrl: genesisUpload.url,
       initialZkeyHash: genesisHash,
       initialZkeyUrl: genesisUpload.url,
       csHash,
