@@ -5,7 +5,11 @@ import process from "node:process";
 
 import { put } from "@vercel/blob";
 import { loadEnvConfig } from "@next/env";
-import { generateInitialZkey } from "@wonderland/cabure-crypto";
+import {
+  generateInitialZkey,
+  readContributionChain,
+  verify,
+} from "@wonderland/cabure-crypto";
 
 import { getEndDateDeadlineMs } from "@/lib/ceremony-state";
 import {
@@ -45,6 +49,10 @@ type CircuitState = {
   queue: QueueEntry[];
   currentZkeyPath: string;
   currentZkeyUrl: string;
+  initialZkeyHash: string;
+  initialZkeyUrl: string;
+  csHash: string;
+  latestTranscript: string | null;
 };
 
 type ManifestState = {
@@ -151,20 +159,40 @@ async function main() {
     console.log(`  Running Phase 2 setup...`);
     const zkey = await generateInitialZkey(ptau, r1cs);
     const genesisHash = sha256hex(zkey);
+    // Circuit hash, fixed by the r1cs. Pinned now so the contribute route can
+    // reject a submission built against a different circuit.
+    const { csHash } = await readContributionChain(zkey);
 
     console.log(`  Genesis zkey size: ${formatBytes(zkey.length)}`);
     console.log(`  Genesis zkey hash: ${genesisHash}`);
 
+    // Catch a corrupt genesis (e.g. swapped r1cs/ptau, broken toolchain)
+    // before it becomes the root everyone builds on.
+    console.log(`  Verifying genesis zkey...`);
+    const genesisValid = await verify(r1cs, ptau, zkey);
+    if (!genesisValid) {
+      throw new Error(
+        `Genesis zkey for ${circuit.id} failed verification. ` +
+          "Check that the r1cs and ptau inputs are correct.",
+      );
+    }
+
+    // Genesis lives at its own immutable path for the whole ceremony. The live
+    // `currentZkeyUrl` starts out pointing AT the genesis — there is no separate
+    // mutable `current.zkey`. Each contribution moves the pointer to its own
+    // unique uploaded blob (see the contribute route). Vercel Blob serves public
+    // blobs as immutable, so a fixed, overwritten path would serve stale bytes;
+    // unique paths avoid that entirely.
     console.log(`  Uploading genesis zkey to Vercel Blob...`);
-    const blobPath = `${ceremonyConfig.storage.zkeyPrefix}/${circuit.id}/current.zkey`;
-    const zkeyUpload = await put(blobPath, Buffer.from(zkey), {
+    const genesisBlobPath = `${ceremonyConfig.storage.zkeyPrefix}/${circuit.id}/genesis.zkey`;
+    const genesisUpload = await put(genesisBlobPath, Buffer.from(zkey), {
       access: "public",
       token,
       contentType: "application/octet-stream",
       addRandomSuffix: false,
       allowOverwrite: true,
     });
-    console.log(`  Uploaded to: ${zkeyUpload.url}`);
+    console.log(`  Genesis pinned at: ${genesisUpload.url}`);
 
     const localZkeyFile = `${circuit.id}.genesis.zkey`;
     const localZkeyPath = path.join(OUTPUT_DIR, localZkeyFile);
@@ -177,8 +205,12 @@ async function main() {
       latestContributionHash: genesisHash,
       chainHash: GENESIS_CHAIN_HASH,
       queue: [],
-      currentZkeyPath: zkeyUpload.pathname,
-      currentZkeyUrl: zkeyUpload.url,
+      currentZkeyPath: genesisUpload.pathname,
+      currentZkeyUrl: genesisUpload.url,
+      initialZkeyHash: genesisHash,
+      initialZkeyUrl: genesisUpload.url,
+      csHash,
+      latestTranscript: null,
     };
 
     const kvKey = `${ceremonyConfig.storage.circuitStatePrefix}:${circuit.id}`;
@@ -190,8 +222,8 @@ async function main() {
       label: circuit.label,
       genesisZkeyHash: genesisHash,
       genesisZkeySize: zkey.length,
-      genesisZkeyUrl: zkeyUpload.url,
-      genesisZkeyPath: zkeyUpload.pathname,
+      genesisZkeyUrl: genesisUpload.url,
+      genesisZkeyPath: genesisUpload.pathname,
       localZkeyPath: `public/genesis/${localZkeyFile}`,
       r1csPath: circuit.artifacts.r1csPath,
       ptauPath: circuit.artifacts.ptauPath,

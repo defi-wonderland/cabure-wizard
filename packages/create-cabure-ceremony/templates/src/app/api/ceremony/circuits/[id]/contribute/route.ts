@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createHash } from "node:crypto";
 
-import { verify } from "@wonderland/cabure-crypto";
+import {
+  readContributionChain,
+  verify,
+  type ContributionChain,
+} from "@wonderland/cabure-crypto";
 
 import { getCeremonyConfig } from "@/lib/ceremony-config";
 import { getParticipant } from "@/lib/participant-auth";
@@ -17,7 +21,7 @@ import {
   readCircuitBytes,
   type ContributionReceipt,
 } from "@/lib/ceremony-state";
-import { deleteBinary, putBinary } from "@/lib/blob-store";
+import { deleteBinary } from "@/lib/blob-store";
 import { acquireLock, releaseLock, writeContribution } from "@/lib/kv-store";
 
 const BLOB_HOST_SUFFIX = ".public.blob.vercel-storage.com";
@@ -36,6 +40,10 @@ function isValidPendingBlobUrl(url: string, circuitId: string): boolean {
   } catch {
     return false;
   }
+}
+
+function blobPathname(url: string): string {
+  return new URL(url).pathname.replace(/^\//, "");
 }
 
 export async function POST(
@@ -83,6 +91,20 @@ export async function POST(
     await deleteBinary(blobUrl).catch(() => {});
     return NextResponse.json(
       { error: "Contribution payload is empty" },
+      { status: 400 },
+    );
+  }
+
+  // Read the contribution chain embedded in the uploaded zkey. This is a cheap
+  // parse (no pairings, no curve point deserialization). A malformed file
+  // throws here and is rejected before it can touch ceremony state.
+  let chain: ContributionChain;
+  try {
+    chain = await readContributionChain(body);
+  } catch {
+    await deleteBinary(blobUrl).catch(() => {});
+    return NextResponse.json(
+      { error: "Uploaded file is not a readable zkey" },
       { status: 400 },
     );
   }
@@ -141,6 +163,38 @@ export async function POST(
       );
     }
 
+    // Continuity (cheap, no pairings): the submission must be for this circuit,
+    // be exactly one contribution longer than the recorded chain, and still
+    // carry the recorded latest transcript at its old position. Because each
+    // transcript folds in every earlier one, matching the latest transcript
+    // commits to the entire prefix — a chain that drops or replaces an earlier
+    // contribution cannot pass.
+    if (chain.csHash !== circuit.csHash) {
+      await deleteBinary(blobUrl).catch(() => {});
+      return NextResponse.json(
+        { error: "Contribution is for a different circuit" },
+        { status: 400 },
+      );
+    }
+    if (chain.transcripts.length !== circuit.totalContributions + 1) {
+      await deleteBinary(blobUrl).catch(() => {});
+      return NextResponse.json(
+        { error: "Contribution does not extend the current chain" },
+        { status: 409 },
+      );
+    }
+    if (
+      circuit.totalContributions > 0 &&
+      chain.transcripts[circuit.totalContributions - 1] !==
+        circuit.latestTranscript
+    ) {
+      await deleteBinary(blobUrl).catch(() => {});
+      return NextResponse.json(
+        { error: "Contribution does not extend the current chain" },
+        { status: 409 },
+      );
+    }
+
     // Per-contribution verification is opt-in: loading r1cs + ptau and running
     // pairing checks can easily exceed serverless timeouts for large circuits.
     // The finalize script verifies the full contribution chain before applying
@@ -172,17 +226,20 @@ export async function POST(
       timestamp,
     });
 
-    const zkeyPath = `${config.storage.zkeyPrefix}/${id}/current.zkey`;
-    const stored = await putBinary(zkeyPath, body);
-
-    await deleteBinary(blobUrl).catch(() => {});
+    // The uploaded blob already sits at its own immutable, random-suffixed
+    // path. Promote it in place instead of overwriting a shared current.zkey:
+    // Vercel Blob serves public blobs as immutable, so overwriting the same
+    // path leaves the CDN returning stale bytes — a later contributor then
+    // downloads the wrong zkey and fails the integrity check.
+    const previousZkeyUrl = circuit.currentZkeyUrl;
 
     circuit.totalContributions += 1;
     circuit.latestContributionHash = computedHash;
     circuit.chainHash = chainHash;
+    circuit.latestTranscript = chain.transcripts[contributionIndex - 1];
     circuit.queue.shift();
-    circuit.currentZkeyPath = stored.pathname;
-    circuit.currentZkeyUrl = stored.url;
+    circuit.currentZkeyPath = blobPathname(blobUrl);
+    circuit.currentZkeyUrl = blobUrl;
 
     const receipt: ContributionReceipt = {
       circuitId: id,
@@ -207,6 +264,12 @@ export async function POST(
       participantsIndexKey: config.storage.participantsIndexPath,
       participantId,
     });
+
+    // Drop the superseded zkey now that the pointer has moved — never the
+    // genesis, which finalize and download integrity both depend on.
+    if (previousZkeyUrl && previousZkeyUrl !== circuit.initialZkeyUrl) {
+      await deleteBinary(previousZkeyUrl).catch(() => {});
+    }
 
     return NextResponse.json({
       success: true,

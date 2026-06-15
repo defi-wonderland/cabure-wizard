@@ -51,6 +51,9 @@ importers:
 
   packages/crypto:
     dependencies:
+      '@iden3/binfileutils':
+        specifier: 0.0.12
+        version: 0.0.12
       snarkjs:
         specifier: 0.7.5
         version: 0.7.5

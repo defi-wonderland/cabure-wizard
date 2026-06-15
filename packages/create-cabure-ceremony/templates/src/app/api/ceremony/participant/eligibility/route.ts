@@ -96,7 +96,11 @@ function buildTierPreview(
   );
   const tierIds = new Set(tier.circuitIds);
 
-  const items = tier.circuitIds.map((circuitId) => {
+  // Annotate so the literal `state` values widen to CircuitPreviewState.
+  // Without this, `items` is inferred from the three states the map returns,
+  // and the `"fallback"` push below would not type-check.
+  const items: { circuitId: string; state: CircuitPreviewState }[] =
+    tier.circuitIds.map((circuitId) => {
     if (willRunIds.has(circuitId)) {
       return { circuitId, state: "willRun" as const };
     }
