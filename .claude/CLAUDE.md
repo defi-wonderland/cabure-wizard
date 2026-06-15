@@ -145,7 +145,7 @@ Operator scaffolds → runs `setup:ptau` → runs `init:ceremony` → deploys to
 ## Verification
 
 - Per-contribution BN254 pairing checks are optional, configurable via `verifyContributions` in `ceremony.config.ts` (default: `false` due to serverless timeouts)
-- The finalize script always verifies the full contribution chain before applying the beacon
+- The finalize script verifies the full contribution chain (genesis → latest, with the pinned genesis hash checked first) before applying the beacon, then verifies the finalized zkey
 - SHA-256 hash chain from genesis to latest
 - SHA-256 integrity check on every zkey download (genesis hash seeded at init)
 - Ethereum RANDAO beacon for finalization randomness
