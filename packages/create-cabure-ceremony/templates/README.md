@@ -1,4 +1,4 @@
-# __PROJECT_NAME__
+# **PROJECT_NAME**
 
 Interactive UI for a Groth16 Phase 2 trusted setup ceremony. Participants contribute randomness through the browser while the app manages queue coordination, zkey storage, and receipt generation.
 
@@ -80,12 +80,12 @@ The init script only needs to run once. After deploying, the API routes handle c
 
 ## Scripts
 
-| Script                      | Description                                                              |
-| --------------------------- | ------------------------------------------------------------------------ |
-| `npm run setup:ptau`        | Detect circuit constraints, download the correct PPoT ptau, and update config |
+| Script                      | Description                                                                               |
+| --------------------------- | ----------------------------------------------------------------------------------------- |
+| `npm run setup:ptau`        | Detect circuit constraints, download the correct PPoT ptau, and update config             |
 | `npm run init:ceremony`     | Generate genesis zkey, upload to Blob, write manifest to KV. Outputs to `public/genesis/` |
-| `npm run reset:ceremony`    | Wipe all KV keys and Blob zkeys for a fresh start |
-| `npm run finalize:ceremony` | Apply beacon (Ethereum RANDAO by default), verify zkeys. Outputs to `public/finalize/` |
+| `npm run reset:ceremony`    | Wipe all KV keys and Blob zkeys for a fresh start                                         |
+| `npm run finalize:ceremony` | Apply beacon (Ethereum RANDAO by default), verify zkeys. Outputs to `public/finalize/`    |
 
 ### Setup ptau
 
@@ -115,6 +115,20 @@ Running `init:ceremony` generates `public/genesis/`:
 
 - `init-transcript.json` — full initialization record (ceremony config, circuit hashes, storage paths)
 - `{circuitId}.genesis.zkey` — local copy of each genesis zkey
+
+### Pin the genesis hash externally
+
+`init:ceremony` records each circuit's `genesisZkeyHash` in `init-transcript.json`
+and in KV. `finalize:ceremony` checks the genesis blob against that hash before
+verifying the chain, which catches a swapped or corrupted genesis blob while KV
+is intact.
+
+It does NOT defend against an attacker who can write both the blob and KV: they
+rewrite the pinned hash to match the swapped genesis. To close that gap, publish
+each `genesisZkeyHash` somewhere outside this deployment's control at the start
+of the ceremony — commit it to a public Git repo, post it where contributors can
+read it. Contributors and auditors can then confirm the finalized parameters
+were built on the genesis announced at the start, not one substituted later.
 
 ### Finalization output
 

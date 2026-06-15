@@ -392,6 +392,16 @@ async function main() {
     }
     console.log(`  Chain verification passed.`);
 
+    // TODO(C-1): the chain verify above only proves current.zkey is SOME valid
+    // descendant of the pinned genesis, not that it is the chain we recorded.
+    // An attacker with blob write access but no KV access (a leaked
+    // BLOB_READ_WRITE_TOKEN) can overwrite current.zkey with a self-generated
+    // chain rooted at the real genesis and pass here. Close this by comparing
+    // the embedded transcript (snarkjs zKey.exportJson -> contributions)
+    // against the contribution count and per-contribution hashes recorded in
+    // KV before applying the beacon. Needs the contribute route to record the
+    // server-computed Blake2b contribution hash per step first.
+
     console.log(`  Applying beacon...`);
     const beaconResult = await applyBeacon(currentZkey, beaconHex);
     const finalZkey = beaconResult.zkey;
