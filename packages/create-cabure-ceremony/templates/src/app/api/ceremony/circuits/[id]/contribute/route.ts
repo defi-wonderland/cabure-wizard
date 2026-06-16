@@ -70,6 +70,16 @@ export async function POST(
     );
   }
 
+  const config = getCeremonyConfig();
+  const circuitConfig = config.circuits.find((c) => c.id === id);
+  if (!circuitConfig) {
+    await deleteBinary(blobUrl).catch(() => {});
+    return NextResponse.json(
+      { error: `Unknown circuit: ${id}` },
+      { status: 404 },
+    );
+  }
+
   const blobResponse = await fetch(blobUrl);
   if (!blobResponse.ok) {
     return NextResponse.json(
@@ -87,12 +97,48 @@ export async function POST(
     );
   }
 
-  const config = getCeremonyConfig();
+  // Heavy work runs BEFORE the lock. Verifying and copying the zkey can take
+  // longer than the lock's TTL; under the lock that would let the lock expire
+  // mid-work and admit a second writer, dropping a contribution. Out here, the
+  // lock below is held only for the fast state update, so it cannot expire in
+  // flight and the plain write is safe.
+
+  // Per-contribution verification is opt-in: pairing checks can exceed
+  // serverless timeouts for large circuits.
+  if (config.verifyContributions) {
+    const [r1cs, ptau] = await Promise.all([
+      readCircuitBytes(circuitConfig.artifacts.r1csPath),
+      readCircuitBytes(circuitConfig.artifacts.ptauPath),
+    ]);
+
+    const isValid = await verify(r1cs, ptau, body);
+    if (!isValid) {
+      await deleteBinary(blobUrl).catch(() => {});
+      return NextResponse.json(
+        { error: "Invalid contribution: verification failed" },
+        { status: 400 },
+      );
+    }
+  }
+
+  const computedHash = `0x${createHash("sha256").update(body).digest("hex")}`;
+
+  // Store to a unique path, never the shared `current.zkey`: the committed
+  // `currentZkeyUrl` pointer is the source of truth, so a contribution that
+  // fails an eligibility check below is discarded without touching the live
+  // zkey.
+  const zkeyPath = `${config.storage.zkeyPrefix}/${id}/contrib-${crypto.randomUUID()}.zkey`;
+  const stored = await putBinary(zkeyPath, body);
+
+  // The client's pending upload has been copied to our path.
+  await deleteBinary(blobUrl).catch(() => {});
+
   const manifest = await getManifest();
   const lockKey = `${config.storage.manifestPath}:lock:${id}`;
   const lockToken = crypto.randomUUID();
   const locked = await acquireLock(lockKey, lockToken);
   if (!locked) {
+    await deleteBinary(stored.url).catch(() => {});
     return NextResponse.json(
       { error: "Circuit busy. Please retry." },
       { status: 409 },
@@ -100,11 +146,11 @@ export async function POST(
   }
 
   try {
-    let circuit = await getCircuitState(id);
+    const circuit = await getCircuitState(id);
     const allCircuits = await getAllCircuitStates();
 
     if (!isCeremonyActive(manifest, allCircuits)) {
-      await deleteBinary(blobUrl).catch(() => {});
+      await deleteBinary(stored.url).catch(() => {});
       return NextResponse.json(
         { error: "Ceremony is not active" },
         { status: 403 },
@@ -117,7 +163,7 @@ export async function POST(
     );
 
     if (circuit.queue[0]?.participantId !== participantId) {
-      await deleteBinary(blobUrl).catch(() => {});
+      await deleteBinary(stored.url).catch(() => {});
       return NextResponse.json(
         { error: "Not at front of the queue" },
         { status: 409 },
@@ -125,27 +171,18 @@ export async function POST(
     }
 
     if (await hasParticipantContributedToCircuit(participantId, id)) {
-      await deleteBinary(blobUrl).catch(() => {});
+      await deleteBinary(stored.url).catch(() => {});
       return NextResponse.json(
         { error: "You have already contributed to this circuit" },
         { status: 403 },
       );
     }
 
-    const circuitConfig = config.circuits.find((c) => c.id === id);
-    if (!circuitConfig) {
-      await deleteBinary(blobUrl).catch(() => {});
-      return NextResponse.json(
-        { error: `Unknown circuit: ${id}` },
-        { status: 404 },
-      );
-    }
-
     // finalize:ceremony verifies the chain from the pinned genesis before the
     // beacon. A circuit without that pin can never be finalized, so accepting
-    // contributions here would waste participant work. Reject before storing.
+    // contributions here would waste participant work. Reject before advancing.
     if (!circuit.initialZkeyUrl || !circuit.initialZkeyHash) {
-      await deleteBinary(blobUrl).catch(() => {});
+      await deleteBinary(stored.url).catch(() => {});
       return NextResponse.json(
         {
           error:
@@ -156,31 +193,8 @@ export async function POST(
       );
     }
 
-    // Per-contribution verification is opt-in: loading r1cs + ptau and running
-    // pairing checks can easily exceed serverless timeouts for large circuits.
-    // When this is off, contributions are stored without any cryptographic
-    // check at upload time. The finalize script verifies the full chain from
-    // the pinned genesis to the latest zkey before applying the beacon, so a
-    // chain that does not extend genesis is caught at finalization. Enable this
-    // for early, per-step detection instead of a single check at the end.
-    if (config.verifyContributions) {
-      const [r1cs, ptau] = await Promise.all([
-        readCircuitBytes(circuitConfig.artifacts.r1csPath),
-        readCircuitBytes(circuitConfig.artifacts.ptauPath),
-      ]);
-
-      const isValid = await verify(r1cs, ptau, body);
-      if (!isValid) {
-        await deleteBinary(blobUrl).catch(() => {});
-        return NextResponse.json(
-          { error: "Invalid contribution: verification failed" },
-          { status: 400 },
-        );
-      }
-    }
-
-    const computedHash = `0x${createHash("sha256").update(body).digest("hex")}`;
-
+    const hadPriorContribution = circuit.totalContributions > 0;
+    const previousZkeyUrl = circuit.currentZkeyUrl;
     const contributionIndex = circuit.totalContributions + 1;
     const timestamp = Date.now();
     const chainHash = computeChainHash({
@@ -189,11 +203,6 @@ export async function POST(
       participantId,
       timestamp,
     });
-
-    const zkeyPath = `${config.storage.zkeyPrefix}/${id}/current.zkey`;
-    const stored = await putBinary(zkeyPath, body);
-
-    await deleteBinary(blobUrl).catch(() => {});
 
     circuit.totalContributions += 1;
     circuit.latestContributionHash = computedHash;
@@ -225,6 +234,13 @@ export async function POST(
       participantsIndexKey: config.storage.participantsIndexPath,
       participantId,
     });
+
+    // The new zkey embeds the whole contribution chain, so the previous
+    // contribution's blob is redundant — delete it to bound storage. Never
+    // delete the genesis (kept when there is no prior contribution).
+    if (hadPriorContribution) {
+      await deleteBinary(previousZkeyUrl).catch(() => {});
+    }
 
     return NextResponse.json({
       success: true,
