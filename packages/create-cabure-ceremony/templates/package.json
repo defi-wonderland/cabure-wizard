@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "setup:ptau": "tsx scripts/setup-ptau.ts",
+    "pin:ptau": "NODE_OPTIONS=--max-old-space-size=8192 tsx scripts/pin-ptau.ts",
     "init:ceremony": "NODE_OPTIONS=--max-old-space-size=8192 tsx scripts/init-ceremony.ts",
     "reset:ceremony": "tsx scripts/reset-ceremony.ts",
     "finalize:ceremony": "NODE_OPTIONS=--max-old-space-size=8192 tsx scripts/finalize-ceremony.ts",

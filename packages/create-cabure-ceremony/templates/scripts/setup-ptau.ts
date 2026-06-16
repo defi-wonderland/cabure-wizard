@@ -1,4 +1,5 @@
-import { createWriteStream } from "node:fs";
+import { createHash } from "node:crypto";
+import { createReadStream, createWriteStream } from "node:fs";
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
@@ -53,6 +54,73 @@ function requiredDegree(maxConstraints: number): number {
 function ptauUrl(degree: number): string {
   const dd = String(degree).padStart(2, "0");
   return `${PPOT_BASE_URL}/ppot_0080_${dd}.ptau`;
+}
+
+// BLAKE2b-512 of each downloaded `ppot_0080_NN.ptau`, keyed by degree (NN).
+// Pinning the hash here catches a tampered or corrupted download: the file is
+// fetched over the network from a third party, so without a pin we would trust
+// whatever bytes arrive.
+//
+// These hashes are NOT published by PSE — the only hash PSE publishes is for the
+// bellman *response* file, a different artifact with a different byte layout. So
+// they must be sourced trust-on-first-use, by the team, NOT generated here:
+//   1. Download each `ppot_0080_NN.ptau` you will use.
+//   2. Verify it with `npm run setup:ptau -- --verify` (snarkjs pairing check),
+//      relying also on PPoT round 0080's long public track record.
+//   3. Hash it (this script prints the computed BLAKE2b when a pin is missing).
+//   4. Have at least two people do 1–3 independently and confirm the hashes
+//      match, then commit them here. A hash produced on a single unwitnessed
+//      machine pins nothing meaningful.
+//
+// Until a degree has an entry, `setup:ptau` refuses it unless run with
+// `--allow-unpinned-ptau`.
+const PPOT_BLAKE2B: Record<number, string> = {
+  // 12: "<blake2b-512 hex, 128 chars, of ppot_0080_12.ptau>",
+  // 13: "...",
+};
+
+async function blake2b512File(filePath: string): Promise<string> {
+  const hash = createHash("blake2b512");
+  for await (const chunk of createReadStream(filePath)) {
+    hash.update(chunk);
+  }
+  return hash.digest("hex");
+}
+
+// Default-on authenticity check. A pin mismatch always aborts. A missing pin
+// aborts too (fail-safe) unless `--allow-unpinned-ptau` is passed, so an empty
+// table cannot silently accept an unverified download.
+async function checkPtauHash(
+  filePath: string,
+  degree: number,
+  allowUnpinned: boolean,
+): Promise<void> {
+  const dd = String(degree).padStart(2, "0");
+  const pinned = PPOT_BLAKE2B[degree];
+  const actual = await blake2b512File(filePath);
+
+  if (!pinned) {
+    const message =
+      `No pinned BLAKE2b hash for ppot_0080_${dd}.ptau.\n` +
+      `  Computed: ${actual}\n` +
+      "  Source and commit this hash (see PPOT_BLAKE2B in scripts/setup-ptau.ts), " +
+      "or re-run with --allow-unpinned-ptau to proceed without the check.";
+    if (allowUnpinned) {
+      console.warn(`  WARNING: ${message}`);
+      return;
+    }
+    throw new Error(message);
+  }
+
+  if (actual.toLowerCase() !== pinned.toLowerCase()) {
+    throw new Error(
+      `BLAKE2b mismatch for ppot_0080_${dd}.ptau.\n` +
+        `  Pinned:   ${pinned}\n` +
+        `  Computed: ${actual}\n` +
+        "  The downloaded file does not match the trusted hash — do not use it.",
+    );
+  }
+  console.log(`  BLAKE2b matches the pinned value.`);
 }
 
 function formatBytes(bytes: number): string {
@@ -153,6 +221,7 @@ async function updateConfigConstraints(
 async function main() {
   const force = process.argv.includes("--force");
   const verify = process.argv.includes("--verify");
+  const allowUnpinned = process.argv.includes("--allow-unpinned-ptau");
 
   console.log("=== Setup PPoT Phase 2 file ===\n");
 
@@ -190,6 +259,12 @@ async function main() {
     const size = await downloadPtau(url, PTAU_DEST);
     console.log(`  Saved to ${PTAU_DEST} (${formatBytes(size)})\n`);
   }
+
+  // Always check the pinned BLAKE2b, even when the file already existed, so a
+  // file tampered with on disk between runs is also caught.
+  console.log("Checking ptau authenticity (pinned BLAKE2b)...");
+  await checkPtauHash(PTAU_DEST, degree, allowUnpinned);
+  console.log();
 
   if (verify) {
     console.log("Verifying ptau file (this may take a while for large files)...");

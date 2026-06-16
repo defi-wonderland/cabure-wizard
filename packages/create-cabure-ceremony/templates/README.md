@@ -108,10 +108,35 @@ Trade-off: classic functions cap `maxDuration` at 300 s (the contribute route se
 ### Setup ptau
 
 ```bash
-npm run setup:ptau             # download and update constraints
-npm run setup:ptau -- --force  # re-download even if ptau exists
-npm run setup:ptau -- --verify # also run snarkjs ptau verification
+npm run setup:ptau                          # download and update constraints
+npm run setup:ptau -- --force               # re-download even if ptau exists
+npm run setup:ptau -- --verify              # also run snarkjs ptau verification
+npm run setup:ptau -- --allow-unpinned-ptau # proceed when the ptau hash is not pinned yet
 ```
+
+**Ptau authenticity (pinned hash).** After downloading, `setup:ptau` computes the
+`.ptau` file's BLAKE2b-512 and compares it against a hash pinned in
+`scripts/setup-ptau.ts` (`PPOT_BLAKE2B`). A mismatch always aborts. The pin table
+ships **empty**, because the canonical hashes are not published by PSE — they must
+be established by your team trust-on-first-use, witnessed by more than one person.
+
+Establish the pins with `pin:ptau`, which downloads, pairing-checks, and hashes
+each degree, then prints a paste-ready snippet:
+
+```bash
+npm run pin:ptau -- --degree 14        # the degree setup:ptau reported
+npm run pin:ptau -- --degree 12,14,16  # several at once
+```
+
+1. Run it, and have **at least one colleague run the exact same command on a
+   different machine/network**.
+2. Compare the printed BLAKE2b values line by line. They must match — same file,
+   deterministic hash.
+3. Once independent runs agree, paste the snippet into `PPOT_BLAKE2B` and commit.
+
+Once pinned, every `setup:ptau` run verifies the download automatically. Until
+then it fails closed; `--allow-unpinned-ptau` is the explicit opt-out for local
+work before the pins exist.
 
 ### Finalization
 
