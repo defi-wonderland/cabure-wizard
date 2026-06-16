@@ -2,31 +2,42 @@ import { useRef, useState, useCallback } from "react";
 
 import { buildEntropySeed, clamp16, clamp16Signed } from "@/utils/entropy";
 
-const TARGET_ENTROPY = 2048;
+// Interaction score required before the contribute step unlocks. This is a
+// readiness gauge to confirm the user actually interacted — NOT a measure of
+// bits of entropy. Security does not depend on this number (see buildSeed).
+const READINESS_TARGET = 2048;
 const MAX_ENTROPY_BYTES = 4096;
 
+// Arbitrary readiness weights per interaction type. A larger weight just fills
+// the meter faster; these are not bits of randomness.
+const MOVE_WEIGHT = 2;
+const TAP_WEIGHT = 45;
+const KEY_WEIGHT = 10;
+
 /**
- * Collects user-interaction entropy for ceremony contributions.
+ * Collects user-interaction input for ceremony contributions and gates the UI
+ * on it.
  *
- * Entropy is gathered from pointer movements (2 bits each) and taps/clicks
- * (45 bits each). Each event is packed into a 16-byte sample containing
- * coordinates, deltas, timing, and a monotonic counter, then appended to
- * a ring buffer capped at {@link MAX_ENTROPY_BYTES}.
+ * Pointer moves, taps, and key presses are each packed into a 16-byte sample
+ * (coordinates, deltas, timing, a monotonic counter) and appended to a ring
+ * buffer capped at {@link MAX_ENTROPY_BYTES}. Uses Pointer Events so touch,
+ * pen, and mouse all contribute equally.
  *
- * Uses Pointer Events so touch, pen, and mouse all contribute equally.
- *
- * Once {@link TARGET_ENTROPY} bits are collected, `isReady` flips to `true`.
- * Call {@link buildSeed} to mix the collected bytes with CSPRNG output
- * via SHA-256, producing a 64-byte seed suitable for per-circuit derivation.
+ * `readinessPercent` / `isReady` are a progress gauge driven by an arbitrary
+ * per-interaction score (see the *_WEIGHT constants). They confirm the user
+ * interacted; they do NOT measure unpredictability. The actual randomness comes
+ * from {@link buildSeed}, which mixes the collected bytes with the OS CSPRNG via
+ * SHA-256 — so the contribution is unpredictable even if the interaction input
+ * is weak.
  */
 export function useEntropyCollector() {
-  const entropyCountRef = useRef(0);
+  const interactionScoreRef = useRef(0);
   const entropyBytesRef = useRef<number[]>([]);
   const eventCountRef = useRef(0);
   const lastPointerRef = useRef({ x: 0, y: 0, time: 0 });
   const areaRef = useRef<HTMLDivElement>(null);
 
-  const [entropyPercent, setEntropyPercent] = useState(0);
+  const [readinessPercent, setReadinessPercent] = useState(0);
   const [isReady, setIsReady] = useState(false);
 
   const appendEntropyBytes = useCallback((bytes: Uint8Array) => {
@@ -70,14 +81,14 @@ export function useEntropyCollector() {
     [appendEntropyBytes],
   );
 
-  const addEntropy = useCallback(
-    (amount: number) => {
-      entropyCountRef.current += amount;
+  const addReadiness = useCallback(
+    (weight: number) => {
+      interactionScoreRef.current += weight;
       const pct = Math.min(
-        (entropyCountRef.current / TARGET_ENTROPY) * 100,
+        (interactionScoreRef.current / READINESS_TARGET) * 100,
         100,
       );
-      setEntropyPercent(Math.floor(pct));
+      setReadinessPercent(Math.floor(pct));
       if (pct >= 100 && !isReady) {
         setIsReady(true);
       }
@@ -85,7 +96,7 @@ export function useEntropyCollector() {
     [isReady],
   );
 
-  /** Records a pointer-move event, updating the CSS glow vars and sampling entropy. */
+  /** Records a pointer-move sample and advances the readiness gauge. */
   const handlePointerMove = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
       const el = areaRef.current;
@@ -106,32 +117,32 @@ export function useEntropyCollector() {
 
       if (dt > 0 && dist > 3) {
         recordSample({ x, y, dx, dy, typeCode: 1 });
-        addEntropy(2);
+        addReadiness(MOVE_WEIGHT);
       }
 
       lastPointerRef.current = { x, y, time: now };
     },
-    [isReady, recordSample, addEntropy],
+    [isReady, recordSample, addReadiness],
   );
 
-  /** Records a tap/click entropy sample (45 bits). */
+  /** Records a tap/click sample and advances the readiness gauge. */
   const recordTap = useCallback(
     (x: number, y: number) => {
       if (isReady) return;
       recordSample({ x, y, dx: 0, dy: 0, typeCode: 2 });
-      addEntropy(45);
+      addReadiness(TAP_WEIGHT);
     },
-    [isReady, recordSample, addEntropy],
+    [isReady, recordSample, addReadiness],
   );
 
-  /** Records a keyboard event entropy sample (10 bits). */
+  /** Records a key-press sample and advances the readiness gauge. */
   const recordKeyPress = useCallback(
     (keyCode: number) => {
       if (isReady) return;
       recordSample({ x: keyCode, y: 0, dx: 0, dy: 0, typeCode: 3 });
-      addEntropy(10);
+      addReadiness(KEY_WEIGHT);
     },
-    [isReady, recordSample, addEntropy],
+    [isReady, recordSample, addReadiness],
   );
 
   /** Mixes collected bytes with CSPRNG output via SHA-256 into a 64-byte seed. */
@@ -142,7 +153,7 @@ export function useEntropyCollector() {
   }, []);
 
   return {
-    entropyPercent,
+    readinessPercent,
     isReady,
     areaRef,
     handlePointerMove,
