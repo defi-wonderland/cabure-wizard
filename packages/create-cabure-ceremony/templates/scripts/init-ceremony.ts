@@ -3,7 +3,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 
-import { put } from "@vercel/blob";
+import { del, put } from "@vercel/blob";
 import { loadEnvConfig } from "@next/env";
 import { generateInitialZkey, verify } from "@wonderland/cabure-crypto";
 
@@ -172,11 +172,21 @@ async function main() {
     // parameters must live at their own path to stay checkable for the whole
     // ceremony. `current.zkey` is the mutable live pointer.
     //
-    // allowOverwrite stays false so a second init cannot silently replace the
-    // pinned root. reset:ceremony deletes every blob under the zkey prefix, so
-    // the operator clears genesis before re-initializing.
+    // allowOverwrite stays false so a plain re-run cannot silently replace the
+    // pinned root once a ceremony is live. The only sanctioned way to replace
+    // genesis is --force, which deletes the old pin just below before re-putting.
     console.log(`  Uploading genesis zkey to Vercel Blob...`);
     const genesisBlobPath = `${ceremonyConfig.storage.zkeyPrefix}/${circuit.id}/genesis.zkey`;
+
+    // A failure after the pin but before the manifest write (current.zkey
+    // upload, KV write) strands the genesis blob with no manifest. A plain
+    // re-run then dies on allowOverwrite:false and the operator is forced into
+    // reset:ceremony. --force clears the stranded pin so init can retry without
+    // a full reset. del is idempotent, so a missing blob is a no-op.
+    if (force) {
+      await del(genesisBlobPath, { token });
+    }
+
     const genesisUpload = await put(genesisBlobPath, Buffer.from(zkey), {
       access: "public",
       token,
@@ -186,7 +196,8 @@ async function main() {
     }).catch((error) => {
       throw new Error(
         `Failed to pin genesis for ${circuit.id} at ${genesisBlobPath}. ` +
-          "A genesis blob may already exist; run reset:ceremony before re-initializing. " +
+          "A genesis blob may already exist; re-run with --force to replace it, " +
+          "or run reset:ceremony for a full reset. " +
           `Cause: ${error instanceof Error ? error.message : String(error)}`,
       );
     });
