@@ -13,7 +13,7 @@ import {
 } from "@wonderland/cabure-crypto";
 
 import { getEndDateDeadlineMs } from "@/lib/ceremony-state";
-import { getJson, listRange } from "@/lib/kv-store";
+import { getJson, listRange, setJson } from "@/lib/kv-store";
 import { ceremonyConfig } from "../ceremony.config";
 
 // snarkjs/fastfile writes circuit data to temp files and does not always close
@@ -465,6 +465,18 @@ async function main() {
   const transcriptPath = path.join(OUTPUT_DIR, "transcript.json");
   await writeFile(transcriptPath, JSON.stringify(transcript, null, 2));
   console.log(`Transcript saved to public/finalize/transcript.json`);
+
+  // Record finalization in the manifest (H-6). The re-finalize guard above and
+  // isCeremonyActive both read these fields, so without this write the ceremony
+  // would keep accepting contributions and could be finalized twice. Written
+  // last, after every artifact is saved, so a mid-run failure does not leave
+  // the ceremony marked final.
+  await setJson(storage.manifestPath, {
+    ...manifest,
+    beaconApplied: true,
+    beaconHash: `0x${beaconHex}`,
+    finalizedAt,
+  });
 
   console.log();
   console.log("=== Ceremony finalized ===");

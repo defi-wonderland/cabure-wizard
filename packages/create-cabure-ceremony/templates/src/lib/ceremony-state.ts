@@ -149,6 +149,9 @@ export function isCeremonyActive(
   allCircuits: CircuitState[],
 ): boolean {
   const config = getCeremonyConfig();
+  // Once the beacon is applied the ceremony is sealed; stop accepting
+  // contributions even if targets/deadline would otherwise leave it open (H-6).
+  if (manifest.beaconApplied) return false;
   const now = Date.now();
   let endDateMs: number | null;
   try {
