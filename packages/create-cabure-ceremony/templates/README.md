@@ -109,17 +109,29 @@ npm run setup:ptau -- --verify # also run snarkjs ptau verification
 
 ### Finalization
 
-By default, finalization uses the RANDAO reveal from the latest finalized Ethereum beacon chain slot as the beacon source. This makes the beacon publicly verifiable.
+The finalization beacon is committed in advance, at `init:ceremony`, as the
+RANDAO mix of the first finalized Ethereum slot at or after `endDate + buffer`
+(buffer is one hour by default, configurable via `beaconBufferSeconds`). Because
+the target is fixed before any contribution, the operator cannot re-roll the
+beacon, and anyone can recompute it from the published `endDate` and buffer.
 
 ```bash
-npm run finalize:ceremony                              # latest finalized slot RANDAO (default)
-npm run finalize:ceremony -- --beacon-slot 7325000     # specific pre-announced slot
-npm run finalize:ceremony -- --beacon 0xabc123         # explicit hex beacon value
-npm run finalize:ceremony -- --random-beacon           # random beacon (local testing only)
-npm run finalize:ceremony -- --force                   # finalize before target is reached
+npm run finalize:ceremony   # use the committed beacon (waits until its slot is finalized)
 ```
 
-For maximum verifiability, announce a future beacon chain slot number publicly before running with `--beacon-slot`. The RANDAO reveal is fetched from the Ethereum Beacon API (`BEACON_API_URL` env var overrides the default public endpoint).
+Finalization refuses to run until the committed slot has finalized on-chain. The
+RANDAO mix is read from the Ethereum Beacon API (`BEACON_API_URL` env var
+overrides the default public endpoint).
+
+Forced early close (the committed slot does not exist yet):
+
+```bash
+npm run finalize:ceremony -- --force --beacon 0xabc... --unverifiable
+```
+
+`--beacon` requires `--unverifiable`, because a hand-picked beacon bypasses the
+committed target and cannot be reproduced by outsiders. The transcript records
+`beaconVerifiable: false` in that case.
 
 Finalization seals the ceremony the moment it starts and commits the beacon at the same time. If a run is interrupted, the ceremony stays sealed: resume with `npm run finalize:ceremony -- --force`, which reuses the committed beacon so the result is reproducible, or run `npm run reset:ceremony` to start over. The beacon cannot be silently re-rolled by re-running.
 
