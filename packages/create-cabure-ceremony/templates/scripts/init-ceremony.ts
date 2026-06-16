@@ -3,7 +3,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 
-import { del, put } from "@vercel/blob";
+import { put } from "@vercel/blob";
 import { loadEnvConfig } from "@next/env";
 import { generateInitialZkey, verify } from "@wonderland/cabure-crypto";
 
@@ -172,27 +172,21 @@ async function main() {
     // parameters must live at their own path to stay checkable for the whole
     // ceremony. `current.zkey` is the mutable live pointer.
     //
-    // allowOverwrite stays false so a plain re-run cannot silently replace the
-    // pinned root once a ceremony is live. The only sanctioned way to replace
-    // genesis is --force, which deletes the old pin just below before re-putting.
+    // allowOverwrite stays false on a plain re-run so it cannot silently replace
+    // the pinned root once a ceremony is live. --force flips it to true, which
+    // replaces the pin in a single put. We never delete first: a delete-then-put
+    // would leave a window where a transient put failure strands the ceremony
+    // with no genesis pin at all. An overwriting put either succeeds with the new
+    // pin or fails with the old pin still in place.
     console.log(`  Uploading genesis zkey to Vercel Blob...`);
     const genesisBlobPath = `${ceremonyConfig.storage.zkeyPrefix}/${circuit.id}/genesis.zkey`;
-
-    // A failure after the pin but before the manifest write (current.zkey
-    // upload, KV write) strands the genesis blob with no manifest. A plain
-    // re-run then dies on allowOverwrite:false and the operator is forced into
-    // reset:ceremony. --force clears the stranded pin so init can retry without
-    // a full reset. del is idempotent, so a missing blob is a no-op.
-    if (force) {
-      await del(genesisBlobPath, { token });
-    }
 
     const genesisUpload = await put(genesisBlobPath, Buffer.from(zkey), {
       access: "public",
       token,
       contentType: "application/octet-stream",
       addRandomSuffix: false,
-      allowOverwrite: false,
+      allowOverwrite: force,
     }).catch((error) => {
       throw new Error(
         `Failed to pin genesis for ${circuit.id} at ${genesisBlobPath}. ` +
