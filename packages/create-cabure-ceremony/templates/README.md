@@ -1,4 +1,4 @@
-# **PROJECT_NAME**
+# __PROJECT_NAME__
 
 Interactive UI for a Groth16 Phase 2 trusted setup ceremony. Participants contribute randomness through the browser while the app manages queue coordination, zkey storage, and receipt generation.
 
@@ -118,8 +118,9 @@ Running `init:ceremony` generates `public/genesis/`:
 
 ### Pin the genesis hash externally
 
-`init:ceremony` records each circuit's `genesisZkeyHash` in `init-transcript.json`
-and in KV. `finalize:ceremony` checks the genesis blob against that hash before
+`init:ceremony` records each circuit's genesis hash — as `genesisZkeyHash` in
+`init-transcript.json` and as `initialZkeyHash` in KV. `finalize:ceremony` checks
+the genesis blob against that hash before
 verifying the chain, which catches a swapped or corrupted genesis blob while KV
 is intact.
 

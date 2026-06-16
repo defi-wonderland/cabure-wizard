@@ -171,6 +171,10 @@ async function main() {
     // Immutable copy: contributions overwrite `current.zkey`, so the original
     // parameters must live at their own path to stay checkable for the whole
     // ceremony. `current.zkey` is the mutable live pointer.
+    //
+    // allowOverwrite stays false so a second init cannot silently replace the
+    // pinned root. reset:ceremony deletes every blob under the zkey prefix, so
+    // the operator clears genesis before re-initializing.
     console.log(`  Uploading genesis zkey to Vercel Blob...`);
     const genesisBlobPath = `${ceremonyConfig.storage.zkeyPrefix}/${circuit.id}/genesis.zkey`;
     const genesisUpload = await put(genesisBlobPath, Buffer.from(zkey), {
@@ -178,7 +182,13 @@ async function main() {
       token,
       contentType: "application/octet-stream",
       addRandomSuffix: false,
-      allowOverwrite: true,
+      allowOverwrite: false,
+    }).catch((error) => {
+      throw new Error(
+        `Failed to pin genesis for ${circuit.id} at ${genesisBlobPath}. ` +
+          "A genesis blob may already exist; run reset:ceremony before re-initializing. " +
+          `Cause: ${error instanceof Error ? error.message : String(error)}`,
+      );
     });
     console.log(`  Genesis pinned at: ${genesisUpload.url}`);
 

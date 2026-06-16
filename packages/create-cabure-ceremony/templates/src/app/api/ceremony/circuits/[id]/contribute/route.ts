@@ -141,6 +141,21 @@ export async function POST(
       );
     }
 
+    // finalize:ceremony verifies the chain from the pinned genesis before the
+    // beacon. A circuit without that pin can never be finalized, so accepting
+    // contributions here would waste participant work. Reject before storing.
+    if (!circuit.initialZkeyUrl || !circuit.initialZkeyHash) {
+      await deleteBinary(blobUrl).catch(() => {});
+      return NextResponse.json(
+        {
+          error:
+            "Ceremony has no pinned genesis and cannot be finalized. " +
+            "The operator must re-run init:ceremony.",
+        },
+        { status: 409 },
+      );
+    }
+
     // Per-contribution verification is opt-in: loading r1cs + ptau and running
     // pairing checks can easily exceed serverless timeouts for large circuits.
     // When this is off, contributions are stored without any cryptographic
