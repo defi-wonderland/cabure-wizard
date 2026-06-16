@@ -68,11 +68,11 @@ export interface CircuitState {
   csHash: string;
 }
 
-// Beacon target fixed at init (H-2). The finalization beacon is the RANDAO mix
-// of the first finalized Ethereum slot at or after `cutoffTimeMs`. Committing
-// this before any contribution stops the operator from re-rolling the beacon
-// at finalize time until they get a result they like. Verifiers recompute
-// `cutoffTimeMs` from the ceremony endDate plus `bufferSeconds`.
+// Beacon target fixed at init (H-2). The finalization beacon is the RANDAO
+// reveal of the first block at or after the finalized slot for `cutoffTimeMs`.
+// Committing this before any contribution stops the operator from re-rolling
+// the beacon at finalize time until they get a result they like. Verifiers
+// recompute `cutoffTimeMs` from the ceremony endDate plus `bufferSeconds`.
 export interface BeaconCommitment {
   cutoffTimeMs: number;
   bufferSeconds: number;

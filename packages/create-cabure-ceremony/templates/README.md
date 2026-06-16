@@ -110,17 +110,18 @@ npm run setup:ptau -- --verify # also run snarkjs ptau verification
 ### Finalization
 
 The finalization beacon is committed in advance, at `init:ceremony`, as the
-RANDAO mix of the first finalized Ethereum slot at or after `endDate + buffer`
-(buffer is one hour by default, configurable via `beaconBufferSeconds`). Because
-the target is fixed before any contribution, the operator cannot re-roll the
-beacon, and anyone can recompute it from the published `endDate` and buffer.
+RANDAO reveal of the first block at or after the finalized Ethereum slot for
+`endDate + buffer` (buffer is one hour by default, configurable via
+`beaconBufferSeconds`). Because the target is fixed before any contribution, the
+operator cannot re-roll the beacon, and anyone can recompute it from the
+published `endDate` and buffer.
 
 ```bash
 npm run finalize:ceremony   # use the committed beacon (waits until its slot is finalized)
 ```
 
 Finalization refuses to run until the committed slot has finalized on-chain. The
-RANDAO mix is read from the Ethereum Beacon API (`BEACON_API_URL` env var
+RANDAO reveal is read from the Ethereum Beacon API (`BEACON_API_URL` env var
 overrides the default public endpoint).
 
 Forced early close (the committed slot does not exist yet):

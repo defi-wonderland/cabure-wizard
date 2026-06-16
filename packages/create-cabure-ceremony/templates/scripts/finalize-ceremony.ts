@@ -133,15 +133,45 @@ async function fetchFinalizedSlot(): Promise<number> {
   return Number(json.data.header.message.slot);
 }
 
-// The accumulated RANDAO mix at a slot. This is the value committed by every
-// proposer up to that slot, not a single proposer's reveal — far harder for
-// any one party to bias than the per-block `randao_reveal` used before.
-async function fetchRandaoMix(slot: number): Promise<string> {
-  const json = await beaconGet<{ data: { randao: string } }>(
-    `/eth/v1/beacon/states/${slot}/randao`,
+// The RANDAO reveal of the first block at or after `fromSlot`.
+//
+// We read the reveal from the block (not the accumulated mix from beacon
+// state) because public beacon nodes prune historical state within ~a day,
+// while blocks stay available. Finalization can run days after the committed
+// cutoff, so the committed slot's state may be long gone — its block is not.
+//
+// A slot can be missed (no block proposed); the API then 404s for that slot,
+// so we walk forward to the next slot that has a block. This stays
+// deterministic: a verifier recomputes "first block at/after the committed
+// slot" and gets the same value.
+async function fetchRandaoRevealFrom(
+  fromSlot: number,
+  finalizedSlot: number,
+): Promise<{ hex: string; slot: number }> {
+  for (let slot = fromSlot; slot <= finalizedSlot; slot++) {
+    const url = `${beaconApiBase()}/eth/v2/beacon/blocks/${slot}`;
+    const response = await fetch(url);
+    if (response.status === 404) continue; // missed slot, try the next one
+    if (!response.ok) {
+      throw new Error(
+        `Beacon API request failed (blocks/${slot}): ${response.status} ` +
+          `${response.statusText}. Set BEACON_API_URL to use a different node.`,
+      );
+    }
+    const json = (await response.json()) as {
+      data: { message: { body: { randao_reveal: string } } };
+    };
+    const reveal = json.data?.message?.body?.randao_reveal;
+    if (!reveal) {
+      throw new Error(`No randao_reveal in beacon block at slot ${slot}.`);
+    }
+    const hex = reveal.startsWith("0x") ? reveal.slice(2) : reveal;
+    return { hex, slot };
+  }
+  throw new Error(
+    `No block found between committed slot ${fromSlot} and the finalized slot ` +
+      `${finalizedSlot}. Wait for more slots to finalize, then retry.`,
   );
-  const randao = json.data.randao;
-  return randao.startsWith("0x") ? randao.slice(2) : randao;
 }
 
 function parseManualBeacon(): string | null {
@@ -226,11 +256,13 @@ async function resolveBeacon(
     );
   }
 
-  const hex = await fetchRandaoMix(targetSlot);
+  const { hex, slot } = await fetchRandaoRevealFrom(targetSlot, finalizedSlot);
+  const missedNote =
+    slot !== targetSlot ? ` (committed slot ${targetSlot} was missed)` : "";
   return {
     hex,
-    source: `committed RANDAO mix at finalized slot ${targetSlot}`,
-    slot: targetSlot,
+    source: `committed RANDAO reveal at finalized block slot ${slot}${missedNote}`,
+    slot,
     verifiable: true,
   };
 }
