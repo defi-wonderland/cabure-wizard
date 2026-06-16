@@ -137,14 +137,20 @@ export function useContributionFlow(options: {
       }
       const zkey = new Uint8Array(await zkeyResponse.arrayBuffer());
 
-      if (zkeyInfo.hash) {
-        const digest = await sha256(zkey);
-        const hex = `0x${Array.from(digest).map((b) => b.toString(16).padStart(2, "0")).join("")}`;
-        if (hex !== zkeyInfo.hash) {
-          throw new Error(
-            "Zkey integrity check failed: downloaded file does not match expected hash.",
-          );
-        }
+      // Require the expected hash — never skip the check when it is absent
+      // (M-2). A missing hash would otherwise silently disable integrity
+      // verification, so treat it as a failure.
+      if (!zkeyInfo.hash) {
+        throw new Error(
+          "Zkey integrity check failed: the coordinator did not provide an expected hash.",
+        );
+      }
+      const digest = await sha256(zkey);
+      const hex = `0x${Array.from(digest).map((b) => b.toString(16).padStart(2, "0")).join("")}`;
+      if (hex !== zkeyInfo.hash) {
+        throw new Error(
+          "Zkey integrity check failed: downloaded file does not match expected hash.",
+        );
       }
 
       setContributionProgress(15);

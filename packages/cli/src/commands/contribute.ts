@@ -107,16 +107,22 @@ export async function contributeCommand(
     const prevZkey = await client.downloadZkey(zkeyInfo.url);
     console.log(`  Downloaded ${formatBytes(prevZkey.length)}`);
 
-    if (zkeyInfo.hash) {
-      console.log("  Verifying integrity...");
-      const downloadHash = `0x${createHash("sha256").update(prevZkey).digest("hex")}`;
-      if (downloadHash !== zkeyInfo.hash) {
-        throw new Error(
-          `Integrity check failed for ${circuitId}: expected ${zkeyInfo.hash}, got ${downloadHash}`,
-        );
-      }
-      console.log("  Integrity OK");
+    // Require the expected hash — never skip the check when it is absent
+    // (M-2). A missing hash would otherwise silently disable integrity
+    // verification.
+    if (!zkeyInfo.hash) {
+      throw new Error(
+        `Integrity check failed for ${circuitId}: coordinator did not provide an expected hash.`,
+      );
     }
+    console.log("  Verifying integrity...");
+    const downloadHash = `0x${createHash("sha256").update(prevZkey).digest("hex")}`;
+    if (downloadHash !== zkeyInfo.hash) {
+      throw new Error(
+        `Integrity check failed for ${circuitId}: expected ${zkeyInfo.hash}, got ${downloadHash}`,
+      );
+    }
+    console.log("  Integrity OK");
 
     console.log("  Generating entropy...");
     const entropy = await generateEntropy();
