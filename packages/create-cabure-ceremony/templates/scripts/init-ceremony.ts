@@ -149,6 +149,14 @@ async function main() {
 
   const bufferSeconds =
     ceremonyConfig.beaconBufferSeconds ?? DEFAULT_BEACON_BUFFER_SECONDS;
+  // A bad buffer corrupts the committed cutoff: a negative value can pull it
+  // into the past (making the beacon knowable at init), and NaN/fractional
+  // values give a non-deterministic target nobody can recompute.
+  if (!Number.isInteger(bufferSeconds) || bufferSeconds < 0) {
+    throw new Error(
+      `beaconBufferSeconds must be a non-negative integer; got ${bufferSeconds}.`,
+    );
+  }
   const beaconCommitment = {
     cutoffTimeMs: endDateMs + bufferSeconds * 1000,
     bufferSeconds,

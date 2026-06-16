@@ -178,8 +178,16 @@ function parseManualBeacon(): string | null {
   const idx = process.argv.indexOf("--beacon");
   if (idx === -1) return null;
   // A hand-picked beacon bypasses the committed target, so the operator could
-  // grind it. Only allow it behind an explicit acknowledgement, for a forced
-  // early close where no committed slot exists yet.
+  // grind it. Only allow it behind both --force and an explicit acknowledgement,
+  // for a forced early close where no committed slot exists yet. Requiring
+  // --force keeps a manual beacon out of normal finalization runs, where the
+  // committed target must win.
+  if (!process.argv.includes("--force")) {
+    throw new Error(
+      "--beacon requires --force. A hand-picked beacon overrides the committed " +
+        "target and is only for a forced early close.",
+    );
+  }
   if (!process.argv.includes("--unverifiable")) {
     throw new Error(
       "--beacon overrides the committed beacon target and is NOT publicly " +

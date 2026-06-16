@@ -117,7 +117,7 @@ operator cannot re-roll the beacon, and anyone can recompute it from the
 published `endDate` and buffer.
 
 ```bash
-npm run finalize:ceremony   # use the committed beacon (waits until its slot is finalized)
+npm run finalize:ceremony   # use the committed beacon (errors until its slot is finalized; rerun later)
 ```
 
 Finalization refuses to run until the committed slot has finalized on-chain. The
@@ -130,8 +130,9 @@ Forced early close (the committed slot does not exist yet):
 npm run finalize:ceremony -- --force --beacon 0xabc... --unverifiable
 ```
 
-`--beacon` requires `--unverifiable`, because a hand-picked beacon bypasses the
-committed target and cannot be reproduced by outsiders. The transcript records
+`--beacon` requires both `--force` and `--unverifiable`, because a hand-picked
+beacon bypasses the committed target and cannot be reproduced by outsiders.
+`--force` keeps it out of normal finalization runs. The transcript records
 `beaconVerifiable: false` in that case.
 
 Finalization seals the ceremony the moment it starts and commits the beacon at the same time. If a run is interrupted, the ceremony stays sealed: resume with `npm run finalize:ceremony -- --force`, which reuses the committed beacon so the result is reproducible, or run `npm run reset:ceremony` to start over. The beacon cannot be silently re-rolled by re-running.
