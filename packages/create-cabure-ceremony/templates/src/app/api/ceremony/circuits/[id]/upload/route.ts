@@ -56,9 +56,22 @@ export async function POST(
           throw new Error("Not at front of the queue");
         }
 
+        // Cap the upload size (M-3). A valid contribution is the genesis zkey
+        // plus a small per-contribution record (~hundreds of bytes each), so a
+        // tight ceiling rejects oversized junk before it is stored or loaded
+        // into memory. Skip the cap only if the size was not recorded (a
+        // ceremony initialized before this field existed).
+        const maximumSizeInBytes =
+          circuit.genesisZkeySize > 0
+            ? circuit.genesisZkeySize +
+              (circuit.totalContributions + 1) * 512 +
+              1024
+            : undefined;
+
         return {
           allowedContentTypes: ["application/octet-stream"],
           addRandomSuffix: true,
+          ...(maximumSizeInBytes !== undefined && { maximumSizeInBytes }),
           tokenPayload: JSON.stringify({
             participantId: participant.participantId,
             circuitId: id,

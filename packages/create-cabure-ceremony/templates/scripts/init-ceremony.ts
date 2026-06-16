@@ -47,6 +47,7 @@ type CircuitState = {
   currentZkeyUrl: string;
   initialZkeyHash: string;
   initialZkeyUrl: string;
+  genesisZkeySize: number;
 };
 
 type ManifestState = {
@@ -222,6 +223,7 @@ async function main() {
       currentZkeyUrl: zkeyUpload.url,
       initialZkeyHash: genesisHash,
       initialZkeyUrl: genesisUpload.url,
+      genesisZkeySize: zkey.length,
     };
 
     const kvKey = `${ceremonyConfig.storage.circuitStatePrefix}:${circuit.id}`;
