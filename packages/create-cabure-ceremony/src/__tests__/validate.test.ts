@@ -23,9 +23,11 @@ describe("validate helpers", () => {
     );
   });
 
-  test("validateEndDate accepts blank or proper yyyy-mm-dd", () => {
+  test("validateEndDate rejects blank and accepts proper yyyy-mm-dd", () => {
     const now = new Date("2026-01-15T12:00:00.000Z");
-    expect(validateEndDate("", now)).toBeNull();
+    expect(() => validateEndDate("", now)).toThrowError(
+      "End date is required (YYYY-MM-DD).",
+    );
     expect(validateEndDate("2026-03-27", now)).toBe("2026-03-27");
   });
 

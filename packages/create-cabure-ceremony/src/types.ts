@@ -3,13 +3,13 @@
  *
  * @property projectName - Display name for the ceremony UI
  * @property targetContributions - Desired number of contributions before finalization
- * @property endDate - Optional ceremony deadline in YYYY-MM-DD format, or null if open-ended
+ * @property endDate - Required ceremony deadline in YYYY-MM-DD format (the beacon target is committed as endDate + buffer)
  * @property circuitArtifactsPath - Resolved absolute path to circuit artifacts directory, or null if skipped
  */
 export interface WizardAnswers {
   projectName: string;
   targetContributions: number;
-  endDate: string | null;
+  endDate: string;
   circuitArtifactsPath: string | null;
 }
 
@@ -50,7 +50,7 @@ export interface GeneratedCircuitConfig {
  * @property projectName - Human-readable project name
  * @property projectSlug - URL-safe kebab-case project identifier
  * @property targetContributions - Per-circuit target (applied uniformly by wizard)
- * @property endDate - Optional deadline (YYYY-MM-DD) or null
+ * @property endDate - Required deadline (YYYY-MM-DD); the beacon target is committed as endDate + buffer
  * @property circuits - List of circuit configurations to embed in ceremony.config.ts
  * @property tiers - Tier definitions generated from circuit discovery
  * @property stateManifestBlobUrl - URL for the ceremony state manifest blob
@@ -60,7 +60,7 @@ export interface ScaffoldContext {
   projectName: string;
   projectSlug: string;
   targetContributions: number;
-  endDate: string | null;
+  endDate: string;
   circuits: GeneratedCircuitConfig[];
   tiers: GeneratedTierConfig[];
   stateManifestBlobUrl: string;

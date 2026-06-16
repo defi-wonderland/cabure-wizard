@@ -7,14 +7,14 @@ describe("wizard prompts", () => {
     const { answers, output } = await runWizard([
       "Privacy Pools v2",
       "",
-      "",
+      "2026-12-31",
       "",
     ]);
 
     expect(answers).toEqual({
       projectName: "Privacy Pools v2",
       targetContributions: 100,
-      endDate: null,
+      endDate: "2026-12-31",
       circuitArtifactsPath: null,
     });
     expect(output).toContain("  2) Target contributions");
@@ -25,7 +25,12 @@ describe("wizard prompts", () => {
   });
 
   test("makes the circuit artifacts step explicitly skippable for later", async () => {
-    const { output } = await runWizard(["Privacy Pools v2", "", "", ""]);
+    const { output } = await runWizard([
+      "Privacy Pools v2",
+      "",
+      "2026-12-31",
+      "",
+    ]);
 
     expect(output).toContain(
       "  4) Circuit artifacts path (press Enter if you'll add them later): ",
@@ -38,7 +43,7 @@ describe("wizard prompts", () => {
       "4",
       "1,3",
       "250",
-      "",
+      "2026-12-31",
       "",
     ]);
 

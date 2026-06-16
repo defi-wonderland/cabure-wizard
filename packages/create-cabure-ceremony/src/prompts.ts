@@ -69,7 +69,7 @@ export async function runWizardQuestions(
 
   const endDate = await askWithValidation(
     rl,
-    `${STEP_PADDING}3) End date (optional YYYY-MM-DD, press enter to skip): `,
+    `${STEP_PADDING}3) End date (required YYYY-MM-DD): `,
     validateEndDate,
   );
 
