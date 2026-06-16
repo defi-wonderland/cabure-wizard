@@ -115,6 +115,17 @@ export async function contributeCommand(
       console.log("  Integrity OK");
     }
 
+    // Headless entropy comes only from the OS CSPRNG (generateEntropy with no
+    // extra sources — there is no mouse/UI entropy in a CLI run). Modern
+    // kernels block getrandom until the pool is seeded, so a normal host is
+    // fine. The real risk is a CLONED VM/container image: a snapshot taken
+    // after boot can carry RNG state, so contributors started from the same
+    // image could draw correlated entropy. Run on a freshly, independently
+    // seeded host.
+    console.warn(
+      "  Note: entropy is drawn from the OS RNG only. Run on a properly seeded " +
+        "host — not a cloned VM/container snapshot that may share RNG state.",
+    );
     console.log("  Generating entropy...");
     const entropy = await generateEntropy();
 

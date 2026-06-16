@@ -34,6 +34,13 @@ cabure contribute <url> --token <jwt>
 | `--tier <id>` | Contribute to a specific tier | all incomplete circuits |
 | `--token <jwt>` | Skip authentication, use a pre-existing CLI JWT | interactive device flow |
 
+> **Entropy hygiene.** A headless contribution draws randomness only from the
+> host's OS CSPRNG (no mouse/UI entropy). A normal host is fine — modern kernels
+> block until the RNG is seeded. Do **not** run from a cloned VM or container
+> snapshot taken after boot: such images can share RNG state, so contributors
+> started from the same image may produce correlated entropy. Use a freshly,
+> independently seeded host.
+
 ## Authentication
 
 Uses the GitHub OAuth **device flow** (RFC 8628). The ceremony server proxies the flow so the CLI never needs the OAuth client ID or secret.
