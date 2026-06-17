@@ -215,21 +215,17 @@ export async function GET(request: NextRequest) {
   }
   const circuit = await getCircuitState(circuitId);
 
-  const now = Date.now();
+  // Read-only: prune in memory for an accurate position but do NOT persist.
+  // Persisting would overwrite the whole circuit-state key and could revert a
+  // concurrent contribution commit. The POST and contribute paths prune under
+  // the lock, so expired entries are cleaned there.
   const pruned = pruneExpiredEntries(
     circuit.queue,
     config.queueTimeoutSeconds,
-    now,
+    Date.now(),
   );
-  if (pruned.length < circuit.queue.length) {
-    circuit.queue = pruned;
-    await setJson(
-      kvKey(config.storage.circuitStatePrefix, circuitId),
-      circuit,
-    );
-  }
 
-  const index = circuit.queue.findIndex(
+  const index = pruned.findIndex(
     (entry) => entry.participantId === participantId,
   );
 

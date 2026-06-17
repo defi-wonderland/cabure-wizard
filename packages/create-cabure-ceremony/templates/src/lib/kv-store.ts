@@ -58,45 +58,41 @@ export async function listClear(key: string): Promise<number> {
   return redis().del(key);
 }
 
-// Optimistic concurrency for the contribution chain: commit only if the chain
-// head has not moved since this request read it. No lock, no TTL, no lease to
-// expire under a slow upload. KEYS[1] is the circuit state key; ARGV[1] is the
-// currentZkeyUrl this contribution was built on. Each contribution stores to a
-// unique blob path, so currentZkeyUrl doubles as a version stamp. If another
-// contribution committed first, the head differs and the script returns 0; the
-// caller rejects and the client retries from fresh state. The four writes then
-// run in one atomic server-side step, so two racers can never both advance the
-// chain from the same head.
+// Fence: commit only while the caller still holds the per-circuit lock. KEYS[1]
+// is the lock key, ARGV[1] the caller's token. The four writes run only if the
+// lock still holds that token, all in one atomic server-side step. See
+// writeContribution for why a plain locked write is not enough.
 const COMMIT_CONTRIBUTION_SCRIPT = `
-  local state = redis.call("get", KEYS[1])
-  if not state then return 0 end
-  if cjson.decode(state)["currentZkeyUrl"] ~= ARGV[1] then return 0 end
-  redis.call("set", KEYS[1], ARGV[2])
-  redis.call("rpush", KEYS[2], ARGV[3])
-  redis.call("sadd", KEYS[3], ARGV[4])
-  redis.call("sadd", KEYS[4], ARGV[5])
+  if redis.call("get", KEYS[1]) ~= ARGV[1] then
+    return 0
+  end
+  redis.call("set", KEYS[2], ARGV[2])
+  redis.call("rpush", KEYS[3], ARGV[3])
+  redis.call("sadd", KEYS[4], ARGV[4])
+  redis.call("sadd", KEYS[5], ARGV[5])
   return 1
 `;
 
 /**
- * Commit a contribution, but only if the chain head still matches
- * expectedHeadUrl. Returns false when another contribution committed first, so
- * the caller can reject and the client can retry against fresh state.
+ * Commit a contribution, but only while the caller still holds the per-circuit
+ * lock. Returns false when the lock was lost, so the caller rejects and the
+ * client retries. The queue routes take the same lock, so these writes cannot
+ * race a concurrent queue update.
  *
- * This is the only invariant the chain needs serialized: a new zkey must extend
- * the current head. The compare-and-set on currentZkeyUrl enforces it without a
- * lock. It also serializes same-participant double submits: the first commit
- * shifts the participant off the queue and moves the head, so the second fails
- * the head check.
+ * The lock has a TTL. A process can stall after acquiring it — a GC pause, a
+ * slow KV round trip — until the TTL expires and a second writer takes the
+ * lock. A plain write would still land and overwrite that second writer,
+ * dropping a contribution. The token check makes the advance atomic: the
+ * stalled writer sees a different token (or none) and writes nothing. This is
+ * the append-only head advance the continuity gate (C-1) builds on.
  *
  * The ARGV values must serialize the way the client's defaultSerializer does,
  * or the readers (getJson, listRange, sismember, smembers) will not parse them.
- * Objects go in as JSON strings; plain string set members go in raw. The script
- * only reads a string field from the state, so cjson number handling does not
- * matter here.
+ * Objects go in as JSON strings; plain string set members go in raw.
  */
 export async function writeContribution<TCircuit, TReceipt>(options: {
-  expectedHeadUrl: string;
+  lockKey: string;
+  lockToken: string;
   circuitStateKey: string;
   circuitState: TCircuit;
   receiptsKey: string;
@@ -109,13 +105,14 @@ export async function writeContribution<TCircuit, TReceipt>(options: {
   const result = await redis().eval(
     COMMIT_CONTRIBUTION_SCRIPT,
     [
+      options.lockKey,
       options.circuitStateKey,
       options.receiptsKey,
       options.participantContributionsKey,
       options.participantsIndexKey,
     ],
     [
-      options.expectedHeadUrl,
+      options.lockToken,
       JSON.stringify(options.circuitState),
       JSON.stringify(options.receipt),
       options.circuitId,

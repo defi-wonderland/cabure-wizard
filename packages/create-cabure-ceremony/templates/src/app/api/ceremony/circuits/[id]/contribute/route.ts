@@ -15,10 +15,12 @@ import {
   kvKey,
   pruneExpiredEntries,
   readCircuitBytes,
+  type CircuitState,
   type ContributionReceipt,
+  type ManifestState,
 } from "@/lib/ceremony-state";
 import { deleteBinary, putBinary } from "@/lib/blob-store";
-import { writeContribution } from "@/lib/kv-store";
+import { acquireLock, releaseLock, writeContribution } from "@/lib/kv-store";
 
 const BLOB_HOST_SUFFIX = ".public.blob.vercel-storage.com";
 
@@ -36,6 +38,58 @@ function isValidPendingBlobUrl(url: string, circuitId: string): boolean {
   } catch {
     return false;
   }
+}
+
+type EligibilityResult =
+  | { ok: true; circuit: CircuitState }
+  | { ok: false; error: string; status: number };
+
+// Shared eligibility gate. Run once cheaply before the heavy verify/upload (so
+// a clearly ineligible request never pays for them) and again under the lock,
+// where it is authoritative: state can change between the pre-check and
+// acquiring the lock. Prunes `circuit.queue` in place; the returned circuit is
+// the one to mutate and commit.
+async function checkEligibility(
+  id: string,
+  participantId: string,
+  manifest: ManifestState,
+  queueTimeoutSeconds: number,
+): Promise<EligibilityResult> {
+  const circuit = await getCircuitState(id);
+  const allCircuits = await getAllCircuitStates();
+
+  if (!isCeremonyActive(manifest, allCircuits)) {
+    return { ok: false, error: "Ceremony is not active", status: 403 };
+  }
+
+  circuit.queue = pruneExpiredEntries(circuit.queue, queueTimeoutSeconds);
+
+  if (circuit.queue[0]?.participantId !== participantId) {
+    return { ok: false, error: "Not at front of the queue", status: 409 };
+  }
+
+  if (await hasParticipantContributedToCircuit(participantId, id)) {
+    return {
+      ok: false,
+      error: "You have already contributed to this circuit",
+      status: 403,
+    };
+  }
+
+  // finalize:ceremony verifies the chain from the pinned genesis before the
+  // beacon. A circuit without that pin can never be finalized, so accepting
+  // contributions here would waste participant work.
+  if (!circuit.initialZkeyUrl || !circuit.initialZkeyHash) {
+    return {
+      ok: false,
+      error:
+        "Ceremony has no pinned genesis and cannot be finalized. " +
+        "The operator must re-run init:ceremony.",
+      status: 409,
+    };
+  }
+
+  return { ok: true, circuit };
 }
 
 export async function POST(
@@ -80,6 +134,26 @@ export async function POST(
     );
   }
 
+  const manifest = await getManifest();
+
+  // Cheap eligibility check before the expensive verify/upload, so a clearly
+  // ineligible request never pays for them. The authoritative check runs again
+  // under the lock below. Nothing is stored yet, so on rejection we only clean
+  // up the client's pending upload.
+  const precheck = await checkEligibility(
+    id,
+    participantId,
+    manifest,
+    config.queueTimeoutSeconds,
+  );
+  if (!precheck.ok) {
+    await deleteBinary(blobUrl).catch(() => {});
+    return NextResponse.json(
+      { error: precheck.error },
+      { status: precheck.status },
+    );
+  }
+
   const blobResponse = await fetch(blobUrl);
   if (!blobResponse.ok) {
     return NextResponse.json(
@@ -97,11 +171,8 @@ export async function POST(
     );
   }
 
-  // Heavy work runs before the commit. Verifying and copying the zkey is slow,
-  // so it must stay off the critical path: the commit below is a single atomic
-  // compare-and-set on the chain head, and we never want a multi-MB upload
-  // inside it. Two contributions racing from the same head still serialize —
-  // the CAS rejects the loser — so doing this work concurrently is safe.
+  // Heavy work (verify + upload) runs before the lock, so the locked commit
+  // section below stays brief and cannot outlive the lock TTL.
 
   // Per-contribution verification is opt-in: pairing checks can exceed
   // serverless timeouts for large circuits.
@@ -123,131 +194,118 @@ export async function POST(
 
   const computedHash = `0x${createHash("sha256").update(body).digest("hex")}`;
 
-  // Store under a per-participant path, never the shared `current.zkey`: the
-  // committed `currentZkeyUrl` pointer is the source of truth, so a
-  // contribution that fails a check below is discarded without touching the
-  // live zkey. We upload before the commit decision, so a crash or a failed
-  // cleanup delete between here and the commit leaks this blob. Keying it by
-  // participant (with allowOverwrite) bounds that leak: a retry from the same
-  // participant overwrites their own blob instead of orphaning a new one.
-  const zkeyPath = `${config.storage.zkeyPrefix}/${id}/pending-${participantId}.zkey`;
+  // Unique path per attempt, never a shared or per-participant fixed path. Once
+  // a contribution commits, `currentZkeyUrl` points at this blob. Two concurrent
+  // attempts from the same participant must NOT share a path: otherwise the
+  // loser's cleanup delete below would remove the winner's just-committed head.
+  // Rejected attempts delete their own blob; only a crash leaks one, which the
+  // orphan-GC follow-up reclaims.
+  const zkeyPath = `${config.storage.zkeyPrefix}/${id}/pending-${participantId}-${crypto.randomUUID()}.zkey`;
   const stored = await putBinary(zkeyPath, body);
 
   // The client's pending upload has been copied to our path.
   await deleteBinary(blobUrl).catch(() => {});
 
-  const manifest = await getManifest();
-  const circuit = await getCircuitState(id);
-  const allCircuits = await getAllCircuitStates();
-
-  if (!isCeremonyActive(manifest, allCircuits)) {
+  // Critical section: the per-circuit lock serializes this fast read+commit
+  // with the queue POST route, which writes the same circuit-state key. Heavy
+  // work already ran above, so the lock is held only for the brief commit and
+  // cannot expire mid-write.
+  const lockKey = `${config.storage.manifestPath}:lock:${id}`;
+  const lockToken = crypto.randomUUID();
+  const locked = await acquireLock(lockKey, lockToken);
+  if (!locked) {
     await deleteBinary(stored.url).catch(() => {});
     return NextResponse.json(
-      { error: "Ceremony is not active" },
-      { status: 403 },
-    );
-  }
-
-  circuit.queue = pruneExpiredEntries(circuit.queue, config.queueTimeoutSeconds);
-
-  if (circuit.queue[0]?.participantId !== participantId) {
-    await deleteBinary(stored.url).catch(() => {});
-    return NextResponse.json(
-      { error: "Not at front of the queue" },
+      { error: "Circuit busy. Please retry." },
       { status: 409 },
     );
   }
 
-  if (await hasParticipantContributedToCircuit(participantId, id)) {
-    await deleteBinary(stored.url).catch(() => {});
-    return NextResponse.json(
-      { error: "You have already contributed to this circuit" },
-      { status: 403 },
-    );
-  }
-
-  // finalize:ceremony verifies the chain from the pinned genesis before the
-  // beacon. A circuit without that pin can never be finalized, so accepting
-  // contributions here would waste participant work. Reject before advancing.
-  if (!circuit.initialZkeyUrl || !circuit.initialZkeyHash) {
-    await deleteBinary(stored.url).catch(() => {});
-    return NextResponse.json(
-      {
-        error:
-          "Ceremony has no pinned genesis and cannot be finalized. " +
-          "The operator must re-run init:ceremony.",
-      },
-      { status: 409 },
-    );
-  }
-
-  const hadPriorContribution = circuit.totalContributions > 0;
-  // The head this contribution extends. The commit below is rejected if another
-  // contribution moves the head first, so the chain never advances twice from
-  // the same point. No lock needed for that guarantee.
-  const previousZkeyUrl = circuit.currentZkeyUrl;
-  const contributionIndex = circuit.totalContributions + 1;
-  const timestamp = Date.now();
-  const chainHash = computeChainHash({
-    previousChainHash: circuit.chainHash,
-    contributionHash: computedHash,
-    participantId,
-    timestamp,
-  });
-
-  circuit.totalContributions += 1;
-  circuit.latestContributionHash = computedHash;
-  circuit.chainHash = chainHash;
-  circuit.queue.shift();
-  circuit.currentZkeyPath = stored.pathname;
-  circuit.currentZkeyUrl = stored.url;
-
-  const receipt: ContributionReceipt = {
-    circuitId: id,
-    participantId,
-    contributionIndex,
-    contributionHash: computedHash,
-    clientContributionHash: clientHash,
-    chainHash,
-    timestamp,
-  };
-
-  const committed = await writeContribution({
-    expectedHeadUrl: previousZkeyUrl,
-    circuitStateKey: kvKey(config.storage.circuitStatePrefix, id),
-    circuitState: circuit,
-    receiptsKey: config.storage.receiptsPath,
-    receipt,
-    participantContributionsKey: kvKey(
-      config.storage.participantContributionsPrefix,
+  try {
+    // Authoritative re-check: state may have changed since the pre-check.
+    const eligible = await checkEligibility(
+      id,
       participantId,
-    ),
-    circuitId: id,
-    participantsIndexKey: config.storage.participantsIndexPath,
-    participantId,
-  });
-
-  // Rejected when another contribution advanced the chain head between our read
-  // and this commit. Our snapshot is then stale, so we must not claim success
-  // or delete the previous zkey (the other writer now owns it). Drop our blob
-  // and let the client retry against fresh state.
-  if (!committed) {
-    await deleteBinary(stored.url).catch(() => {});
-    return NextResponse.json(
-      { error: "Contribution conflict. Please retry." },
-      { status: 409 },
+      manifest,
+      config.queueTimeoutSeconds,
     );
-  }
+    if (!eligible.ok) {
+      await deleteBinary(stored.url).catch(() => {});
+      return NextResponse.json(
+        { error: eligible.error },
+        { status: eligible.status },
+      );
+    }
+    const circuit = eligible.circuit;
 
-  // The new zkey embeds the whole contribution chain, so the previous
-  // contribution's blob is redundant — delete it to bound storage. Never
-  // delete the genesis (kept when there is no prior contribution).
-  if (hadPriorContribution) {
-    await deleteBinary(previousZkeyUrl).catch(() => {});
-  }
+    const hadPriorContribution = circuit.totalContributions > 0;
+    const previousZkeyUrl = circuit.currentZkeyUrl;
+    const contributionIndex = circuit.totalContributions + 1;
+    const timestamp = Date.now();
+    const chainHash = computeChainHash({
+      previousChainHash: circuit.chainHash,
+      contributionHash: computedHash,
+      participantId,
+      timestamp,
+    });
 
-  return NextResponse.json({
-    success: true,
-    ...receipt,
-  });
+    circuit.totalContributions += 1;
+    circuit.latestContributionHash = computedHash;
+    circuit.chainHash = chainHash;
+    circuit.queue.shift();
+    circuit.currentZkeyPath = stored.pathname;
+    circuit.currentZkeyUrl = stored.url;
+
+    const receipt: ContributionReceipt = {
+      circuitId: id,
+      participantId,
+      contributionIndex,
+      contributionHash: computedHash,
+      clientContributionHash: clientHash,
+      chainHash,
+      timestamp,
+    };
+
+    const committed = await writeContribution({
+      lockKey,
+      lockToken,
+      circuitStateKey: kvKey(config.storage.circuitStatePrefix, id),
+      circuitState: circuit,
+      receiptsKey: config.storage.receiptsPath,
+      receipt,
+      participantContributionsKey: kvKey(
+        config.storage.participantContributionsPrefix,
+        participantId,
+      ),
+      circuitId: id,
+      participantsIndexKey: config.storage.participantsIndexPath,
+      participantId,
+    });
+
+    // The write lands only if we still hold the lock. If our lock expired and
+    // another writer took it (a stall past the TTL), the commit is rejected:
+    // our snapshot is stale, so drop our blob and let the client retry. Do not
+    // delete the previous zkey — the other writer now owns it.
+    if (!committed) {
+      await deleteBinary(stored.url).catch(() => {});
+      return NextResponse.json(
+        { error: "Circuit busy. Please retry." },
+        { status: 409 },
+      );
+    }
+
+    // The new zkey embeds the whole contribution chain, so the previous
+    // contribution's blob is redundant — delete it to bound storage. Never
+    // delete the genesis (kept when there is no prior contribution).
+    if (hadPriorContribution) {
+      await deleteBinary(previousZkeyUrl).catch(() => {});
+    }
+
+    return NextResponse.json({
+      success: true,
+      ...receipt,
+    });
+  } finally {
+    await releaseLock(lockKey, lockToken);
+  }
 }
