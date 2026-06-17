@@ -150,7 +150,7 @@ export function isCeremonyActive(
 ): boolean {
   const config = getCeremonyConfig();
   // Once the beacon is applied the ceremony is sealed; stop accepting
-  // contributions even if targets/deadline would otherwise leave it open (H-6).
+  // contributions even if targets/deadline would otherwise leave it open.
   if (manifest.beaconApplied) return false;
   const now = Date.now();
   let endDateMs: number | null;

@@ -466,11 +466,10 @@ async function main() {
   await writeFile(transcriptPath, JSON.stringify(transcript, null, 2));
   console.log(`Transcript saved to public/finalize/transcript.json`);
 
-  // Record finalization in the manifest (H-6). The re-finalize guard above and
-  // isCeremonyActive both read these fields, so without this write the ceremony
-  // would keep accepting contributions and could be finalized twice. Written
-  // last, after every artifact is saved, so a mid-run failure does not leave
-  // the ceremony marked final.
+  // Record finalization in the manifest. The re-finalize guard above and
+  // isCeremonyActive read these fields; without this write the ceremony keeps
+  // accepting contributions and could be finalized twice. Written last, after
+  // every artifact is saved, so a mid-run failure leaves the ceremony unsealed.
   await setJson(storage.manifestPath, {
     ...manifest,
     beaconApplied: true,
