@@ -97,11 +97,11 @@ export async function POST(
     );
   }
 
-  // Heavy work runs BEFORE the lock. Verifying and copying the zkey can take
-  // longer than the lock's TTL; under the lock that would let the lock expire
-  // mid-work and admit a second writer, dropping a contribution. Out here, the
-  // lock below is held only for the fast state update, so it cannot expire in
-  // flight and the plain write is safe.
+  // Heavy work runs before the commit. Verifying and copying the zkey is slow,
+  // so it must stay off the critical path: the commit below is a single atomic
+  // compare-and-set on the chain head, and we never want a multi-MB upload
+  // inside it. Two contributions racing from the same head still serialize —
+  // the CAS rejects the loser — so doing this work concurrently is safe.
 
   // Per-contribution verification is opt-in: pairing checks can exceed
   // serverless timeouts for large circuits.
