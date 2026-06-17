@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { handleUpload, type HandleUploadBody } from "@vercel/blob/client";
+import { CONTRIBUTION_RECORD_FIXED_BYTES } from "@wonderland/cabure-crypto";
 
 import { getCeremonyConfig } from "@/lib/ceremony-config";
 import {
@@ -57,15 +58,24 @@ export async function POST(
         }
 
         // Cap the upload size (M-3). A valid contribution is the genesis zkey
-        // plus a small per-contribution record (~hundreds of bytes each), so a
-        // tight ceiling rejects oversized junk before it is stored or loaded
-        // into memory. Skip the cap only if the size was not recorded (a
-        // ceremony initialized before this field existed).
+        // plus one fixed-size record per contribution (the one being uploaded
+        // included), so the exact ceiling is genesis + n * (record + name).
+        // This rejects oversized junk before it is stored or loaded into
+        // memory. Skip the cap only if the size was not recorded (a ceremony
+        // initialized before this field existed).
+        //
+        // CONTRIBUTION_RECORD_FIXED_BYTES is measured against snarkjs and
+        // verified by a test in @wonderland/cabure-crypto. MAX_NAME_BYTES is
+        // the longest contributor name we size for; the web flow uses a fixed
+        // short name and the CLI uses a GitHub login (max 39 chars), so 64
+        // leaves margin while still rejecting padded uploads.
+        const MAX_NAME_BYTES = 64;
+        const perContribution =
+          CONTRIBUTION_RECORD_FIXED_BYTES + MAX_NAME_BYTES;
         const maximumSizeInBytes =
           circuit.genesisZkeySize > 0
             ? circuit.genesisZkeySize +
-              (circuit.totalContributions + 1) * 512 +
-              1024
+              (circuit.totalContributions + 1) * perContribution
             : undefined;
 
         return {
