@@ -43,7 +43,7 @@ export interface CircuitState {
   initialZkeyUrl: string;
   // Byte size of the genesis zkey. A phase-2 zkey's size is fixed by the
   // circuit (contributions only append a small record each), so this is the
-  // basis for the per-upload size cap (M-3).
+  // basis for the per-upload size cap (M-3). Always written at init.
   genesisZkeySize: number;
 }
 

@@ -61,8 +61,7 @@ export async function POST(
         // plus one fixed-size record per contribution (the one being uploaded
         // included), so the exact ceiling is genesis + n * (record + name).
         // This rejects oversized junk before it is stored or loaded into
-        // memory. Skip the cap only if the size was not recorded (a ceremony
-        // initialized before this field existed).
+        // memory.
         //
         // CONTRIBUTION_RECORD_FIXED_BYTES is measured against snarkjs and
         // verified by a test in @wonderland/cabure-crypto. MAX_NAME_BYTES is
@@ -73,15 +72,13 @@ export async function POST(
         const perContribution =
           CONTRIBUTION_RECORD_FIXED_BYTES + MAX_NAME_BYTES;
         const maximumSizeInBytes =
-          circuit.genesisZkeySize > 0
-            ? circuit.genesisZkeySize +
-              (circuit.totalContributions + 1) * perContribution
-            : undefined;
+          circuit.genesisZkeySize +
+          (circuit.totalContributions + 1) * perContribution;
 
         return {
           allowedContentTypes: ["application/octet-stream"],
           addRandomSuffix: true,
-          ...(maximumSizeInBytes !== undefined && { maximumSizeInBytes }),
+          maximumSizeInBytes,
           tokenPayload: JSON.stringify({
             participantId: participant.participantId,
             circuitId: id,

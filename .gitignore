@@ -5,6 +5,9 @@ dist/
 .env.*
 coverage/
 
+# Per-developer Claude Code overrides; not shared config.
+.claude/settings.local.json
+
 # Keep template fixtures visible for create-cabure-ceremony
 !packages/create-cabure-ceremony/templates/
 !packages/create-cabure-ceremony/templates/**
