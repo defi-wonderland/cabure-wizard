@@ -216,11 +216,15 @@ function sha256hex(data: Uint8Array): string {
 
 // Format a manifest timestamp for an operator message. The manifest comes from
 // KV JSON with no runtime validation, so a corrupted or hand-edited value must
-// not throw here (new Date(NaN).toISOString() raises) and hide the message it
-// is part of.
+// not throw here and hide the message it is part of. A finite number can still
+// be out of Date's range, which makes an Invalid Date whose toISOString raises,
+// so check the constructed date before formatting.
 function formatSealTime(value: unknown): string {
   if (typeof value === "number" && Number.isFinite(value)) {
-    return new Date(value).toISOString();
+    const date = new Date(value);
+    if (!Number.isNaN(date.getTime())) {
+      return date.toISOString();
+    }
   }
   return "an unknown time";
 }
