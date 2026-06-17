@@ -308,6 +308,11 @@ export async function POST(
       ...receipt,
     });
   } finally {
-    await releaseLock(lockKey, lockToken);
+    // Best-effort: a release can fail on a transient KV error, but the lock's
+    // TTL expires it anyway. Letting it throw would replace an already-committed
+    // success with a 500 and make the client retry a contribution that landed.
+    await releaseLock(lockKey, lockToken).catch((error) => {
+      console.error(`Failed to release contribution lock for ${id}:`, error);
+    });
   }
 }
