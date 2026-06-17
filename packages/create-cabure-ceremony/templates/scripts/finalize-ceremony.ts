@@ -536,14 +536,27 @@ async function main() {
     console.log(`Transcript saved to public/finalize/transcript.json`);
 
     // Permanent seal. Written last, after every artifact, so a mid-run failure
-    // leaves the ceremony unsealed for the catch to reopen. The start-of-run
-    // snapshot has no finalizingAt/finalizeId, so this write drops them too.
-    await setJson(storage.manifestPath, {
-      ...manifest,
+    // leaves the ceremony unsealed for the catch to reopen. Re-read and confirm
+    // the seal is still ours: if a --force run took over (different finalizeId),
+    // abort instead of stamping our beacon over theirs and publishing
+    // conflicting finalization metadata. The takeover run owns finalization now.
+    const latestManifest =
+      (await getJson<ManifestState>(storage.manifestPath)) ?? manifest;
+    if (latestManifest.finalizeId !== finalizeId) {
+      throw new Error(
+        "Finalization seal was taken over by another run (--force). " +
+          "Aborting this run without publishing its results.",
+      );
+    }
+    const finalized = {
+      ...latestManifest,
       beaconApplied: true,
       beaconHash: `0x${beaconHex}`,
       finalizedAt,
-    });
+    };
+    delete finalized.finalizingAt;
+    delete finalized.finalizeId;
+    await setJson(storage.manifestPath, finalized);
 
     console.log();
     console.log("=== Ceremony finalized ===");
