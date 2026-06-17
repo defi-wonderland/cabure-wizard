@@ -185,7 +185,7 @@ export async function POST(request: NextRequest) {
       // Best-effort: a failed release is not fatal (the lock TTL expires it).
       // Throwing here would override the computed response with a 500.
       await releaseLock(lockKey, lockToken).catch((error) => {
-        console.error(`Failed to release queue lock for ${circuitId}:`, error);
+        console.error("Failed to release queue lock for circuit:", circuitId, error);
       });
     }
   }
