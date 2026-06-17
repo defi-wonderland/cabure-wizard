@@ -53,6 +53,7 @@ interface ManifestState {
   circuits: Array<{ id: string }>;
   beaconHash?: string;
   beaconApplied?: boolean;
+  finalizingAt?: number;
   finalizedAt?: number;
 }
 
@@ -205,6 +206,24 @@ function sha256hex(data: Uint8Array): string {
   return `0x${createHash("sha256").update(data).digest("hex")}`;
 }
 
+// Read every circuit's state from KV. Used twice: once to check readiness, then
+// again after the ceremony is sealed to pick up any contribution that landed
+// just before the seal.
+async function loadCircuitStates(
+  circuitConfigs: Array<{ id: string }>,
+  circuitStatePrefix: string,
+): Promise<CircuitState[]> {
+  return await Promise.all(
+    circuitConfigs.map(async (c) => {
+      const state = await getJson<CircuitState>(`${circuitStatePrefix}:${c.id}`);
+      if (!state) {
+        throw new Error(`Missing circuit state for ${c.id}. Run init:ceremony.`);
+      }
+      return state;
+    }),
+  );
+}
+
 async function main() {
   loadEnvConfig(process.cwd(), true);
 
@@ -228,21 +247,12 @@ async function main() {
     );
   }
 
-  const circuitStates: CircuitState[] = await Promise.all(
-    circuitConfigs.map(async (c) => {
-      const state = await getJson<CircuitState>(
-        `${storage.circuitStatePrefix}:${c.id}`,
-      );
-      if (!state) {
-        throw new Error(
-          `Missing circuit state for ${c.id}. Run init:ceremony.`,
-        );
-      }
-      return state;
-    }),
+  const initialStates = await loadCircuitStates(
+    circuitConfigs,
+    storage.circuitStatePrefix,
   );
 
-  const totalContributions = circuitStates.reduce(
+  const initialTotal = initialStates.reduce(
     (sum, c) => sum + c.totalContributions,
     0,
   );
@@ -251,7 +261,7 @@ async function main() {
     0,
   );
 
-  if (totalContributions === 0) {
+  if (initialTotal === 0) {
     throw new Error(
       "No contributions have been made. Cannot finalize an empty ceremony.",
     );
@@ -259,7 +269,7 @@ async function main() {
 
   const incompleteCircuits = circuitConfigs
     .map((config) => {
-      const state = circuitStates.find((s) => s.id === config.id);
+      const state = initialStates.find((s) => s.id === config.id);
       return {
         id: config.id,
         total: state?.totalContributions ?? 0,
@@ -286,7 +296,7 @@ async function main() {
             .join(", ")}`
         : null;
     const statusLines = [
-      `Progress: ${totalContributions}/${totalTarget} contributions`,
+      `Progress: ${initialTotal}/${totalTarget} contributions`,
       deadlineLine,
       ...(incompleteLine ? [incompleteLine] : []),
     ];
@@ -310,181 +320,213 @@ async function main() {
     );
   }
 
-  const beacon = await resolveBeacon();
+  // Seal the ceremony against new contributions before snapshotting for
+  // finalization. isCeremonyActive returns false once finalizingAt is set, so
+  // the API stops accepting queue/upload/contribute requests. We then re-read
+  // circuit state to capture any contribution that landed just before the seal.
+  // Without this, a contribution accepted during the long beacon/verify run
+  // would update the live zkey but be dropped from the finalized artifacts.
+  const finalizingAt = Date.now();
+  await setJson(storage.manifestPath, { ...manifest, finalizingAt });
 
-  console.log(`Beacon source: ${beacon.source}`);
-  if (beacon.slot !== undefined) {
-    console.log(`Beacon slot:   ${beacon.slot}`);
-  }
-  console.log(`Beacon value:  0x${beacon.hex}`);
-  console.log();
-
-  const beaconHex = beacon.hex;
-
-  await mkdir(OUTPUT_DIR, { recursive: true });
-
-  const circuitSummaries: Array<{
-    circuitId: string;
-    totalContributions: number;
-    finalChainHash: string;
-    finalContributionHash: string;
-    finalZkeyHash: string;
-    finalZkeyPath: string;
-    verificationKey: Groth16VerificationKey;
-  }> = [];
-
-  for (const circuitConfig of circuitConfigs) {
-    const state = circuitStates.find((s) => s.id === circuitConfig.id)!;
-
-    if (state.totalContributions === 0) {
-      console.log(`Skipping ${circuitConfig.id} — no contributions received.`);
-      continue;
-    }
-
-    console.log(
-      `[${circuitConfig.id}] Finalizing (${state.totalContributions} contributions)...`,
+  try {
+    const circuitStates = await loadCircuitStates(
+      circuitConfigs,
+      storage.circuitStatePrefix,
+    );
+    const totalContributions = circuitStates.reduce(
+      (sum, c) => sum + c.totalContributions,
+      0,
     );
 
-    console.log(`  Downloading current zkey...`);
-    const currentZkey = await downloadZkey(state.currentZkeyUrl);
+    const beacon = await resolveBeacon();
 
-    console.log(`  Loading circuit artifacts for verification...`);
-    const r1cs = await readArtifact(circuitConfig.artifacts.r1csPath);
-    const ptau = await readArtifact(circuitConfig.artifacts.ptauPath);
+    console.log(`Beacon source: ${beacon.source}`);
+    if (beacon.slot !== undefined) {
+      console.log(`Beacon slot:   ${beacon.slot}`);
+    }
+    console.log(`Beacon value:  0x${beacon.hex}`);
+    console.log();
 
-    // H-1: verify the whole chain from the pinned genesis to the latest zkey
-    // BEFORE applying the beacon. The beacon is irreversible, so an invalid
-    // chain has to be caught first — verifying only the post-beacon zkey (the
-    // old order) cannot tell whether the chain that fed it was honest.
-    if (!state.initialZkeyUrl || !state.initialZkeyHash) {
-      throw new Error(
-        `Circuit ${circuitConfig.id} has no pinned genesis (initialZkeyUrl/Hash). ` +
-          "It was initialized before genesis pinning; re-run init:ceremony.",
+    const beaconHex = beacon.hex;
+
+    await mkdir(OUTPUT_DIR, { recursive: true });
+
+    const circuitSummaries: Array<{
+      circuitId: string;
+      totalContributions: number;
+      finalChainHash: string;
+      finalContributionHash: string;
+      finalZkeyHash: string;
+      finalZkeyPath: string;
+      verificationKey: Groth16VerificationKey;
+    }> = [];
+
+    for (const circuitConfig of circuitConfigs) {
+      const state = circuitStates.find((s) => s.id === circuitConfig.id)!;
+
+      if (state.totalContributions === 0) {
+        console.log(
+          `Skipping ${circuitConfig.id} — no contributions received.`,
+        );
+        continue;
+      }
+
+      console.log(
+        `[${circuitConfig.id}] Finalizing (${state.totalContributions} contributions)...`,
       );
+
+      console.log(`  Downloading current zkey...`);
+      const currentZkey = await downloadZkey(state.currentZkeyUrl);
+
+      console.log(`  Loading circuit artifacts for verification...`);
+      const r1cs = await readArtifact(circuitConfig.artifacts.r1csPath);
+      const ptau = await readArtifact(circuitConfig.artifacts.ptauPath);
+
+      // H-1: verify the whole chain from the pinned genesis to the latest zkey
+      // BEFORE applying the beacon. The beacon is irreversible, so an invalid
+      // chain has to be caught first — verifying only the post-beacon zkey (the
+      // old order) cannot tell whether the chain that fed it was honest.
+      if (!state.initialZkeyUrl || !state.initialZkeyHash) {
+        throw new Error(
+          `Circuit ${circuitConfig.id} has no pinned genesis (initialZkeyUrl/Hash). ` +
+            "It was initialized before genesis pinning; re-run init:ceremony.",
+        );
+      }
+
+      console.log(`  Downloading pinned genesis zkey...`);
+      const genesisZkey = await downloadZkey(state.initialZkeyUrl);
+
+      // The chain is only as trustworthy as the genesis we root it in. Confirm
+      // the downloaded genesis still matches the hash pinned at init, so a
+      // swapped blob cannot pass the chain check.
+      const genesisHash = sha256hex(genesisZkey);
+      if (genesisHash !== state.initialZkeyHash) {
+        throw new Error(
+          `Genesis zkey for ${circuitConfig.id} does not match the hash pinned at ` +
+            `init. Expected ${state.initialZkeyHash}, got ${genesisHash}.`,
+        );
+      }
+
+      console.log(`  Verifying contribution chain (genesis → latest)...`);
+      const chainValid = await verifyChainForCircuit(
+        r1cs,
+        ptau,
+        genesisZkey,
+        currentZkey,
+      );
+      if (!chainValid) {
+        throw new Error(
+          `Contribution chain for ${circuitConfig.id} failed verification. ` +
+            "Refusing to apply the beacon to an invalid chain.",
+        );
+      }
+      console.log(`  Chain verification passed.`);
+
+      // TODO(C-1): the chain verify above only proves current.zkey is SOME valid
+      // descendant of the pinned genesis, not that it is the chain we recorded.
+      // An attacker with blob write access but no KV access (a leaked
+      // BLOB_READ_WRITE_TOKEN) can overwrite current.zkey with a self-generated
+      // chain rooted at the real genesis and pass here. Close this by comparing
+      // the embedded transcript (snarkjs zKey.exportJson -> contributions)
+      // against the contribution count and per-contribution hashes recorded in
+      // KV before applying the beacon. Needs the contribute route to record the
+      // server-computed Blake2b contribution hash per step first.
+
+      console.log(`  Applying beacon...`);
+      const beaconResult = await applyBeacon(currentZkey, beaconHex);
+      const finalZkey = beaconResult.zkey;
+      console.log(
+        `  Beacon contribution hash: ${beaconResult.contributionHash}`,
+      );
+      console.log(`  Final zkey hash: ${beaconResult.zkeyHash}`);
+
+      console.log(`  Verifying finalized zkey...`);
+      const isValid = await verify(r1cs, ptau, finalZkey);
+      if (!isValid) {
+        throw new Error(
+          `Verification failed for ${circuitConfig.id}. The finalized zkey is invalid.`,
+        );
+      }
+      console.log(`  Verification passed.`);
+
+      console.log(`  Exporting verification key...`);
+      const vkey = await exportVerificationKey(finalZkey);
+
+      const vkeyFile = `${circuitConfig.id}.vkey.json`;
+      const vkeyPath = path.join(OUTPUT_DIR, vkeyFile);
+      await writeFile(vkeyPath, JSON.stringify(vkey, null, 2));
+      console.log(`  Saved verification key to public/finalize/${vkeyFile}`);
+
+      const finalZkeyFile = `${circuitConfig.id}.final.zkey`;
+      const finalZkeyPath = path.join(OUTPUT_DIR, finalZkeyFile);
+      await writeFile(finalZkeyPath, Buffer.from(finalZkey));
+      console.log(`  Saved finalized zkey to public/finalize/${finalZkeyFile}`);
+
+      circuitSummaries.push({
+        circuitId: circuitConfig.id,
+        totalContributions: state.totalContributions,
+        finalChainHash: state.chainHash,
+        finalContributionHash: beaconResult.contributionHash,
+        finalZkeyHash: beaconResult.zkeyHash,
+        finalZkeyPath: `public/finalize/${finalZkeyFile}`,
+        verificationKey: vkey,
+      });
+
+      console.log();
     }
 
-    console.log(`  Downloading pinned genesis zkey...`);
-    const genesisZkey = await downloadZkey(state.initialZkeyUrl);
-
-    // The chain is only as trustworthy as the genesis we root it in. Confirm
-    // the downloaded genesis still matches the hash pinned at init, so a
-    // swapped blob cannot pass the chain check.
-    const genesisHash = sha256hex(genesisZkey);
-    if (genesisHash !== state.initialZkeyHash) {
-      throw new Error(
-        `Genesis zkey for ${circuitConfig.id} does not match the hash pinned at ` +
-          `init. Expected ${state.initialZkeyHash}, got ${genesisHash}.`,
-      );
-    }
-
-    console.log(`  Verifying contribution chain (genesis → latest)...`);
-    const chainValid = await verifyChainForCircuit(
-      r1cs,
-      ptau,
-      genesisZkey,
-      currentZkey,
+    console.log("Generating transcript...");
+    const finalizedAt = Date.now();
+    const receipts = await listRange<ContributionReceipt>(
+      storage.receiptsPath,
     );
-    if (!chainValid) {
-      throw new Error(
-        `Contribution chain for ${circuitConfig.id} failed verification. ` +
-          "Refusing to apply the beacon to an invalid chain.",
-      );
-    }
-    console.log(`  Chain verification passed.`);
 
-    // TODO(C-1): the chain verify above only proves current.zkey is SOME valid
-    // descendant of the pinned genesis, not that it is the chain we recorded.
-    // An attacker with blob write access but no KV access (a leaked
-    // BLOB_READ_WRITE_TOKEN) can overwrite current.zkey with a self-generated
-    // chain rooted at the real genesis and pass here. Close this by comparing
-    // the embedded transcript (snarkjs zKey.exportJson -> contributions)
-    // against the contribution count and per-contribution hashes recorded in
-    // KV before applying the beacon. Needs the contribute route to record the
-    // server-computed Blake2b contribution hash per step first.
+    const transcript = {
+      ceremony: {
+        name: manifest.ceremonyName,
+        targetContributions: manifest.targetContributions,
+        startedAt: manifest.startedAt,
+        endDate: manifest.endDate,
+        beaconHash: `0x${beaconHex}`,
+        beaconSource: beacon.source,
+        ...(beacon.slot !== undefined && { beaconSlot: beacon.slot }),
+        finalizedAt,
+      },
+      circuits: circuitSummaries,
+      receipts,
+    };
 
-    console.log(`  Applying beacon...`);
-    const beaconResult = await applyBeacon(currentZkey, beaconHex);
-    const finalZkey = beaconResult.zkey;
-    console.log(`  Beacon contribution hash: ${beaconResult.contributionHash}`);
-    console.log(`  Final zkey hash: ${beaconResult.zkeyHash}`);
+    const transcriptPath = path.join(OUTPUT_DIR, "transcript.json");
+    await writeFile(transcriptPath, JSON.stringify(transcript, null, 2));
+    console.log(`Transcript saved to public/finalize/transcript.json`);
 
-    console.log(`  Verifying finalized zkey...`);
-    const isValid = await verify(r1cs, ptau, finalZkey);
-    if (!isValid) {
-      throw new Error(
-        `Verification failed for ${circuitConfig.id}. The finalized zkey is invalid.`,
-      );
-    }
-    console.log(`  Verification passed.`);
-
-    console.log(`  Exporting verification key...`);
-    const vkey = await exportVerificationKey(finalZkey);
-
-    const vkeyFile = `${circuitConfig.id}.vkey.json`;
-    const vkeyPath = path.join(OUTPUT_DIR, vkeyFile);
-    await writeFile(vkeyPath, JSON.stringify(vkey, null, 2));
-    console.log(`  Saved verification key to public/finalize/${vkeyFile}`);
-
-    const finalZkeyFile = `${circuitConfig.id}.final.zkey`;
-    const finalZkeyPath = path.join(OUTPUT_DIR, finalZkeyFile);
-    await writeFile(finalZkeyPath, Buffer.from(finalZkey));
-    console.log(`  Saved finalized zkey to public/finalize/${finalZkeyFile}`);
-
-    circuitSummaries.push({
-      circuitId: circuitConfig.id,
-      totalContributions: state.totalContributions,
-      finalChainHash: state.chainHash,
-      finalContributionHash: beaconResult.contributionHash,
-      finalZkeyHash: beaconResult.zkeyHash,
-      finalZkeyPath: `public/finalize/${finalZkeyFile}`,
-      verificationKey: vkey,
+    // Mark the ceremony finalized. finalizingAt is dropped here; beaconApplied
+    // now seals it permanently. The re-finalize guard at the top and
+    // isCeremonyActive read these fields. Written last, after every artifact is
+    // saved, so a mid-run failure leaves the ceremony unsealed (see catch).
+    await setJson(storage.manifestPath, {
+      ...manifest,
+      beaconApplied: true,
+      beaconHash: `0x${beaconHex}`,
+      finalizedAt,
     });
 
     console.log();
+    console.log("=== Ceremony finalized ===");
+    console.log(`  Beacon:  0x${beaconHex}`);
+    console.log(`  Circuits finalized: ${circuitSummaries.length}`);
+    console.log(`  Total contributions: ${totalContributions}`);
+    console.log(`  Transcript: public/finalize/transcript.json`);
+    console.log(`  Verification keys: public/finalize/*.vkey.json`);
+    console.log(`  Finalized zkeys:   public/finalize/*.final.zkey`);
+  } catch (error) {
+    // Finalization failed before the seal write above. Clear finalizingAt so
+    // the ceremony reopens to contributions instead of freezing on a transient
+    // error, then rethrow so the operator sees the failure.
+    await setJson(storage.manifestPath, { ...manifest });
+    throw error;
   }
-
-  console.log("Generating transcript...");
-  const finalizedAt = Date.now();
-  const receipts = await listRange<ContributionReceipt>(storage.receiptsPath);
-
-  const transcript = {
-    ceremony: {
-      name: manifest.ceremonyName,
-      targetContributions: manifest.targetContributions,
-      startedAt: manifest.startedAt,
-      endDate: manifest.endDate,
-      beaconHash: `0x${beaconHex}`,
-      beaconSource: beacon.source,
-      ...(beacon.slot !== undefined && { beaconSlot: beacon.slot }),
-      finalizedAt,
-    },
-    circuits: circuitSummaries,
-    receipts,
-  };
-
-  const transcriptPath = path.join(OUTPUT_DIR, "transcript.json");
-  await writeFile(transcriptPath, JSON.stringify(transcript, null, 2));
-  console.log(`Transcript saved to public/finalize/transcript.json`);
-
-  // Record finalization in the manifest. The re-finalize guard above and
-  // isCeremonyActive read these fields; without this write the ceremony keeps
-  // accepting contributions and could be finalized twice. Written last, after
-  // every artifact is saved, so a mid-run failure leaves the ceremony unsealed.
-  await setJson(storage.manifestPath, {
-    ...manifest,
-    beaconApplied: true,
-    beaconHash: `0x${beaconHex}`,
-    finalizedAt,
-  });
-
-  console.log();
-  console.log("=== Ceremony finalized ===");
-  console.log(`  Beacon:  0x${beaconHex}`);
-  console.log(`  Circuits finalized: ${circuitSummaries.length}`);
-  console.log(`  Total contributions: ${totalContributions}`);
-  console.log(`  Transcript: public/finalize/transcript.json`);
-  console.log(`  Verification keys: public/finalize/*.vkey.json`);
-  console.log(`  Finalized zkeys:   public/finalize/*.final.zkey`);
 
   process.exit(0);
 }

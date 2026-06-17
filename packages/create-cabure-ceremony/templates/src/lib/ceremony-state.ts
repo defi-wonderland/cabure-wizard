@@ -51,6 +51,7 @@ export interface ManifestState {
   circuits: Array<{ id: string }>;
   beaconHash?: string;
   beaconApplied?: boolean;
+  finalizingAt?: number;
   finalizedAt?: number;
 }
 
@@ -151,7 +152,10 @@ export function isCeremonyActive(
   const config = getCeremonyConfig();
   // Once the beacon is applied the ceremony is sealed; stop accepting
   // contributions even if targets/deadline would otherwise leave it open.
-  if (manifest.beaconApplied) return false;
+  // finalizingAt is set while finalize:ceremony runs, before it snapshots
+  // circuit state. Blocking here stops a contribution the finalizer would
+  // accept but then drop from the finalized artifacts.
+  if (manifest.beaconApplied || manifest.finalizingAt) return false;
   const now = Date.now();
   let endDateMs: number | null;
   try {
