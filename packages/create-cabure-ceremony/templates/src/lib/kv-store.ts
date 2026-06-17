@@ -58,7 +58,45 @@ export async function listClear(key: string): Promise<number> {
   return redis().del(key);
 }
 
+// Optimistic concurrency for the contribution chain: commit only if the chain
+// head has not moved since this request read it. No lock, no TTL, no lease to
+// expire under a slow upload. KEYS[1] is the circuit state key; ARGV[1] is the
+// currentZkeyUrl this contribution was built on. Each contribution stores to a
+// unique blob path, so currentZkeyUrl doubles as a version stamp. If another
+// contribution committed first, the head differs and the script returns 0; the
+// caller rejects and the client retries from fresh state. The four writes then
+// run in one atomic server-side step, so two racers can never both advance the
+// chain from the same head.
+const COMMIT_CONTRIBUTION_SCRIPT = `
+  local state = redis.call("get", KEYS[1])
+  if not state then return 0 end
+  if cjson.decode(state)["currentZkeyUrl"] ~= ARGV[1] then return 0 end
+  redis.call("set", KEYS[1], ARGV[2])
+  redis.call("rpush", KEYS[2], ARGV[3])
+  redis.call("sadd", KEYS[3], ARGV[4])
+  redis.call("sadd", KEYS[4], ARGV[5])
+  return 1
+`;
+
+/**
+ * Commit a contribution, but only if the chain head still matches
+ * expectedHeadUrl. Returns false when another contribution committed first, so
+ * the caller can reject and the client can retry against fresh state.
+ *
+ * This is the only invariant the chain needs serialized: a new zkey must extend
+ * the current head. The compare-and-set on currentZkeyUrl enforces it without a
+ * lock. It also serializes same-participant double submits: the first commit
+ * shifts the participant off the queue and moves the head, so the second fails
+ * the head check.
+ *
+ * The ARGV values must serialize the way the client's defaultSerializer does,
+ * or the readers (getJson, listRange, sismember, smembers) will not parse them.
+ * Objects go in as JSON strings; plain string set members go in raw. The script
+ * only reads a string field from the state, so cjson number handling does not
+ * matter here.
+ */
 export async function writeContribution<TCircuit, TReceipt>(options: {
+  expectedHeadUrl: string;
   circuitStateKey: string;
   circuitState: TCircuit;
   receiptsKey: string;
@@ -67,14 +105,24 @@ export async function writeContribution<TCircuit, TReceipt>(options: {
   circuitId: string;
   participantsIndexKey: string;
   participantId: string;
-}): Promise<void> {
-  await redis()
-    .multi()
-    .set(options.circuitStateKey, options.circuitState)
-    .rpush(options.receiptsKey, options.receipt)
-    .sadd(options.participantContributionsKey, options.circuitId)
-    .sadd(options.participantsIndexKey, options.participantId)
-    .exec();
+}): Promise<boolean> {
+  const result = await redis().eval(
+    COMMIT_CONTRIBUTION_SCRIPT,
+    [
+      options.circuitStateKey,
+      options.receiptsKey,
+      options.participantContributionsKey,
+      options.participantsIndexKey,
+    ],
+    [
+      options.expectedHeadUrl,
+      JSON.stringify(options.circuitState),
+      JSON.stringify(options.receipt),
+      options.circuitId,
+      options.participantId,
+    ],
+  );
+  return Number(result) === 1;
 }
 
 export async function clearParticipantContributions(options: {
