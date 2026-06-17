@@ -145,28 +145,20 @@ export function getEndDateDeadlineMs(endDate: string | null): number | null {
   return deadlineMs;
 }
 
-// How long a finalizingAt seal is honored before it is treated as stale. The
-// finalize script clears the seal only when it fails in-process; any abrupt
-// stop (Ctrl-C, SIGTERM, SIGKILL, crash) leaves finalizingAt set. Past this
-// window the ceremony reopens on its own instead of freezing until manual KV
-// repair. Finalization finishes well within it; raise for huge ceremonies. An
-// operator can also re-run finalize --force to reseal and resume immediately.
-export const FINALIZE_LEASE_MS = 60 * 60 * 1000;
-
 export function isCeremonyActive(
   manifest: ManifestState,
   allCircuits: CircuitState[],
 ): boolean {
   const config = getCeremonyConfig();
   const now = Date.now();
-  // Permanent seal: the beacon has been applied, the ceremony is finalized.
-  if (manifest.beaconApplied) return false;
-  // Temporary seal while finalize:ceremony runs. Honored only within the lease
-  // so a killed finalizer cannot freeze the ceremony forever.
-  if (
-    manifest.finalizingAt !== undefined &&
-    now - manifest.finalizingAt < FINALIZE_LEASE_MS
-  ) {
+  // Hard seal. The ceremony stops accepting contributions for good once
+  // finalization starts: beaconApplied means it finished, finalizingAt means a
+  // finalize:ceremony run is in progress or was interrupted. Neither expires on
+  // its own. Auto-reopening would let contributions resume while a finalizer is
+  // still working from its snapshot, and they would be dropped from the final
+  // artifacts. An interrupted run is recovered explicitly: finalize --force to
+  // take over and resume, or reset:ceremony to start clean.
+  if (manifest.beaconApplied || manifest.finalizingAt !== undefined) {
     return false;
   }
   let endDateMs: number | null;

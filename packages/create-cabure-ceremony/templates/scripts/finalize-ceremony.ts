@@ -12,7 +12,7 @@ import {
   verifyChainForCircuit,
 } from "@wonderland/cabure-crypto";
 
-import { FINALIZE_LEASE_MS, getEndDateDeadlineMs } from "@/lib/ceremony-state";
+import { getEndDateDeadlineMs } from "@/lib/ceremony-state";
 import { getJson, listRange, setJson } from "@/lib/kv-store";
 import { ceremonyConfig } from "../ceremony.config";
 
@@ -23,11 +23,10 @@ import { ceremonyConfig } from "../ceremony.config";
 //
 // This handler does not touch the manifest. Earlier versions cleared the
 // finalization seal from here and from SIGINT/SIGTERM, but that made the signal
-// handler a second writer racing the main thread around the beaconApplied write:
-// a signal could either revert a just-committed seal, or be suppressed and leave
-// the ceremony frozen. The seal is now cleared only from the main catch path
-// (in-process failures); any abrupt termination is recovered by the lease in
-// isCeremonyActive, which reopens the ceremony once finalizingAt goes stale.
+// handler a second writer racing the main thread around the beaconApplied write.
+// The seal is now cleared only from the main catch path (in-process failures).
+// An abrupt stop leaves the ceremony sealed on purpose; the operator recovers
+// with finalize --force or reset:ceremony (see isCeremonyActive).
 process.on("uncaughtException", (error: NodeJS.ErrnoException) => {
   if (
     error.code === "ERR_INVALID_STATE" &&
@@ -328,18 +327,15 @@ async function main() {
     );
   }
 
-  // Refuse to start if another finalizer is already running (finalizingAt set,
-  // still within the lease). Best-effort, not atomic with the write below.
-  // --force overrides, e.g. to retry after a hard crash left finalizingAt set.
-  if (
-    !force &&
-    manifest.finalizingAt !== undefined &&
-    Date.now() - manifest.finalizingAt < FINALIZE_LEASE_MS
-  ) {
+  // Refuse to start if the ceremony is already sealed by a finalize run
+  // (finalizingAt set). The seal never expires, so this also catches a run that
+  // crashed earlier. --force takes over the seal (writes a fresh finalizeId
+  // below) and resumes; reset:ceremony is the other recovery path.
+  if (!force && manifest.finalizingAt !== undefined) {
     throw new Error(
-      "Another finalization is already in progress (started " +
+      "Finalization is already in progress or was interrupted (sealed " +
         new Date(manifest.finalizingAt).toISOString() +
-        "). Wait for it to finish, or pass --force to override.",
+        "). Pass --force to take over and resume, or run reset:ceremony.",
     );
   }
 
