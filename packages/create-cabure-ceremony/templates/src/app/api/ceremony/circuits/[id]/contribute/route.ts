@@ -123,11 +123,14 @@ export async function POST(
 
   const computedHash = `0x${createHash("sha256").update(body).digest("hex")}`;
 
-  // Store to a unique path, never the shared `current.zkey`: the committed
-  // `currentZkeyUrl` pointer is the source of truth, so a contribution that
-  // fails an eligibility check below is discarded without touching the live
-  // zkey.
-  const zkeyPath = `${config.storage.zkeyPrefix}/${id}/contrib-${crypto.randomUUID()}.zkey`;
+  // Store under a per-participant path, never the shared `current.zkey`: the
+  // committed `currentZkeyUrl` pointer is the source of truth, so a
+  // contribution that fails a check below is discarded without touching the
+  // live zkey. We upload before the commit decision, so a crash or a failed
+  // cleanup delete between here and the commit leaks this blob. Keying it by
+  // participant (with allowOverwrite) bounds that leak: a retry from the same
+  // participant overwrites their own blob instead of orphaning a new one.
+  const zkeyPath = `${config.storage.zkeyPrefix}/${id}/pending-${participantId}.zkey`;
   const stored = await putBinary(zkeyPath, body);
 
   // The client's pending upload has been copied to our path.
