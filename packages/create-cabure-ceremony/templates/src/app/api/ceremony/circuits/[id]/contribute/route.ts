@@ -7,11 +7,10 @@ import { getCeremonyConfig } from "@/lib/ceremony-config";
 import { getParticipant } from "@/lib/participant-auth";
 import {
   computeChainHash,
-  getAllCircuitStates,
   getCircuitState,
   getManifest,
   hasParticipantContributedToCircuit,
-  isCeremonyActive,
+  isCircuitActive,
   kvKey,
   pruneExpiredEntries,
   readCircuitBytes,
@@ -47,18 +46,19 @@ type EligibilityResult =
 // Shared eligibility gate. Run once cheaply before the heavy verify/upload (so
 // a clearly ineligible request never pays for them) and again under the lock,
 // where it is authoritative: state can change between the pre-check and
-// acquiring the lock. Prunes `circuit.queue` in place; the returned circuit is
-// the one to mutate and commit.
+// acquiring the lock. One circuit-state read per call (no global read of every
+// circuit); prunes `circuit.queue` in place; the returned circuit is the one to
+// mutate and commit.
 async function checkEligibility(
   id: string,
   participantId: string,
   manifest: ManifestState,
+  targetContributions: number,
   queueTimeoutSeconds: number,
 ): Promise<EligibilityResult> {
   const circuit = await getCircuitState(id);
-  const allCircuits = await getAllCircuitStates();
 
-  if (!isCeremonyActive(manifest, allCircuits)) {
+  if (!isCircuitActive(manifest, circuit, targetContributions)) {
     return { ok: false, error: "Ceremony is not active", status: 403 };
   }
 
@@ -144,6 +144,7 @@ export async function POST(
     id,
     participantId,
     manifest,
+    circuitConfig.targetContributions,
     config.queueTimeoutSeconds,
   );
   if (!precheck.ok) {
@@ -227,6 +228,7 @@ export async function POST(
       id,
       participantId,
       manifest,
+      circuitConfig.targetContributions,
       config.queueTimeoutSeconds,
     );
     if (!eligible.ok) {
