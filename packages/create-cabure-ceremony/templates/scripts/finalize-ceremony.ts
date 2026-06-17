@@ -214,6 +214,17 @@ function sha256hex(data: Uint8Array): string {
   return `0x${createHash("sha256").update(data).digest("hex")}`;
 }
 
+// Format a manifest timestamp for an operator message. The manifest comes from
+// KV JSON with no runtime validation, so a corrupted or hand-edited value must
+// not throw here (new Date(NaN).toISOString() raises) and hide the message it
+// is part of.
+function formatSealTime(value: unknown): string {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return new Date(value).toISOString();
+  }
+  return "an unknown time";
+}
+
 // Read every circuit's state from KV. Called for the readiness check, then
 // again after sealing to pick up contributions that landed just before it.
 async function loadCircuitStates(
@@ -327,6 +338,14 @@ async function main() {
     );
   }
 
+  // Concurrent finalization is not supported. --force is a single-operator
+  // recovery override (take over a crashed run's seal), not a way to run two
+  // finalizers at once. The guard below blocks the accidental case; the
+  // finalizeId ownership checks elsewhere are best-effort hygiene, not atomic
+  // guarantees. If two finalizers are forced to run together they can race on
+  // manifest writes (non-atomic read-modify-write over KV) — recover with
+  // reset:ceremony.
+  //
   // Refuse to start if the ceremony is already sealed by a finalize run
   // (finalizingAt set). The seal never expires, so this also catches a run that
   // crashed earlier. --force takes over the seal (writes a fresh finalizeId
@@ -334,7 +353,7 @@ async function main() {
   if (!force && manifest.finalizingAt !== undefined) {
     throw new Error(
       "Finalization is already in progress or was interrupted (sealed " +
-        new Date(manifest.finalizingAt).toISOString() +
+        formatSealTime(manifest.finalizingAt) +
         "). Pass --force to take over and resume, or run reset:ceremony.",
     );
   }
@@ -538,8 +557,10 @@ async function main() {
     // Permanent seal. Written last, after every artifact, so a mid-run failure
     // leaves the ceremony unsealed for the catch to reopen. Re-read and confirm
     // the seal is still ours: if a --force run took over (different finalizeId),
-    // abort instead of stamping our beacon over theirs and publishing
-    // conflicting finalization metadata. The takeover run owns finalization now.
+    // abort instead of stamping our beacon over theirs. This is best-effort, not
+    // atomic — a takeover landing between this check and the write below can
+    // still be clobbered. Acceptable under the no-concurrent-finalization rule
+    // documented at the start guard; recover with reset:ceremony.
     const latestManifest =
       (await getJson<ManifestState>(storage.manifestPath)) ?? manifest;
     if (latestManifest.finalizeId !== finalizeId) {
