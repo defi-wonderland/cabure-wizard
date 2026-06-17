@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
@@ -9,6 +9,7 @@ import {
   exportVerificationKey,
   type Groth16VerificationKey,
   verify,
+  verifyChainForCircuit,
 } from "@wonderland/cabure-crypto";
 
 import { getEndDateDeadlineMs } from "@/lib/ceremony-state";
@@ -40,6 +41,8 @@ interface CircuitState {
   queue: Array<{ participantId: string; joinedAt: number }>;
   currentZkeyPath: string;
   currentZkeyUrl: string;
+  initialZkeyHash: string;
+  initialZkeyUrl: string;
 }
 
 interface ManifestState {
@@ -196,6 +199,12 @@ async function downloadZkey(url: string): Promise<Uint8Array> {
   return new Uint8Array(await response.arrayBuffer());
 }
 
+// Must match how init-ceremony records the genesis hash, so the integrity
+// check below compares like for like.
+function sha256hex(data: Uint8Array): string {
+  return `0x${createHash("sha256").update(data).digest("hex")}`;
+}
+
 async function main() {
   loadEnvConfig(process.cwd(), true);
 
@@ -339,15 +348,65 @@ async function main() {
     console.log(`  Downloading current zkey...`);
     const currentZkey = await downloadZkey(state.currentZkeyUrl);
 
+    console.log(`  Loading circuit artifacts for verification...`);
+    const r1cs = await readArtifact(circuitConfig.artifacts.r1csPath);
+    const ptau = await readArtifact(circuitConfig.artifacts.ptauPath);
+
+    // H-1: verify the whole chain from the pinned genesis to the latest zkey
+    // BEFORE applying the beacon. The beacon is irreversible, so an invalid
+    // chain has to be caught first — verifying only the post-beacon zkey (the
+    // old order) cannot tell whether the chain that fed it was honest.
+    if (!state.initialZkeyUrl || !state.initialZkeyHash) {
+      throw new Error(
+        `Circuit ${circuitConfig.id} has no pinned genesis (initialZkeyUrl/Hash). ` +
+          "It was initialized before genesis pinning; re-run init:ceremony.",
+      );
+    }
+
+    console.log(`  Downloading pinned genesis zkey...`);
+    const genesisZkey = await downloadZkey(state.initialZkeyUrl);
+
+    // The chain is only as trustworthy as the genesis we root it in. Confirm
+    // the downloaded genesis still matches the hash pinned at init, so a
+    // swapped blob cannot pass the chain check.
+    const genesisHash = sha256hex(genesisZkey);
+    if (genesisHash !== state.initialZkeyHash) {
+      throw new Error(
+        `Genesis zkey for ${circuitConfig.id} does not match the hash pinned at ` +
+          `init. Expected ${state.initialZkeyHash}, got ${genesisHash}.`,
+      );
+    }
+
+    console.log(`  Verifying contribution chain (genesis → latest)...`);
+    const chainValid = await verifyChainForCircuit(
+      r1cs,
+      ptau,
+      genesisZkey,
+      currentZkey,
+    );
+    if (!chainValid) {
+      throw new Error(
+        `Contribution chain for ${circuitConfig.id} failed verification. ` +
+          "Refusing to apply the beacon to an invalid chain.",
+      );
+    }
+    console.log(`  Chain verification passed.`);
+
+    // TODO(C-1): the chain verify above only proves current.zkey is SOME valid
+    // descendant of the pinned genesis, not that it is the chain we recorded.
+    // An attacker with blob write access but no KV access (a leaked
+    // BLOB_READ_WRITE_TOKEN) can overwrite current.zkey with a self-generated
+    // chain rooted at the real genesis and pass here. Close this by comparing
+    // the embedded transcript (snarkjs zKey.exportJson -> contributions)
+    // against the contribution count and per-contribution hashes recorded in
+    // KV before applying the beacon. Needs the contribute route to record the
+    // server-computed Blake2b contribution hash per step first.
+
     console.log(`  Applying beacon...`);
     const beaconResult = await applyBeacon(currentZkey, beaconHex);
     const finalZkey = beaconResult.zkey;
     console.log(`  Beacon contribution hash: ${beaconResult.contributionHash}`);
     console.log(`  Final zkey hash: ${beaconResult.zkeyHash}`);
-
-    console.log(`  Loading circuit artifacts for verification...`);
-    const r1cs = await readArtifact(circuitConfig.artifacts.r1csPath);
-    const ptau = await readArtifact(circuitConfig.artifacts.ptauPath);
 
     console.log(`  Verifying finalized zkey...`);
     const isValid = await verify(r1cs, ptau, finalZkey);
