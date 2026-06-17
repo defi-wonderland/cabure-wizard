@@ -16,11 +16,17 @@ import { getEndDateDeadlineMs } from "@/lib/ceremony-state";
 import { getJson, listRange, setJson } from "@/lib/kv-store";
 import { ceremonyConfig } from "../ceremony.config";
 
+// Set while the ceremony is sealed with finalizingAt but not yet finalized.
+// The handlers below call it to reopen the ceremony if the run is interrupted
+// before it writes beaconApplied. Best-effort: a hard kill skips it, and the
+// lease in isCeremonyActive is the backstop that reopens the ceremony anyway.
+let clearFinalizingSeal: (() => Promise<void>) | null = null;
+
 // snarkjs/fastfile writes circuit data to temp files and does not always close
 // file handles explicitly. Node 25+ treats GC-collected handles as a hard
 // error instead of a deprecation warning. Suppress it here since the data has
 // already been read and processed by the time GC fires.
-process.on("uncaughtException", (error: NodeJS.ErrnoException) => {
+process.on("uncaughtException", async (error: NodeJS.ErrnoException) => {
   if (
     error.code === "ERR_INVALID_STATE" &&
     error.message.includes("FileHandle")
@@ -28,8 +34,20 @@ process.on("uncaughtException", (error: NodeJS.ErrnoException) => {
     return;
   }
   console.error(error);
+  if (clearFinalizingSeal) {
+    await clearFinalizingSeal().catch(() => {});
+  }
   process.exit(1);
 });
+
+async function handleTermination() {
+  if (clearFinalizingSeal) {
+    await clearFinalizingSeal().catch(() => {});
+  }
+  process.exit(130);
+}
+process.once("SIGINT", handleTermination);
+process.once("SIGTERM", handleTermination);
 
 const DEFAULT_BEACON_API_URL = "https://ethereum-beacon-api.publicnode.com";
 
@@ -329,6 +347,13 @@ async function main() {
   const finalizingAt = Date.now();
   await setJson(storage.manifestPath, { ...manifest, finalizingAt });
 
+  // Reopen the ceremony if the run is interrupted before it finalizes. Writing
+  // the original manifest drops finalizingAt. Cleared once beaconApplied is set
+  // so a late signal cannot un-finalize a sealed ceremony.
+  clearFinalizingSeal = async () => {
+    await setJson(storage.manifestPath, { ...manifest });
+  };
+
   try {
     const circuitStates = await loadCircuitStates(
       circuitConfigs,
@@ -511,6 +536,9 @@ async function main() {
       beaconHash: `0x${beaconHex}`,
       finalizedAt,
     });
+    // beaconApplied is now the permanent seal. Stop the interrupt handlers from
+    // rewriting the manifest, which would drop it and reopen the ceremony.
+    clearFinalizingSeal = null;
 
     console.log();
     console.log("=== Ceremony finalized ===");
@@ -524,6 +552,7 @@ async function main() {
     // Finalization failed before the seal write above. Clear finalizingAt so
     // the ceremony reopens to contributions instead of freezing on a transient
     // error, then rethrow so the operator sees the failure.
+    clearFinalizingSeal = null;
     await setJson(storage.manifestPath, { ...manifest });
     throw error;
   }

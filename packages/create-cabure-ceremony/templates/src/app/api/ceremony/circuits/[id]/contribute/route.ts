@@ -224,10 +224,13 @@ export async function POST(
 
   try {
     // Authoritative re-check: state may have changed since the pre-check.
+    // Re-read the manifest under the lock. A read before the lock could miss
+    // the finalizer's seal and let a contribution slip in after it.
+    const lockedManifest = await getManifest();
     const eligible = await checkEligibility(
       id,
       participantId,
-      manifest,
+      lockedManifest,
       circuitConfig.targetContributions,
       config.queueTimeoutSeconds,
     );
