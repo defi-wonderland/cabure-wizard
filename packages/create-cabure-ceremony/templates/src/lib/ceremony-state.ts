@@ -145,12 +145,11 @@ export function getEndDateDeadlineMs(endDate: string | null): number | null {
   return deadlineMs;
 }
 
-// How long a finalizingAt seal is honored before it is treated as stale. The
-// finalize script clears finalizingAt on a normal exit or interrupt, so this
-// only matters when the finalizer is killed hard (SIGKILL, power loss) and
-// cannot clean up. Past this window the ceremony reopens on its own instead of
-// staying frozen until manual KV repair. Finalization is expected to finish
-// well within it; raise it for unusually large ceremonies.
+// How long a finalizingAt seal is honored before it is treated as stale. Only
+// matters when the finalizer is killed hard (SIGKILL, power loss) and cannot
+// clear it: past this window the ceremony reopens instead of freezing until
+// manual KV repair. Finalization finishes well within it; raise for huge
+// ceremonies.
 export const FINALIZE_LEASE_MS = 60 * 60 * 1000;
 
 export function isCeremonyActive(
@@ -161,10 +160,8 @@ export function isCeremonyActive(
   const now = Date.now();
   // Permanent seal: the beacon has been applied, the ceremony is finalized.
   if (manifest.beaconApplied) return false;
-  // Temporary seal: finalize:ceremony sets finalizingAt before it snapshots
-  // circuit state, so the API stops accepting work the finalizer would drop
-  // from the final artifacts. Honored only within the lease (see above) so a
-  // killed finalizer cannot freeze the ceremony forever.
+  // Temporary seal while finalize:ceremony runs. Honored only within the lease
+  // so a killed finalizer cannot freeze the ceremony forever.
   if (
     manifest.finalizingAt !== undefined &&
     now - manifest.finalizingAt < FINALIZE_LEASE_MS

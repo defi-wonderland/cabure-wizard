@@ -12,14 +12,13 @@ import {
   verifyChainForCircuit,
 } from "@wonderland/cabure-crypto";
 
-import { getEndDateDeadlineMs } from "@/lib/ceremony-state";
+import { FINALIZE_LEASE_MS, getEndDateDeadlineMs } from "@/lib/ceremony-state";
 import { getJson, listRange, setJson } from "@/lib/kv-store";
 import { ceremonyConfig } from "../ceremony.config";
 
-// Set while the ceremony is sealed with finalizingAt but not yet finalized.
-// The handlers below call it to reopen the ceremony if the run is interrupted
-// before it writes beaconApplied. Best-effort: a hard kill skips it, and the
-// lease in isCeremonyActive is the backstop that reopens the ceremony anyway.
+// Reopens the ceremony if the run is interrupted while sealed but not yet
+// finalized. The handlers below call it. Best-effort: a hard kill skips it, and
+// the lease in isCeremonyActive is the backstop.
 let clearFinalizingSeal: (() => Promise<void>) | null = null;
 
 // snarkjs/fastfile writes circuit data to temp files and does not always close
@@ -224,9 +223,8 @@ function sha256hex(data: Uint8Array): string {
   return `0x${createHash("sha256").update(data).digest("hex")}`;
 }
 
-// Read every circuit's state from KV. Used twice: once to check readiness, then
-// again after the ceremony is sealed to pick up any contribution that landed
-// just before the seal.
+// Read every circuit's state from KV. Called for the readiness check, then
+// again after sealing to pick up contributions that landed just before it.
 async function loadCircuitStates(
   circuitConfigs: Array<{ id: string }>,
   circuitStatePrefix: string,
@@ -338,21 +336,40 @@ async function main() {
     );
   }
 
-  // Seal the ceremony against new contributions before snapshotting for
-  // finalization. isCeremonyActive returns false once finalizingAt is set, so
-  // the API stops accepting queue/upload/contribute requests. We then re-read
-  // circuit state to capture any contribution that landed just before the seal.
-  // Without this, a contribution accepted during the long beacon/verify run
-  // would update the live zkey but be dropped from the finalized artifacts.
+  // Refuse to start if another finalizer is already running (finalizingAt set,
+  // still within the lease). Best-effort, not atomic with the write below.
+  // --force overrides, e.g. to retry after a hard crash left finalizingAt set.
+  if (
+    !force &&
+    manifest.finalizingAt !== undefined &&
+    Date.now() - manifest.finalizingAt < FINALIZE_LEASE_MS
+  ) {
+    throw new Error(
+      "Another finalization is already in progress (started " +
+        new Date(manifest.finalizingAt).toISOString() +
+        "). Wait for it to finish, or pass --force to override.",
+    );
+  }
+
+  // Seal before snapshotting: isCeremonyActive returns false once finalizingAt
+  // is set, so the API stops accepting work. The re-read inside the try then
+  // catches any contribution that landed just before the seal; otherwise it
+  // would update the live zkey but be dropped from the final artifacts.
   const finalizingAt = Date.now();
   await setJson(storage.manifestPath, { ...manifest, finalizingAt });
 
-  // Reopen the ceremony if the run is interrupted before it finalizes. Writing
-  // the original manifest drops finalizingAt. Cleared once beaconApplied is set
-  // so a late signal cannot un-finalize a sealed ceremony.
-  clearFinalizingSeal = async () => {
-    await setJson(storage.manifestPath, { ...manifest });
+  // Reopen the ceremony if the run is interrupted before it finalizes. Re-read
+  // so a field another process set survives; never write our stale start-of-run
+  // snapshot, which could revert beaconApplied/finalizedAt.
+  const reopenCeremony = async () => {
+    const latest =
+      (await getJson<ManifestState>(storage.manifestPath)) ?? manifest;
+    if (latest.beaconApplied) return;
+    const reopened = { ...latest };
+    delete reopened.finalizingAt;
+    await setJson(storage.manifestPath, reopened);
   };
+  clearFinalizingSeal = reopenCeremony;
 
   try {
     const circuitStates = await loadCircuitStates(
@@ -526,19 +543,17 @@ async function main() {
     await writeFile(transcriptPath, JSON.stringify(transcript, null, 2));
     console.log(`Transcript saved to public/finalize/transcript.json`);
 
-    // Mark the ceremony finalized. finalizingAt is dropped here; beaconApplied
-    // now seals it permanently. The re-finalize guard at the top and
-    // isCeremonyActive read these fields. Written last, after every artifact is
-    // saved, so a mid-run failure leaves the ceremony unsealed (see catch).
+    // Permanent seal: write beaconApplied, dropping finalizingAt. Written last,
+    // after every artifact, so a mid-run failure leaves it unsealed and the
+    // catch reopens. Null clearFinalizingSeal first: a signal during this write
+    // must not run reopenCeremony and revert beaconApplied.
+    clearFinalizingSeal = null;
     await setJson(storage.manifestPath, {
       ...manifest,
       beaconApplied: true,
       beaconHash: `0x${beaconHex}`,
       finalizedAt,
     });
-    // beaconApplied is now the permanent seal. Stop the interrupt handlers from
-    // rewriting the manifest, which would drop it and reopen the ceremony.
-    clearFinalizingSeal = null;
 
     console.log();
     console.log("=== Ceremony finalized ===");
@@ -549,11 +564,11 @@ async function main() {
     console.log(`  Verification keys: public/finalize/*.vkey.json`);
     console.log(`  Finalized zkeys:   public/finalize/*.final.zkey`);
   } catch (error) {
-    // Finalization failed before the seal write above. Clear finalizingAt so
-    // the ceremony reopens to contributions instead of freezing on a transient
-    // error, then rethrow so the operator sees the failure.
-    clearFinalizingSeal = null;
-    await setJson(storage.manifestPath, { ...manifest });
+    // Finalization failed before the permanent seal. Reopen the ceremony so it
+    // does not freeze on a transient error, then rethrow. Leave the interrupt
+    // handlers armed: reopenCeremony is idempotent, so a signal during the
+    // reset just runs it again.
+    await reopenCeremony();
     throw error;
   }
 

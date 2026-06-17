@@ -225,7 +225,9 @@ export async function POST(
   try {
     // Authoritative re-check: state may have changed since the pre-check.
     // Re-read the manifest under the lock. A read before the lock could miss
-    // the finalizer's seal and let a contribution slip in after it.
+    // the finalizer's seal and let a contribution slip in after it. This is
+    // the point of no return: the only steps between here and the commit are
+    // cheap KV reads, so the seal cannot be missed by a slow operation.
     const lockedManifest = await getManifest();
     const eligible = await checkEligibility(
       id,
