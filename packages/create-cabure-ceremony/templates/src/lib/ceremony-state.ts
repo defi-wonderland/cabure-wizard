@@ -145,11 +145,12 @@ export function getEndDateDeadlineMs(endDate: string | null): number | null {
   return deadlineMs;
 }
 
-// How long a finalizingAt seal is honored before it is treated as stale. Only
-// matters when the finalizer is killed hard (SIGKILL, power loss) and cannot
-// clear it: past this window the ceremony reopens instead of freezing until
-// manual KV repair. Finalization finishes well within it; raise for huge
-// ceremonies.
+// How long a finalizingAt seal is honored before it is treated as stale. The
+// finalize script clears the seal only when it fails in-process; any abrupt
+// stop (Ctrl-C, SIGTERM, SIGKILL, crash) leaves finalizingAt set. Past this
+// window the ceremony reopens on its own instead of freezing until manual KV
+// repair. Finalization finishes well within it; raise for huge ceremonies. An
+// operator can also re-run finalize --force to reseal and resume immediately.
 export const FINALIZE_LEASE_MS = 60 * 60 * 1000;
 
 export function isCeremonyActive(

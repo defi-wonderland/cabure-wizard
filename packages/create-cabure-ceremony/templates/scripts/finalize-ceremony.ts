@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
@@ -16,16 +16,19 @@ import { FINALIZE_LEASE_MS, getEndDateDeadlineMs } from "@/lib/ceremony-state";
 import { getJson, listRange, setJson } from "@/lib/kv-store";
 import { ceremonyConfig } from "../ceremony.config";
 
-// Reopens the ceremony if the run is interrupted while sealed but not yet
-// finalized. The handlers below call it. Best-effort: a hard kill skips it, and
-// the lease in isCeremonyActive is the backstop.
-let clearFinalizingSeal: (() => Promise<void>) | null = null;
-
 // snarkjs/fastfile writes circuit data to temp files and does not always close
 // file handles explicitly. Node 25+ treats GC-collected handles as a hard
 // error instead of a deprecation warning. Suppress it here since the data has
 // already been read and processed by the time GC fires.
-process.on("uncaughtException", async (error: NodeJS.ErrnoException) => {
+//
+// This handler does not touch the manifest. Earlier versions cleared the
+// finalization seal from here and from SIGINT/SIGTERM, but that made the signal
+// handler a second writer racing the main thread around the beaconApplied write:
+// a signal could either revert a just-committed seal, or be suppressed and leave
+// the ceremony frozen. The seal is now cleared only from the main catch path
+// (in-process failures); any abrupt termination is recovered by the lease in
+// isCeremonyActive, which reopens the ceremony once finalizingAt goes stale.
+process.on("uncaughtException", (error: NodeJS.ErrnoException) => {
   if (
     error.code === "ERR_INVALID_STATE" &&
     error.message.includes("FileHandle")
@@ -33,20 +36,8 @@ process.on("uncaughtException", async (error: NodeJS.ErrnoException) => {
     return;
   }
   console.error(error);
-  if (clearFinalizingSeal) {
-    await clearFinalizingSeal().catch(() => {});
-  }
   process.exit(1);
 });
-
-async function handleTermination() {
-  if (clearFinalizingSeal) {
-    await clearFinalizingSeal().catch(() => {});
-  }
-  process.exit(130);
-}
-process.once("SIGINT", handleTermination);
-process.once("SIGTERM", handleTermination);
 
 const DEFAULT_BEACON_API_URL = "https://ethereum-beacon-api.publicnode.com";
 
@@ -71,6 +62,7 @@ interface ManifestState {
   beaconHash?: string;
   beaconApplied?: boolean;
   finalizingAt?: number;
+  finalizeId?: string;
   finalizedAt?: number;
 }
 
@@ -355,21 +347,25 @@ async function main() {
   // is set, so the API stops accepting work. The re-read inside the try then
   // catches any contribution that landed just before the seal; otherwise it
   // would update the live zkey but be dropped from the final artifacts.
+  // finalizeId tags the seal so only this run can clear it (see reopenCeremony).
   const finalizingAt = Date.now();
-  await setJson(storage.manifestPath, { ...manifest, finalizingAt });
+  const finalizeId = randomUUID();
+  await setJson(storage.manifestPath, { ...manifest, finalizingAt, finalizeId });
 
-  // Reopen the ceremony if the run is interrupted before it finalizes. Re-read
-  // so a field another process set survives; never write our stale start-of-run
-  // snapshot, which could revert beaconApplied/finalizedAt.
+  // Reopen the ceremony if this run fails before finalizing. Re-read so fields
+  // another process set survive, and clear the seal only when it is still ours
+  // and not yet permanent: bail if beaconApplied is set, or if finalizeId has
+  // changed (a concurrent --force run took over the seal — clearing it would
+  // reopen while that run is still producing artifacts).
   const reopenCeremony = async () => {
     const latest =
       (await getJson<ManifestState>(storage.manifestPath)) ?? manifest;
-    if (latest.beaconApplied) return;
+    if (latest.beaconApplied || latest.finalizeId !== finalizeId) return;
     const reopened = { ...latest };
     delete reopened.finalizingAt;
+    delete reopened.finalizeId;
     await setJson(storage.manifestPath, reopened);
   };
-  clearFinalizingSeal = reopenCeremony;
 
   try {
     const circuitStates = await loadCircuitStates(
@@ -543,11 +539,9 @@ async function main() {
     await writeFile(transcriptPath, JSON.stringify(transcript, null, 2));
     console.log(`Transcript saved to public/finalize/transcript.json`);
 
-    // Permanent seal: write beaconApplied, dropping finalizingAt. Written last,
-    // after every artifact, so a mid-run failure leaves it unsealed and the
-    // catch reopens. Null clearFinalizingSeal first: a signal during this write
-    // must not run reopenCeremony and revert beaconApplied.
-    clearFinalizingSeal = null;
+    // Permanent seal. Written last, after every artifact, so a mid-run failure
+    // leaves the ceremony unsealed for the catch to reopen. The start-of-run
+    // snapshot has no finalizingAt/finalizeId, so this write drops them too.
     await setJson(storage.manifestPath, {
       ...manifest,
       beaconApplied: true,
@@ -565,9 +559,9 @@ async function main() {
     console.log(`  Finalized zkeys:   public/finalize/*.final.zkey`);
   } catch (error) {
     // Finalization failed before the permanent seal. Reopen the ceremony so it
-    // does not freeze on a transient error, then rethrow. Leave the interrupt
-    // handlers armed: reopenCeremony is idempotent, so a signal during the
-    // reset just runs it again.
+    // does not freeze on a transient error, then rethrow. reopenCeremony clears
+    // only our own seal, so this is safe even if a concurrent --force run is in
+    // progress.
     await reopenCeremony();
     throw error;
   }
