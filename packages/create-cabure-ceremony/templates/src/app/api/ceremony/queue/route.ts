@@ -182,7 +182,11 @@ export async function POST(request: NextRequest) {
         estimatedWaitSeconds: (index + 1) * 60,
       });
     } finally {
-      await releaseLock(lockKey, lockToken);
+      // Best-effort: a failed release is not fatal (the lock TTL expires it).
+      // Throwing here would override the computed response with a 500.
+      await releaseLock(lockKey, lockToken).catch((error) => {
+        console.error("Failed to release queue lock for circuit:", circuitId, error);
+      });
     }
   }
 
@@ -215,21 +219,17 @@ export async function GET(request: NextRequest) {
   }
   const circuit = await getCircuitState(circuitId);
 
-  const now = Date.now();
+  // Read-only: prune in memory for an accurate position but do NOT persist.
+  // Persisting would overwrite the whole circuit-state key and could revert a
+  // concurrent contribution commit. The POST and contribute paths prune under
+  // the lock, so expired entries are cleaned there.
   const pruned = pruneExpiredEntries(
     circuit.queue,
     config.queueTimeoutSeconds,
-    now,
+    Date.now(),
   );
-  if (pruned.length < circuit.queue.length) {
-    circuit.queue = pruned;
-    await setJson(
-      kvKey(config.storage.circuitStatePrefix, circuitId),
-      circuit,
-    );
-  }
 
-  const index = circuit.queue.findIndex(
+  const index = pruned.findIndex(
     (entry) => entry.participantId === participantId,
   );
 

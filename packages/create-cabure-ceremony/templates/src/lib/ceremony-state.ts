@@ -169,6 +169,32 @@ export function isCeremonyActive(
 }
 
 /**
+ * Whether one circuit can still accept a contribution: the ceremony deadline
+ * has not passed and this circuit is below its target. Per-circuit, so it needs
+ * only this circuit's state — no global read of every circuit. The contribute
+ * path uses this instead of isCeremonyActive: a contribution to a full circuit
+ * must be rejected even while other circuits are still open.
+ */
+export function isCircuitActive(
+  manifest: ManifestState,
+  circuit: CircuitState,
+  targetContributions: number,
+): boolean {
+  let endDateMs: number | null;
+  try {
+    endDateMs = getEndDateDeadlineMs(manifest.endDate);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(
+      `Ceremony inactive because manifest.endDate is invalid: ${message}`,
+    );
+    return false;
+  }
+  if (endDateMs !== null && Date.now() > endDateMs) return false;
+  return circuit.totalContributions < targetContributions;
+}
+
+/**
  * Resolves which circuits a participant should queue for given their selected
  * tier. Drops circuits that have already reached their per-circuit target and
  * backfills with the most underserved circuits from the full config, up to the

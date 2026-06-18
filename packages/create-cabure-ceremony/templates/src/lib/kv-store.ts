@@ -58,7 +58,41 @@ export async function listClear(key: string): Promise<number> {
   return redis().del(key);
 }
 
+// Fence: commit only while the caller still holds the per-circuit lock. KEYS[1]
+// is the lock key, ARGV[1] the caller's token. The four writes run only if the
+// lock still holds that token, all in one atomic server-side step. See
+// writeContribution for why a plain locked write is not enough.
+const COMMIT_CONTRIBUTION_SCRIPT = `
+  if redis.call("get", KEYS[1]) ~= ARGV[1] then
+    return 0
+  end
+  redis.call("set", KEYS[2], ARGV[2])
+  redis.call("rpush", KEYS[3], ARGV[3])
+  redis.call("sadd", KEYS[4], ARGV[4])
+  redis.call("sadd", KEYS[5], ARGV[5])
+  return 1
+`;
+
+/**
+ * Commit a contribution, but only while the caller still holds the per-circuit
+ * lock. Returns false when the lock was lost, so the caller rejects and the
+ * client retries. The queue routes take the same lock, so these writes cannot
+ * race a concurrent queue update.
+ *
+ * The lock has a TTL. A process can stall after acquiring it — a GC pause, a
+ * slow KV round trip — until the TTL expires and a second writer takes the
+ * lock. A plain write would still land and overwrite that second writer,
+ * dropping a contribution. The token check makes the advance atomic: the
+ * stalled writer sees a different token (or none) and writes nothing. This is
+ * the append-only head advance the continuity gate (C-1) builds on.
+ *
+ * The ARGV values must serialize the way the client's defaultSerializer does,
+ * or the readers (getJson, listRange, sismember, smembers) will not parse them.
+ * Objects go in as JSON strings; plain string set members go in raw.
+ */
 export async function writeContribution<TCircuit, TReceipt>(options: {
+  lockKey: string;
+  lockToken: string;
   circuitStateKey: string;
   circuitState: TCircuit;
   receiptsKey: string;
@@ -67,14 +101,25 @@ export async function writeContribution<TCircuit, TReceipt>(options: {
   circuitId: string;
   participantsIndexKey: string;
   participantId: string;
-}): Promise<void> {
-  await redis()
-    .multi()
-    .set(options.circuitStateKey, options.circuitState)
-    .rpush(options.receiptsKey, options.receipt)
-    .sadd(options.participantContributionsKey, options.circuitId)
-    .sadd(options.participantsIndexKey, options.participantId)
-    .exec();
+}): Promise<boolean> {
+  const result = await redis().eval(
+    COMMIT_CONTRIBUTION_SCRIPT,
+    [
+      options.lockKey,
+      options.circuitStateKey,
+      options.receiptsKey,
+      options.participantContributionsKey,
+      options.participantsIndexKey,
+    ],
+    [
+      options.lockToken,
+      JSON.stringify(options.circuitState),
+      JSON.stringify(options.receipt),
+      options.circuitId,
+      options.participantId,
+    ],
+  );
+  return Number(result) === 1;
 }
 
 export async function clearParticipantContributions(options: {
