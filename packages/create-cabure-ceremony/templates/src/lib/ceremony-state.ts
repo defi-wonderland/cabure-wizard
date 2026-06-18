@@ -49,9 +49,8 @@ export interface ManifestState {
   endDate: string | null;
   startedAt: number;
   circuits: Array<{ id: string }>;
-  // Public URL of the ptau, published at init so the contribute route can load
-  // it for per-contribution verifyChain (C-1b). The file is not on the deployed
-  // function's filesystem; the ptau-loader fetches it from here.
+  // Public ptau URL, published at init. The file is not on the deployed
+  // function's filesystem; the contribute route fetches it here for verifyChain.
   ptauUrl?: string;
   beaconHash?: string;
   beaconApplied?: boolean;

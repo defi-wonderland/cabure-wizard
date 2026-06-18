@@ -3,14 +3,11 @@ import { readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-// The Powers of Tau file is too large to bundle into a serverless function and
-// is not on the deployed function's filesystem, but the contribute route needs
-// it for verifyChain. Load it from a URL, caching the bytes in memory and on
-// /tmp (which survives warm invocations on the same instance) so repeated
-// contributions do not re-download it.
-//
-// A local file is preferred when present, so `next dev` and the operator
-// scripts keep reading the on-disk copy with no download.
+// The ptau is too large to bundle and is absent from the deployed function's
+// filesystem, but the contribute route needs it for verifyChain. Load from a
+// URL, caching in memory and on /tmp (survives warm invocations) to avoid
+// re-downloading. Prefer a local file when present, so `next dev` and the
+// operator scripts read the on-disk copy with no download.
 let cached: { key: string; bytes: Uint8Array } | null = null;
 
 export async function loadPtau(options: {
@@ -59,8 +56,7 @@ export async function loadPtau(options: {
       );
     }
     bytes = new Uint8Array(await response.arrayBuffer());
-    // Best-effort disk cache; a failure here just means the next cold start
-    // re-downloads.
+    // Best-effort disk cache; failure just re-downloads on the next cold start.
     await writeFile(cacheFile, bytes).catch(() => {});
   }
 

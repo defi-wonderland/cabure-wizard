@@ -1,16 +1,11 @@
-// snarkjs (through fastfile) does not always close file handles explicitly —
-// the handle is closed later by the garbage collector. On recent Node a
-// GC-closed FileHandle surfaces as an uncaught `ERR_INVALID_STATE` that fires
-// asynchronously, outside any try/catch around the snarkjs call, and would
-// otherwise crash the process mid-request (the client sees an empty response).
+// snarkjs (via fastfile) leaves some file handles for the GC to close. On recent
+// Node a GC-closed FileHandle throws an uncaught async `ERR_INVALID_STATE`,
+// outside any try/catch around the snarkjs call, crashing the process mid-request
+// (client sees an empty response). The ceremony scripts guard the same error.
+// This handler suppresses only that benign error and re-raises everything else,
+// so real bugs still crash. Idempotent: dev hot-reloads don't stack listeners.
 //
-// The ceremony scripts (init, setup-ptau, finalize) guard the same error.
-// Importing this module registers a process-level handler that suppresses only
-// that specific benign error and re-raises everything else, so real bugs still
-// crash as normal. Registration is idempotent so dev hot-reloads do not stack
-// duplicate listeners.
-//
-// Import it for its side effect from any route that runs snarkjs:
+// Import for side effect from any route that runs snarkjs:
 //   import "@/lib/snarkjs-gc-guard";
 
 const guarded = globalThis as typeof globalThis & {
