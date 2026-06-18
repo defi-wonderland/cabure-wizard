@@ -55,6 +55,7 @@ type ManifestState = {
   endDate: string | null;
   startedAt: number;
   circuits: Array<{ id: string }>;
+  ptauUrl: string;
 };
 
 function formatBytes(bytes: number): string {
@@ -243,6 +244,26 @@ async function main() {
     console.log();
   }
 
+  // Publish the ptau so the contribute route can fetch it for per-contribution
+  // verifyChain (C-1b) — it is not on the deployed function's filesystem. All
+  // circuits share one ptau (its degree covers the largest), so upload once.
+  console.log("Uploading ptau to Vercel Blob...");
+  const ptauBytes = await readArtifact(
+    ceremonyConfig.circuits[0].artifacts.ptauPath,
+  );
+  const ptauUpload = await put(
+    `${ceremonyConfig.storage.zkeyPrefix}/pot.ptau`,
+    Buffer.from(ptauBytes),
+    {
+      access: "public",
+      token,
+      contentType: "application/octet-stream",
+      addRandomSuffix: false,
+      allowOverwrite: true,
+    },
+  );
+  console.log(`  Ptau published at: ${ptauUpload.url}`);
+
   const startedAt = Date.now();
   const manifest: ManifestState = {
     ceremonyName: ceremonyConfig.name,
@@ -250,6 +271,7 @@ async function main() {
     endDate,
     startedAt,
     circuits: circuitSummaries.map((c) => ({ id: c.circuitId })),
+    ptauUrl: ptauUpload.url,
   };
 
   await setJson(ceremonyConfig.storage.manifestPath, manifest);

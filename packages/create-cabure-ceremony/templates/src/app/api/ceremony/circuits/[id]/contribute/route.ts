@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createHash } from "node:crypto";
 
-import { verify } from "@wonderland/cabure-crypto";
+import { verifyChain } from "@wonderland/cabure-crypto";
 
+import "@/lib/snarkjs-gc-guard";
 import { getCeremonyConfig } from "@/lib/ceremony-config";
+import { loadPtau } from "@/lib/ptau-loader";
 import { getParticipant } from "@/lib/participant-auth";
 import {
   computeChainHash,
@@ -13,7 +15,6 @@ import {
   isCircuitActive,
   kvKey,
   pruneExpiredEntries,
-  readCircuitBytes,
   type CircuitState,
   type ContributionReceipt,
   type ManifestState,
@@ -175,15 +176,50 @@ export async function POST(
   // Heavy work (verify + upload) runs before the lock, so the locked commit
   // section below stays brief and cannot outlive the lock TTL.
 
-  // Per-contribution verification is opt-in: pairing checks can exceed
-  // serverless timeouts for large circuits.
-  if (config.verifyContributions) {
-    const [r1cs, ptau] = await Promise.all([
-      readCircuitBytes(circuitConfig.artifacts.r1csPath),
-      readCircuitBytes(circuitConfig.artifacts.ptauPath),
-    ]);
+  // Per-contribution verification (C-1b), option A: re-walk the whole chain
+  // from the pinned genesis. verifyChain runs the sameRatio test over L and H
+  // for every step, which is what catches a poisoned contribution (header
+  // advanced to the new delta while L/H stay on the old one) at submit time. It
+  // is MANDATORY in production: deferring to finalize is not a substitute — a
+  // poisoned contribution would be accepted live and only rejected at finalize,
+  // a late denial of service with no rollback. The config flag may only turn it
+  // off OUTSIDE production (local dev / CI). Circuits too large to verify within
+  // the serverless time limit should verify on an external worker, not skip it
+  // (see docs/option-b-verifyfrominit-feasibility.md).
+  //
+  // NOTE: this checks per-contribution VALIDITY. It does not catch a rebase
+  // (a chain rebuilt from genesis is valid-from-genesis and passes here); that
+  // is the continuity gate (C-1: count + h_head), tracked separately.
+  const mustVerify =
+    process.env.NODE_ENV === "production" || config.verifyContributions;
+  if (mustVerify) {
+    const ptau = await loadPtau({
+      url: manifest.ptauUrl,
+      localPath: circuitConfig.artifacts.ptauPath,
+    });
 
-    const isValid = await verify(r1cs, ptau, body);
+    // Verify against the PINNED genesis. Download it and confirm it still
+    // matches the hash recorded at init, so the chain is rooted in the real
+    // genesis and not a swapped blob.
+    const genesisResponse = await fetch(precheck.circuit.initialZkeyUrl);
+    if (!genesisResponse.ok) {
+      await deleteBinary(blobUrl).catch(() => {});
+      return NextResponse.json(
+        { error: "Could not load the pinned genesis to verify against" },
+        { status: 502 },
+      );
+    }
+    const genesis = new Uint8Array(await genesisResponse.arrayBuffer());
+    const genesisHash = `0x${createHash("sha256").update(genesis).digest("hex")}`;
+    if (genesisHash !== precheck.circuit.initialZkeyHash) {
+      await deleteBinary(blobUrl).catch(() => {});
+      return NextResponse.json(
+        { error: "Pinned genesis does not match its recorded hash" },
+        { status: 500 },
+      );
+    }
+
+    const isValid = await verifyChain(ptau, genesis, body);
     if (!isValid) {
       await deleteBinary(blobUrl).catch(() => {});
       return NextResponse.json(

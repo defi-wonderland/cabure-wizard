@@ -106,11 +106,13 @@ export interface CeremonyCopy {
       downloading: string;
       computing: string;
       uploading: string;
+      verifying: string;
     };
     phaseStatus: {
       downloading: string;
       computing: string;
       uploading: string;
+      verifying: string;
     };
     finalizeCta: string;
     retryCta: string;

@@ -81,11 +81,13 @@ export const defaultCopy: CeremonyCopy = {
       downloading: "Download",
       computing: "Compute",
       uploading: "Upload",
+      verifying: "Verify",
     },
     phaseStatus: {
       downloading: "Downloading zkey...",
       computing: "Computing contribution...",
       uploading: "Uploading result...",
+      verifying: "Verifying contribution on the server...",
     },
     finalizeCta: "FINALIZE CONTRIBUTION",
     retryCta: "Retry",
