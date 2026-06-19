@@ -31,7 +31,7 @@ export async function loadPtau(options: {
 
   if (!options.url) {
     throw new Error(
-      "ptau is unavailable: no local file and no ptauUrl on the manifest. " +
+      "ptau is unavailable: no local file and no ptauUrl for this circuit. " +
         "Re-run init:ceremony to publish the ptau, or set verifyContributions to false.",
     );
   }

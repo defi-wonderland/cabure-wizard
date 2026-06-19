@@ -41,6 +41,11 @@ export interface CircuitState {
   // parameters instead of trusting the mutable `current` pointer.
   initialZkeyHash: string;
   initialZkeyUrl: string;
+  // Public URL of the ptau this circuit was set up with, published at init. The
+  // file is not on the deployed function's filesystem; the contribute route
+  // fetches it here for verifyChain. Per-circuit so circuits may use different
+  // (right-sized) ptau files. Required: init always publishes it.
+  ptauUrl: string;
 }
 
 export interface ManifestState {
@@ -49,11 +54,6 @@ export interface ManifestState {
   endDate: string | null;
   startedAt: number;
   circuits: Array<{ id: string }>;
-  // Public ptau URL, published at init. The file is not on the deployed
-  // function's filesystem; the contribute route fetches it here for verifyChain.
-  // Required: init:ceremony always publishes it, so a valid manifest always has
-  // it. No guard for pre-publish manifests (new fields are required).
-  ptauUrl: string;
   beaconHash?: string;
   beaconApplied?: boolean;
   finalizedAt?: number;
@@ -269,6 +269,7 @@ export function createCircuitState(options: {
   zkeyUrl: string;
   initialZkeyHash: string;
   initialZkeyUrl: string;
+  ptauUrl: string;
 }): CircuitState {
   return {
     id: options.id,
@@ -280,6 +281,7 @@ export function createCircuitState(options: {
     currentZkeyUrl: options.zkeyUrl,
     initialZkeyHash: options.initialZkeyHash,
     initialZkeyUrl: options.initialZkeyUrl,
+    ptauUrl: options.ptauUrl,
   };
 }
 

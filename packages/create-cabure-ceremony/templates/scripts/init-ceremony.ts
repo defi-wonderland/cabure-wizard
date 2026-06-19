@@ -47,6 +47,7 @@ type CircuitState = {
   currentZkeyUrl: string;
   initialZkeyHash: string;
   initialZkeyUrl: string;
+  ptauUrl: string;
 };
 
 type ManifestState = {
@@ -55,7 +56,6 @@ type ManifestState = {
   endDate: string | null;
   startedAt: number;
   circuits: Array<{ id: string }>;
-  ptauUrl: string;
 };
 
 function formatBytes(bytes: number): string {
@@ -148,6 +148,11 @@ async function main() {
     ptauPath: string;
   }> = [];
 
+  // Maps an artifacts.ptauPath to the URL it was uploaded to, so circuits that
+  // share one ptau upload it once instead of re-reading and re-uploading ~300 MB
+  // per circuit.
+  const ptauUrlByPath = new Map<string, string>();
+
   for (const circuit of ceremonyConfig.circuits) {
     console.log(`[${circuit.id}] Generating genesis zkey...`);
 
@@ -219,6 +224,31 @@ async function main() {
     await writeFile(localZkeyPath, Buffer.from(zkey));
     console.log(`  Saved locally to: public/genesis/${localZkeyFile}`);
 
+    // Publish this circuit's ptau for the contribute route's verifyChain — it is
+    // not on the deployed function's filesystem. Content-addressed so a changed
+    // ptau gets a new URL (busts the route's URL-keyed cache). Deduped by path:
+    // circuits sharing one ptau upload it once.
+    let circuitPtauUrl = ptauUrlByPath.get(circuit.artifacts.ptauPath);
+    if (!circuitPtauUrl) {
+      const ptauHash = createHash("sha256").update(ptau).digest("hex");
+      const ptauUpload = await put(
+        `${ceremonyConfig.storage.zkeyPrefix}/pot-${ptauHash}.ptau`,
+        Buffer.from(ptau),
+        {
+          access: "public",
+          token,
+          contentType: "application/octet-stream",
+          addRandomSuffix: false,
+          allowOverwrite: true,
+        },
+      );
+      circuitPtauUrl = ptauUpload.url;
+      ptauUrlByPath.set(circuit.artifacts.ptauPath, circuitPtauUrl);
+      console.log(`  Ptau published at: ${circuitPtauUrl}`);
+    } else {
+      console.log(`  Ptau already published at: ${circuitPtauUrl}`);
+    }
+
     const circuitState: CircuitState = {
       id: circuit.id,
       totalContributions: 0,
@@ -229,6 +259,7 @@ async function main() {
       currentZkeyUrl: zkeyUpload.url,
       initialZkeyHash: genesisHash,
       initialZkeyUrl: genesisUpload.url,
+      ptauUrl: circuitPtauUrl,
     };
 
     const kvKey = `${ceremonyConfig.storage.circuitStatePrefix}:${circuit.id}`;
@@ -250,30 +281,9 @@ async function main() {
     console.log();
   }
 
-  // Publish the ptau so the contribute route can fetch it for per-contribution
-  // verifyChain (C-1b) — it is not on the deployed function's filesystem. All
-  // circuits share one ptau (its degree covers the largest), so upload once.
-  console.log("Uploading ptau to Vercel Blob...");
-  const ptauBytes = await readArtifact(
-    ceremonyConfig.circuits[0].artifacts.ptauPath,
-  );
-  // Content-address the blob path. The contribute route caches the ptau keyed
-  // by URL, so a fixed name (pot.ptau) would let a re-init with a different ptau
-  // reuse the same URL and serve stale bytes from a warm function. A hash in the
-  // name means a changed ptau gets a new URL and misses the cache.
-  const ptauHash = createHash("sha256").update(ptauBytes).digest("hex");
-  const ptauUpload = await put(
-    `${ceremonyConfig.storage.zkeyPrefix}/pot-${ptauHash}.ptau`,
-    Buffer.from(ptauBytes),
-    {
-      access: "public",
-      token,
-      contentType: "application/octet-stream",
-      addRandomSuffix: false,
-      allowOverwrite: true,
-    },
-  );
-  console.log(`  Ptau published at: ${ptauUpload.url}`);
+  // Each circuit's ptau was published in the loop above (see ptauUrlByPath),
+  // and its URL recorded on that circuit's KV state. The manifest no longer
+  // carries a single global ptau URL — circuits may use different ptau files.
 
   const startedAt = Date.now();
   const manifest: ManifestState = {
@@ -282,7 +292,6 @@ async function main() {
     endDate,
     startedAt,
     circuits: circuitSummaries.map((c) => ({ id: c.circuitId })),
-    ptauUrl: ptauUpload.url,
   };
 
   await setJson(ceremonyConfig.storage.manifestPath, manifest);

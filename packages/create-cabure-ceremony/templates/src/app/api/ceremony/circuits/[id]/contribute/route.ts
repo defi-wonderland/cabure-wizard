@@ -196,7 +196,7 @@ export async function POST(
   if (mustVerify) {
     try {
       const ptau = await loadPtau({
-        url: manifest.ptauUrl,
+        url: precheck.circuit.ptauUrl,
         localPath: circuitConfig.artifacts.ptauPath,
       });
 
@@ -204,7 +204,7 @@ export async function POST(
       // matches the hash from init, so the chain roots in the real genesis, not
       // a swapped blob.
       const genesisResponse = await fetch(precheck.circuit.initialZkeyUrl, {
-        signal: AbortSignal.timeout(60_000),
+        signal: AbortSignal.timeout(120_000),
       });
       if (!genesisResponse.ok) {
         await deleteBinary(blobUrl).catch(() => {});
