@@ -187,6 +187,10 @@ export async function POST(
   //
   // This checks per-contribution validity, not continuity: a chain rebuilt from
   // genesis is valid here. The rebase/continuity gate is tracked separately.
+  // NODE_ENV is "production" for any deployed build (prod, staging, preview) and
+  // only "development"/"test" under `next dev` or CI. So every deployment always
+  // verifies; the flag can only ADD verification in dev / CI, never remove it
+  // from a deployment. Fail-safe: a deploy cannot silently skip the check.
   const mustVerify =
     process.env.NODE_ENV === "production" || config.verifyContributions;
   if (mustVerify) {
@@ -199,7 +203,9 @@ export async function POST(
       // Verify against the pinned genesis: download it and confirm it still
       // matches the hash from init, so the chain roots in the real genesis, not
       // a swapped blob.
-      const genesisResponse = await fetch(precheck.circuit.initialZkeyUrl);
+      const genesisResponse = await fetch(precheck.circuit.initialZkeyUrl, {
+        signal: AbortSignal.timeout(60_000),
+      });
       if (!genesisResponse.ok) {
         await deleteBinary(blobUrl).catch(() => {});
         return NextResponse.json(

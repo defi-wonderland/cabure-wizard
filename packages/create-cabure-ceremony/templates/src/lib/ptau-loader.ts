@@ -40,14 +40,25 @@ export async function loadPtau(options: {
     return cached.bytes;
   }
 
-  const response = await fetch(options.url);
-  if (!response.ok) {
-    throw new Error(
-      `Failed to download ptau from ${options.url}: ${response.status}`,
-    );
+  // Time-box the download. The signal aborts the whole request, including the
+  // body stream, so a stalled ~300 MB transfer fails fast instead of burning
+  // the function's entire time budget and surfacing as an opaque platform kill.
+  try {
+    const response = await fetch(options.url, {
+      signal: AbortSignal.timeout(120_000),
+    });
+    if (!response.ok) {
+      throw new Error(
+        `Failed to download ptau from ${options.url}: ${response.status}`,
+      );
+    }
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    cached = { key: options.url, bytes };
+    return bytes;
+  } catch (error) {
+    if ((error as Error).name === "TimeoutError") {
+      throw new Error(`ptau download timed out from ${options.url}`);
+    }
+    throw error;
   }
-  const bytes = new Uint8Array(await response.arrayBuffer());
-
-  cached = { key: options.url, bytes };
-  return bytes;
 }

@@ -261,10 +261,7 @@ async function main() {
   // by URL, so a fixed name (pot.ptau) would let a re-init with a different ptau
   // reuse the same URL and serve stale bytes from a warm function. A hash in the
   // name means a changed ptau gets a new URL and misses the cache.
-  const ptauHash = createHash("sha256")
-    .update(ptauBytes)
-    .digest("hex")
-    .slice(0, 16);
+  const ptauHash = createHash("sha256").update(ptauBytes).digest("hex");
   const ptauUpload = await put(
     `${ceremonyConfig.storage.zkeyPrefix}/pot-${ptauHash}.ptau`,
     Buffer.from(ptauBytes),
