@@ -154,6 +154,13 @@ async function fetchRandaoReveal(
     throw new Error(`No RANDAO reveal found in beacon block at ${slotOrTag}.`);
   }
 
+  // The slot is operator-facing provenance and gets persisted in the manifest.
+  // Reject a malformed response here so finalization fails early instead of
+  // writing NaN (which JSON serializes to null) into the seal and transcript.
+  if (!Number.isInteger(resolvedSlot) || resolvedSlot < 0) {
+    throw new Error(`Beacon block at ${slotOrTag} returned an invalid slot.`);
+  }
+
   const hex = randaoReveal.startsWith("0x")
     ? randaoReveal.slice(2)
     : randaoReveal;
