@@ -190,38 +190,53 @@ export async function POST(
   const mustVerify =
     process.env.NODE_ENV === "production" || config.verifyContributions;
   if (mustVerify) {
-    const ptau = await loadPtau({
-      url: manifest.ptauUrl,
-      localPath: circuitConfig.artifacts.ptauPath,
-    });
+    try {
+      const ptau = await loadPtau({
+        url: manifest.ptauUrl,
+        localPath: circuitConfig.artifacts.ptauPath,
+      });
 
-    // Verify against the pinned genesis: download it and confirm it still
-    // matches the hash from init, so the chain roots in the real genesis, not a
-    // swapped blob.
-    const genesisResponse = await fetch(precheck.circuit.initialZkeyUrl);
-    if (!genesisResponse.ok) {
-      await deleteBinary(blobUrl).catch(() => {});
-      return NextResponse.json(
-        { error: "Could not load the pinned genesis to verify against" },
-        { status: 502 },
-      );
-    }
-    const genesis = new Uint8Array(await genesisResponse.arrayBuffer());
-    const genesisHash = `0x${createHash("sha256").update(genesis).digest("hex")}`;
-    if (genesisHash !== precheck.circuit.initialZkeyHash) {
-      await deleteBinary(blobUrl).catch(() => {});
-      return NextResponse.json(
-        { error: "Pinned genesis does not match its recorded hash" },
-        { status: 500 },
-      );
-    }
+      // Verify against the pinned genesis: download it and confirm it still
+      // matches the hash from init, so the chain roots in the real genesis, not
+      // a swapped blob.
+      const genesisResponse = await fetch(precheck.circuit.initialZkeyUrl);
+      if (!genesisResponse.ok) {
+        await deleteBinary(blobUrl).catch(() => {});
+        return NextResponse.json(
+          { error: "Could not load the pinned genesis to verify against" },
+          { status: 502 },
+        );
+      }
+      const genesis = new Uint8Array(await genesisResponse.arrayBuffer());
+      const genesisHash = `0x${createHash("sha256").update(genesis).digest("hex")}`;
+      if (genesisHash !== precheck.circuit.initialZkeyHash) {
+        await deleteBinary(blobUrl).catch(() => {});
+        return NextResponse.json(
+          { error: "Pinned genesis does not match its recorded hash" },
+          { status: 500 },
+        );
+      }
 
-    const isValid = await verifyChain(ptau, genesis, body);
-    if (!isValid) {
+      const isValid = await verifyChain(ptau, genesis, body);
+      if (!isValid) {
+        await deleteBinary(blobUrl).catch(() => {});
+        return NextResponse.json(
+          { error: "Invalid contribution: verification failed" },
+          { status: 400 },
+        );
+      }
+    } catch (error) {
+      // A throw here means the verifier could not run (ptau download, genesis
+      // fetch, hashing, or a snarkjs crash) — NOT that the contribution is bad.
+      // Without this catch the pending blob leaks and the client gets an opaque
+      // 500. Clean up and return 503 so the contributor retries: 503 ("could not
+      // verify, try again") must stay distinct from the 400 above ("contribution
+      // is invalid"), or a transient server fault brands valid work as poisoned.
+      console.error(`Verification failed to run for circuit ${id}:`, error);
       await deleteBinary(blobUrl).catch(() => {});
       return NextResponse.json(
-        { error: "Invalid contribution: verification failed" },
-        { status: 400 },
+        { error: "Verification temporarily unavailable. Please retry." },
+        { status: 503 },
       );
     }
   }

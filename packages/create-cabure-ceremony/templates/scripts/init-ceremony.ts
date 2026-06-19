@@ -91,6 +91,12 @@ async function main() {
 
   console.log("=== Initialize Ceremony ===\n");
 
+  if (ceremonyConfig.circuits.length === 0) {
+    throw new Error(
+      "No circuits configured in ceremony.config.ts — nothing to initialize.",
+    );
+  }
+
   const token = process.env.BLOB_READ_WRITE_TOKEN?.trim();
   if (!token) {
     throw new Error(
@@ -251,8 +257,16 @@ async function main() {
   const ptauBytes = await readArtifact(
     ceremonyConfig.circuits[0].artifacts.ptauPath,
   );
+  // Content-address the blob path. The contribute route caches the ptau keyed
+  // by URL, so a fixed name (pot.ptau) would let a re-init with a different ptau
+  // reuse the same URL and serve stale bytes from a warm function. A hash in the
+  // name means a changed ptau gets a new URL and misses the cache.
+  const ptauHash = createHash("sha256")
+    .update(ptauBytes)
+    .digest("hex")
+    .slice(0, 16);
   const ptauUpload = await put(
-    `${ceremonyConfig.storage.zkeyPrefix}/pot.ptau`,
+    `${ceremonyConfig.storage.zkeyPrefix}/pot-${ptauHash}.ptau`,
     Buffer.from(ptauBytes),
     {
       access: "public",

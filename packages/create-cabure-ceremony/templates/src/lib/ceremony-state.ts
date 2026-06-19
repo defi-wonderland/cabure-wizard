@@ -51,7 +51,9 @@ export interface ManifestState {
   circuits: Array<{ id: string }>;
   // Public ptau URL, published at init. The file is not on the deployed
   // function's filesystem; the contribute route fetches it here for verifyChain.
-  ptauUrl?: string;
+  // Required: init:ceremony always publishes it, so a valid manifest always has
+  // it. No guard for pre-publish manifests (new fields are required).
+  ptauUrl: string;
   beaconHash?: string;
   beaconApplied?: boolean;
   finalizedAt?: number;

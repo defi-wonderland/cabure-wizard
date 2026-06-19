@@ -1,13 +1,16 @@
-import { createHash } from "node:crypto";
-import { readFile, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { readFile } from "node:fs/promises";
 import path from "node:path";
 
 // The ptau is too large to bundle and is absent from the deployed function's
 // filesystem, but the contribute route needs it for verifyChain. Load from a
-// URL, caching in memory and on /tmp (survives warm invocations) to avoid
-// re-downloading. Prefer a local file when present, so `next dev` and the
-// operator scripts read the on-disk copy with no download.
+// URL and cache in memory (survives warm invocations) to avoid re-downloading.
+// Prefer a local file when present, so `next dev` and the operator scripts read
+// the on-disk copy with no download.
+//
+// Do NOT cache the ptau to /tmp. verifyChain writes the ptau (~300 MB) plus the
+// genesis and latest zkey into /tmp, and Vercel caps /tmp at 512 MB. A second
+// 300 MB ptau copy here pushes the total past that cap, so writes fail with
+// ENOSPC and verifyChain returns false for a valid contribution.
 let cached: { key: string; bytes: Uint8Array } | null = null;
 
 export async function loadPtau(options: {
@@ -37,28 +40,13 @@ export async function loadPtau(options: {
     return cached.bytes;
   }
 
-  const cacheFile = path.join(
-    tmpdir(),
-    `cabure-ptau-${createHash("sha256")
-      .update(options.url)
-      .digest("hex")
-      .slice(0, 16)}.ptau`,
-  );
-
-  let bytes: Uint8Array;
-  try {
-    bytes = new Uint8Array(await readFile(cacheFile));
-  } catch {
-    const response = await fetch(options.url);
-    if (!response.ok) {
-      throw new Error(
-        `Failed to download ptau from ${options.url}: ${response.status}`,
-      );
-    }
-    bytes = new Uint8Array(await response.arrayBuffer());
-    // Best-effort disk cache; failure just re-downloads on the next cold start.
-    await writeFile(cacheFile, bytes).catch(() => {});
+  const response = await fetch(options.url);
+  if (!response.ok) {
+    throw new Error(
+      `Failed to download ptau from ${options.url}: ${response.status}`,
+    );
   }
+  const bytes = new Uint8Array(await response.arrayBuffer());
 
   cached = { key: options.url, bytes };
   return bytes;
