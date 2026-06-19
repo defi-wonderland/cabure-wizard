@@ -5,7 +5,7 @@ out/
 *.tsbuildinfo
 next-env.d.ts
 .env
-.vercel
+.sst/
 .npmrc
 public/genesis/*.zkey
 public/finalize/*.zkey

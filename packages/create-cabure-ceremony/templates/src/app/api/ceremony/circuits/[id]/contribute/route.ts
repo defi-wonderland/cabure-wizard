@@ -19,25 +19,26 @@ import {
   type ContributionReceipt,
   type ManifestState,
 } from "@/lib/ceremony-state";
-import { deleteBinary, putBinary } from "@/lib/blob-store";
+import {
+  deleteBinary,
+  deleteByKey,
+  getBinary,
+  putBinary,
+} from "@/lib/blob-store";
 import { acquireLock, releaseLock, writeContribution } from "@/lib/kv-store";
 
-const BLOB_HOST_SUFFIX = ".public.blob.vercel-storage.com";
-
-function isValidPendingBlobUrl(url: string, circuitId: string): boolean {
-  try {
-    const parsed = new URL(url);
-    if (
-      parsed.protocol !== "https:" ||
-      !parsed.hostname.endsWith(BLOB_HOST_SUFFIX)
-    ) {
-      return false;
-    }
-    const expectedPrefix = `/contributions/${circuitId}/`;
-    return parsed.pathname.startsWith(expectedPrefix);
-  } catch {
+// The upload route hands the client a presigned PUT URL for a key under this
+// prefix. We validate the key the client submits against the same shape before
+// reading it, so a caller cannot point us at an arbitrary object in the bucket.
+function isValidPendingKey(key: string, circuitId: string): boolean {
+  const expectedPrefix = `contributions/${circuitId}/`;
+  if (!key.startsWith(expectedPrefix)) {
     return false;
   }
+  if (key.includes("..") || key.includes("//")) {
+    return false;
+  }
+  return /^[A-Za-z0-9._/-]+$/.test(key);
 }
 
 type EligibilityResult =
@@ -105,9 +106,9 @@ export async function POST(
   }
   const { participantId } = participant;
 
-  const { blobUrl, contributionHash: rawClientHash } =
+  const { objectKey, contributionHash: rawClientHash } =
     (await request.json()) as {
-      blobUrl: string;
+      objectKey: string;
       contributionHash?: unknown;
     };
 
@@ -118,9 +119,9 @@ export async function POST(
       ? rawClientHash
       : null;
 
-  if (!blobUrl || !isValidPendingBlobUrl(blobUrl, id)) {
+  if (!objectKey || !isValidPendingKey(objectKey, id)) {
     return NextResponse.json(
-      { error: "Missing or invalid blobUrl" },
+      { error: "Missing or invalid objectKey" },
       { status: 400 },
     );
   }
@@ -128,7 +129,7 @@ export async function POST(
   const config = getCeremonyConfig();
   const circuitConfig = config.circuits.find((c) => c.id === id);
   if (!circuitConfig) {
-    await deleteBinary(blobUrl).catch(() => {});
+    await deleteByKey(objectKey).catch(() => {});
     return NextResponse.json(
       { error: `Unknown circuit: ${id}` },
       { status: 404 },
@@ -149,24 +150,25 @@ export async function POST(
     config.queueTimeoutSeconds,
   );
   if (!precheck.ok) {
-    await deleteBinary(blobUrl).catch(() => {});
+    await deleteByKey(objectKey).catch(() => {});
     return NextResponse.json(
       { error: precheck.error },
       { status: precheck.status },
     );
   }
 
-  const blobResponse = await fetch(blobUrl);
-  if (!blobResponse.ok) {
+  let body: Uint8Array;
+  try {
+    body = await getBinary(objectKey);
+  } catch {
     return NextResponse.json(
-      { error: "Failed to fetch uploaded zkey from blob storage" },
+      { error: "Failed to fetch uploaded zkey from storage" },
       { status: 400 },
     );
   }
-  const body = new Uint8Array(await blobResponse.arrayBuffer());
 
   if (body.length === 0) {
-    await deleteBinary(blobUrl).catch(() => {});
+    await deleteByKey(objectKey).catch(() => {});
     return NextResponse.json(
       { error: "Contribution payload is empty" },
       { status: 400 },
@@ -207,7 +209,7 @@ export async function POST(
         signal: AbortSignal.timeout(120_000),
       });
       if (!genesisResponse.ok) {
-        await deleteBinary(blobUrl).catch(() => {});
+        await deleteByKey(objectKey).catch(() => {});
         return NextResponse.json(
           { error: "Could not load the pinned genesis to verify against" },
           { status: 502 },
@@ -216,7 +218,7 @@ export async function POST(
       const genesis = new Uint8Array(await genesisResponse.arrayBuffer());
       const genesisHash = `0x${createHash("sha256").update(genesis).digest("hex")}`;
       if (genesisHash !== precheck.circuit.initialZkeyHash) {
-        await deleteBinary(blobUrl).catch(() => {});
+        await deleteByKey(objectKey).catch(() => {});
         return NextResponse.json(
           { error: "Pinned genesis does not match its recorded hash" },
           { status: 500 },
@@ -225,7 +227,7 @@ export async function POST(
 
       const isValid = await verifyChain(ptau, genesis, body);
       if (!isValid) {
-        await deleteBinary(blobUrl).catch(() => {});
+        await deleteByKey(objectKey).catch(() => {});
         return NextResponse.json(
           { error: "Invalid contribution: verification failed" },
           { status: 400 },
@@ -239,7 +241,7 @@ export async function POST(
       // verify, try again") must stay distinct from the 400 above ("contribution
       // is invalid"), or a transient server fault brands valid work as poisoned.
       console.error(`Verification failed to run for circuit ${id}:`, error);
-      await deleteBinary(blobUrl).catch(() => {});
+      await deleteByKey(objectKey).catch(() => {});
       return NextResponse.json(
         { error: "Verification temporarily unavailable. Please retry." },
         { status: 503 },
@@ -259,7 +261,7 @@ export async function POST(
   const stored = await putBinary(zkeyPath, body);
 
   // The client's pending upload has been copied to our path.
-  await deleteBinary(blobUrl).catch(() => {});
+  await deleteByKey(objectKey).catch(() => {});
 
   // Critical section: the per-circuit lock serializes this fast read+commit
   // with the queue POST route, which writes the same circuit-state key. Heavy

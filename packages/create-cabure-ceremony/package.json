@@ -20,6 +20,7 @@
     "build": "tsc -p tsconfig.json",
     "test": "vitest run",
     "test:e2e": "vitest run src/__tests__/wizard.e2e.test.ts",
+    "typecheck:templates": "node scripts/typecheck-templates.mjs",
     "format": "prettier --write --ignore-unknown \"src/**/*.ts\"",
     "clean": "rm -rf dist tsconfig.tsbuildinfo"
   },

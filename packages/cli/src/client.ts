@@ -79,9 +79,24 @@ export class CeremonyClient {
     return new Uint8Array(await response.arrayBuffer());
   }
 
+  // Ask the server for a presigned S3 PUT URL. It runs the eligibility checks
+  // and picks the object key the contribute step then submits.
+  async requestUpload(
+    circuitId: string,
+  ): Promise<{ uploadUrl: string; key: string }> {
+    return this.request<{ uploadUrl: string; key: string }>(
+      `/api/ceremony/circuits/${encodeURIComponent(circuitId)}/upload`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      },
+    );
+  }
+
   async submitContribution(
     circuitId: string,
-    blobUrl: string,
+    objectKey: string,
     contributionHash: string,
   ): Promise<ReceiptResponse> {
     return this.request<ReceiptResponse>(
@@ -89,14 +104,9 @@ export class CeremonyClient {
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ blobUrl, contributionHash }),
+        body: JSON.stringify({ objectKey, contributionHash }),
       },
     );
-  }
-
-  get uploadHeaders(): Record<string, string> {
-    if (!this.token) return {};
-    return { Authorization: `Bearer ${this.token}` };
   }
 
   get url(): string {

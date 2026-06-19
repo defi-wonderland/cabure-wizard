@@ -59,7 +59,7 @@ export function renderSummary(options: SummaryOptions): string {
 
   steps.push("npm run dev");
   steps.push(
-    "Review env vars and deployment settings before importing into Vercel.",
+    "Set env vars (.env), then deploy to AWS with `npm run deploy` (SST). See README.",
   );
 
   lines.push(

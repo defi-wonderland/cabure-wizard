@@ -210,7 +210,7 @@ async function main() {
 
   if (!process.env.KV_REST_API_URL || !process.env.KV_REST_API_TOKEN) {
     throw new Error(
-      "KV_REST_API_URL and KV_REST_API_TOKEN are required. Pull env vars from Vercel or set them in .env/.env.local.",
+      "KV_REST_API_URL and KV_REST_API_TOKEN are required. Set them in .env/.env.local.",
     );
   }
 
@@ -394,9 +394,9 @@ async function main() {
 
     // TODO(C-1): the chain verify above only proves current.zkey is SOME valid
     // descendant of the pinned genesis, not that it is the chain we recorded.
-    // An attacker with blob write access but no KV access (a leaked
-    // BLOB_READ_WRITE_TOKEN) can overwrite current.zkey with a self-generated
-    // chain rooted at the real genesis and pass here. Close this by comparing
+    // An attacker with S3 write access but no KV access (leaked AWS credentials
+    // for the bucket) can overwrite current.zkey with a self-generated chain
+    // rooted at the real genesis and pass here. Close this by comparing
     // the embedded transcript (snarkjs zKey.exportJson -> contributions)
     // against the contribution count and per-contribution hashes recorded in
     // KV before applying the beacon. Needs the contribute route to record the

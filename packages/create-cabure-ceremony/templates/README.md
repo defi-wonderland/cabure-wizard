@@ -30,22 +30,30 @@ Copy `.env.example` to `.env` and fill in the values:
 cp .env.example .env
 ```
 
-| Variable                | Source              | Purpose                           |
-| ----------------------- | ------------------- | --------------------------------- |
-| `BLOB_READ_WRITE_TOKEN` | Vercel Blob         | Read/write zkey files             |
-| `KV_REST_API_URL`       | Vercel KV (Upstash) | Redis endpoint for ceremony state |
-| `KV_REST_API_TOKEN`     | Vercel KV (Upstash) | Redis auth token                  |
-| `GITHUB_CLIENT_ID`      | GitHub OAuth App    | OAuth client ID                   |
-| `GITHUB_CLIENT_SECRET`  | GitHub OAuth App    | OAuth client secret               |
-| `NEXTAUTH_SECRET`       | Generated locally   | JWT session encryption secret     |
-| `NEXTAUTH_URL`          | Deployment URL      | Canonical app URL                 |
+| Variable               | Source                | Purpose                              |
+| ---------------------- | --------------------- | ------------------------------------ |
+| `AWS_REGION`           | Your AWS account      | Region to deploy into                |
+| `CEREMONY_BUCKET`      | `sst deploy` output   | S3 bucket holding zkeys + ptau       |
+| `CLOUDFRONT_DOMAIN`    | `sst deploy` output   | CloudFront origin for zkey downloads |
+| `KV_REST_API_URL`      | Upstash Redis         | Redis endpoint for ceremony state    |
+| `KV_REST_API_TOKEN`    | Upstash Redis         | Redis auth token                     |
+| `GITHUB_CLIENT_ID`     | GitHub OAuth App      | OAuth client ID                      |
+| `GITHUB_CLIENT_SECRET` | GitHub OAuth App      | OAuth client secret                  |
+| `NEXTAUTH_SECRET`      | Generated locally     | JWT session encryption secret        |
+| `NEXTAUTH_URL`         | Deployed app URL      | Canonical app URL                    |
 
-### 4. Provision Vercel storage
+AWS credentials are not env vars here — they come from your AWS CLI profile or
+environment (e.g. `aws configure` / `AWS_PROFILE`). `CEREMONY_BUCKET` and
+`CLOUDFRONT_DOMAIN` do not exist until your first `sst deploy`; copy them from
+its output into `.env` before running the operator scripts.
 
-1. Link to a Vercel project: `vercel link`
-2. Create a **Blob** store in the Vercel dashboard (Storage tab).
-3. Create a **KV (Upstash)** store in the same tab.
-4. Pull the generated env vars: `vercel env pull`
+### 4. Provision storage
+
+1. Configure AWS credentials (`aws configure`, or set `AWS_PROFILE`). The S3
+   bucket and CloudFront distribution are created for you by `sst deploy`
+   (see [Deploy](#deploy)).
+2. Create an **Upstash Redis** database (console.upstash.com) and copy its REST
+   URL and token into `KV_REST_API_URL` / `KV_REST_API_TOKEN`.
 
 ### 5. GitHub OAuth
 
@@ -70,21 +78,42 @@ Open [http://localhost:3000](http://localhost:3000).
 
 ## Deploy
 
+Deploys to AWS with [SST](https://sst.dev): the app runs as a Lambda behind
+CloudFront, zkeys/ptau live in S3.
+
 ```bash
-vercel --prod
+npm run deploy   # sst deploy --stage production
 ```
 
-Add all environment variables in the Vercel dashboard under **Settings > Environment Variables**. Set `NEXTAUTH_URL` to your production domain.
+First deploy:
 
-The init script only needs to run once. After deploying, the API routes handle ceremony state automatically.
+1. Run `npm run deploy`. SST creates the S3 bucket, CloudFront distribution, and
+   the app Lambda, then prints `url`, `cdn`, and `bucket`.
+2. Copy `bucket` → `CEREMONY_BUCKET` and `cdn` → `CLOUDFRONT_DOMAIN` in `.env`
+   (the operator scripts need them).
+3. Set `NEXTAUTH_URL` to the printed `url` and point your GitHub OAuth App
+   callback at `<url>/api/auth/callback/github`, then run `npm run deploy` again
+   so the Lambda picks up `NEXTAUTH_URL`.
+4. Run `npm run init:ceremony` once. After that the API routes handle ceremony
+   state automatically.
+
+`sst remove` tears the whole stack down (the bucket is retained on the
+`production` stage).
+
+> Heavy-circuit note: the contribute route runs `verifyChain` inline. Requests
+> reach the Lambda through CloudFront, which caps an origin response at 60s
+> (180s max via an AWS Support limit increase). A circuit whose verify exceeds
+> that needs verification moved to an async worker — the Lambda itself is sized
+> for memory and `/tmp` headroom in `sst.config.ts`, but the synchronous request
+> path is bounded by CloudFront.
 
 ## Scripts
 
 | Script                      | Description                                                                               |
 | --------------------------- | ----------------------------------------------------------------------------------------- |
 | `npm run setup:ptau`        | Detect circuit constraints, download the correct PPoT ptau, and update config             |
-| `npm run init:ceremony`     | Generate genesis zkey, upload to Blob, write manifest to KV. Outputs to `public/genesis/` |
-| `npm run reset:ceremony`    | Wipe all KV keys and Blob zkeys for a fresh start                                         |
+| `npm run init:ceremony`     | Generate genesis zkey, upload to S3, write manifest to KV. Outputs to `public/genesis/`   |
+| `npm run reset:ceremony`    | Wipe all KV keys and S3 zkeys for a fresh start                                            |
 | `npm run finalize:ceremony` | Apply beacon (Ethereum RANDAO by default), verify zkeys. Outputs to `public/finalize/`    |
 
 ### Setup ptau

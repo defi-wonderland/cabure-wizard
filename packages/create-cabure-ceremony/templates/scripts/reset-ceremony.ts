@@ -1,23 +1,24 @@
 import process from "node:process";
 
-import { del, list } from "@vercel/blob";
 import { loadEnvConfig } from "@next/env";
 
+import { deletePrefix } from "@/lib/blob-store";
 import { clearParticipantContributions, listClear } from "@/lib/kv-store";
 import { ceremonyConfig } from "../ceremony.config";
 
 async function main() {
   loadEnvConfig(process.cwd(), true);
 
-  const token = process.env.BLOB_READ_WRITE_TOKEN?.trim();
-  if (!token) {
+  if (!process.env.CEREMONY_BUCKET) {
     throw new Error(
-      "BLOB_READ_WRITE_TOKEN is required. Ensure it is set in your shell or loaded via .env/.env.local.",
+      "CEREMONY_BUCKET is required. Take it from the `sst deploy` outputs and " +
+        "set it in .env/.env.local. AWS credentials come from your AWS CLI " +
+        "profile or environment.",
     );
   }
   if (!process.env.KV_REST_API_URL || !process.env.KV_REST_API_TOKEN) {
     throw new Error(
-      "KV_REST_API_URL and KV_REST_API_TOKEN are required. Pull env vars from Vercel or set them in .env/.env.local.",
+      "KV_REST_API_URL and KV_REST_API_TOKEN are required. Set them in .env/.env.local.",
     );
   }
 
@@ -44,27 +45,16 @@ async function main() {
     `  Deleted ${deletedKeys} keys and ${clearedParticipants} participant index entries.`,
   );
 
-  console.log("Deleting Vercel Blob zkeys...");
+  console.log("Deleting S3 zkeys...");
 
-  let deletedBlobs = 0;
-  let cursor: string | undefined;
-  do {
-    const result = await list({
-      prefix: `${storage.zkeyPrefix}/`,
-      token,
-      cursor,
-    });
-    if (result.blobs.length > 0) {
-      await del(
-        result.blobs.map((b) => b.url),
-        { token },
-      );
-      deletedBlobs += result.blobs.length;
-    }
-    cursor = result.hasMore ? result.cursor : undefined;
-  } while (cursor);
+  // Committed zkeys/ptau live under zkeyPrefix; client pending uploads under
+  // contributions/. Sweep both so a crashed contribution cannot leave orphans
+  // behind a reset.
+  const deletedBlobs =
+    (await deletePrefix(`${storage.zkeyPrefix}/`)) +
+    (await deletePrefix("contributions/"));
 
-  console.log(`  Deleted ${deletedBlobs} blob(s).`);
+  console.log(`  Deleted ${deletedBlobs} object(s).`);
   console.log("Ceremony data reset complete.");
   process.exit(0);
 }

@@ -1,7 +1,6 @@
 import { createHash } from "node:crypto";
 
 import { contribute, generateEntropy } from "@wonderland/cabure-crypto";
-import { upload } from "@vercel/blob/client";
 
 import { authenticate } from "../auth.js";
 import { CeremonyClient } from "../client.js";
@@ -124,21 +123,22 @@ export async function contributeCommand(
     console.log(`  Zkey hash: ${result.zkeyHash}`);
 
     console.log("  Uploading...");
-    const blob = await upload(
-      `contributions/${circuitId}/pending.zkey`,
-        new Blob([result.zkey as BlobPart]),
-      {
-        access: "public",
-        handleUploadUrl: `${ceremonyUrl}/api/ceremony/circuits/${circuitId}/upload`,
-        headers: client.uploadHeaders,
-      },
-    );
+    const { uploadUrl, key } = await client.requestUpload(circuitId);
+    const uploadResponse = await fetch(uploadUrl, {
+      method: "PUT",
+      body: new Blob([result.zkey as BlobPart]),
+    });
+    if (!uploadResponse.ok) {
+      throw new Error(
+        `Failed to upload contribution for ${circuitId} (status ${uploadResponse.status}).`,
+      );
+    }
     console.log("  Upload complete");
 
     console.log("  Submitting...");
     const receipt = await client.submitContribution(
       circuitId,
-      blob.url,
+      key,
       result.contributionHash,
     );
     if (receipt.contributionHash.toLowerCase() !== result.zkeyHash.toLowerCase()) {
