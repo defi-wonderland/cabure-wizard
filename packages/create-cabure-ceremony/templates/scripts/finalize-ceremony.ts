@@ -58,7 +58,12 @@ interface ManifestState {
   endDate: string | null;
   startedAt: number;
   circuits: Array<{ id: string }>;
+  // Resolved beacon, persisted at seal time (beaconHash is 0x-prefixed). A
+  // recovery run reuses it so the beacon is locked once finalization starts and
+  // cannot be re-rolled. Cleared only by reset:ceremony.
   beaconHash?: string;
+  beaconSource?: string;
+  beaconSlot?: number;
   beaconApplied?: boolean;
   finalizingAt?: number;
   finalizeId?: string;
@@ -156,10 +161,38 @@ async function fetchRandaoReveal(
   return { hex, slot: resolvedSlot };
 }
 
-async function resolveBeacon(): Promise<ResolvedBeacon> {
+// Precedence: an explicit --beacon/--beacon-slot flag (operator override) wins,
+// then a persisted beacon from an interrupted run (reuse, so recovery is
+// reproducible and never re-rolls), then --random-beacon, then the latest
+// finalized slot. The persisted beacon sits below the explicit flags so an
+// operator can still force a different value on recovery, but above everything
+// that would fetch a fresh one.
+async function resolveBeacon(
+  persisted: ResolvedBeacon | null,
+): Promise<ResolvedBeacon> {
   const explicitHex = parseBeaconFlag();
   if (explicitHex) {
     return { hex: explicitHex, source: "user-supplied (--beacon)" };
+  }
+
+  const explicitSlot = parseBeaconSlotFlag();
+  if (explicitSlot) {
+    console.log(
+      `Resolving beacon from Ethereum beacon chain slot ${explicitSlot}...`,
+    );
+    const { hex, slot } = await fetchRandaoReveal(String(explicitSlot));
+    return {
+      hex,
+      source: `RANDAO reveal from Ethereum beacon chain slot ${slot}`,
+      slot,
+    };
+  }
+
+  if (persisted) {
+    console.log(
+      "Reusing the beacon committed by the interrupted finalize run.",
+    );
+    return persisted;
   }
 
   if (process.argv.includes("--random-beacon")) {
@@ -169,14 +202,10 @@ async function resolveBeacon(): Promise<ResolvedBeacon> {
     };
   }
 
-  const explicitSlot = parseBeaconSlotFlag();
-  const slotOrTag = explicitSlot ? String(explicitSlot) : "finalized";
-  const label = explicitSlot
-    ? `Ethereum beacon chain slot ${explicitSlot}`
-    : "Ethereum beacon chain (latest finalized slot)";
-
-  console.log(`Resolving beacon from ${label}...`);
-  const { hex, slot } = await fetchRandaoReveal(slotOrTag);
+  console.log(
+    "Resolving beacon from Ethereum beacon chain (latest finalized slot)...",
+  );
+  const { hex, slot } = await fetchRandaoReveal("finalized");
   return {
     hex,
     source: `RANDAO reveal from Ethereum beacon chain slot ${slot}`,
@@ -237,13 +266,44 @@ async function loadCircuitStates(
 ): Promise<CircuitState[]> {
   return await Promise.all(
     circuitConfigs.map(async (c) => {
-      const state = await getJson<CircuitState>(`${circuitStatePrefix}:${c.id}`);
+      const state = await getJson<CircuitState>(
+        `${circuitStatePrefix}:${c.id}`,
+      );
       if (!state) {
-        throw new Error(`Missing circuit state for ${c.id}. Run init:ceremony.`);
+        throw new Error(
+          `Missing circuit state for ${c.id}. Run init:ceremony.`,
+        );
       }
       return state;
     }),
   );
+}
+
+// Seal the ceremony and commit the beacon in one manifest write.
+// isCeremonyActive returns false once finalizingAt is set, so the API stops
+// accepting work. finalizeId tags the seal so only this run can clear it (see
+// reopenCeremony). The beacon is committed in the same write, which locks it: a
+// recovery run reuses it instead of re-rolling. The local `manifest` is updated
+// to match, because the ownership re-reads later fall back to it on a transient
+// null read and would otherwise misreport a --force takeover.
+async function sealCeremony(
+  manifestPath: string,
+  manifest: ManifestState,
+  beacon: ResolvedBeacon,
+): Promise<{ finalizeId: string }> {
+  const finalizingAt = Date.now();
+  const finalizeId = randomUUID();
+  const sealed: ManifestState = {
+    ...manifest,
+    finalizingAt,
+    finalizeId,
+    beaconHash: `0x${beacon.hex}`,
+    beaconSource: beacon.source,
+    ...(beacon.slot !== undefined && { beaconSlot: beacon.slot }),
+  };
+  await setJson(manifestPath, sealed);
+  Object.assign(manifest, sealed);
+  return { finalizeId };
 }
 
 async function main() {
@@ -362,20 +422,40 @@ async function main() {
     );
   }
 
-  // Seal before snapshotting: isCeremonyActive returns false once finalizingAt
-  // is set, so the API stops accepting work. The re-read inside the try then
-  // catches any contribution that landed just before the seal; otherwise it
-  // would update the live zkey but be dropped from the final artifacts.
-  // finalizeId tags the seal so only this run can clear it (see reopenCeremony).
-  const finalizingAt = Date.now();
-  const finalizeId = randomUUID();
-  await setJson(storage.manifestPath, { ...manifest, finalizingAt, finalizeId });
+  // Resolve the beacon before sealing. A prior interrupted run that already
+  // sealed has its beacon in the manifest; reuse it so recovery reproduces the
+  // same value and cannot re-roll. A fresh run resolves now and persists it with
+  // the seal below. Resolving first also means a beacon-fetch failure leaves the
+  // ceremony unsealed, with nothing to recover.
+  const persistedBeacon: ResolvedBeacon | null = manifest.beaconHash
+    ? {
+        hex: manifest.beaconHash.slice(2),
+        source: manifest.beaconSource ?? "persisted beacon",
+        slot: manifest.beaconSlot,
+      }
+    : null;
+  const beacon = await resolveBeacon(persistedBeacon);
 
-  // Reopen the ceremony if this run fails before finalizing. Re-read so fields
-  // another process set survive, and clear the seal only when it is still ours
-  // and not yet permanent: bail if beaconApplied is set, or if finalizeId has
-  // changed (a concurrent --force run took over the seal — clearing it would
-  // reopen while that run is still producing artifacts).
+  console.log(`Beacon source: ${beacon.source}`);
+  if (beacon.slot !== undefined) {
+    console.log(`Beacon slot:   ${beacon.slot}`);
+  }
+  console.log(`Beacon value:  0x${beacon.hex}`);
+  console.log();
+
+  // Seal before snapshotting the circuit states inside the try: the re-read
+  // there then catches any contribution that landed just before the seal.
+  const { finalizeId } = await sealCeremony(
+    storage.manifestPath,
+    manifest,
+    beacon,
+  );
+
+  // Reopen if this run fails before finalizing. Clear the seal only while it is
+  // still ours and not yet permanent: bail if beaconApplied is set or finalizeId
+  // changed (a --force run took over). The persisted beacon is left in place so
+  // a later finalize reuses it — the beacon stays locked across reopens and is
+  // cleared only by reset:ceremony.
   const reopenCeremony = async () => {
     const latest =
       (await getJson<ManifestState>(storage.manifestPath)) ?? manifest;
@@ -395,15 +475,6 @@ async function main() {
       (sum, c) => sum + c.totalContributions,
       0,
     );
-
-    const beacon = await resolveBeacon();
-
-    console.log(`Beacon source: ${beacon.source}`);
-    if (beacon.slot !== undefined) {
-      console.log(`Beacon slot:   ${beacon.slot}`);
-    }
-    console.log(`Beacon value:  0x${beacon.hex}`);
-    console.log();
 
     const beaconHex = beacon.hex;
 
@@ -535,9 +606,7 @@ async function main() {
 
     console.log("Generating transcript...");
     const finalizedAt = Date.now();
-    const receipts = await listRange<ContributionReceipt>(
-      storage.receiptsPath,
-    );
+    const receipts = await listRange<ContributionReceipt>(storage.receiptsPath);
 
     const transcript = {
       ceremony: {
@@ -576,7 +645,6 @@ async function main() {
     const finalized = {
       ...latestManifest,
       beaconApplied: true,
-      beaconHash: `0x${beaconHex}`,
       finalizedAt,
     };
     delete finalized.finalizingAt;
@@ -592,10 +660,8 @@ async function main() {
     console.log(`  Verification keys: public/finalize/*.vkey.json`);
     console.log(`  Finalized zkeys:   public/finalize/*.final.zkey`);
   } catch (error) {
-    // Finalization failed before the permanent seal. Reopen the ceremony so it
-    // does not freeze on a transient error, then rethrow. reopenCeremony clears
-    // only our own seal, so this is safe even if a concurrent --force run is in
-    // progress.
+    // Reopen on transient failure so the ceremony does not freeze, then rethrow.
+    // reopenCeremony no-ops once the seal is permanent or owned by another run.
     await reopenCeremony();
     throw error;
   }

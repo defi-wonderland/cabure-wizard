@@ -49,7 +49,11 @@ export interface ManifestState {
   endDate: string | null;
   startedAt: number;
   circuits: Array<{ id: string }>;
+  // Resolved beacon, persisted at seal time so an interrupted finalize reuses
+  // the same value on recovery and can never re-roll it. See finalize-ceremony.
   beaconHash?: string;
+  beaconSource?: string;
+  beaconSlot?: number;
   beaconApplied?: boolean;
   finalizingAt?: number;
   finalizedAt?: number;
@@ -191,6 +195,12 @@ export function isCircuitActive(
   circuit: CircuitState,
   targetContributions: number,
 ): boolean {
+  // Same hard seal as isCeremonyActive. The contribute path uses this function
+  // and is the only one that overwrites current.zkey, so without this check a
+  // --force early finalize would let contributions slip in during finalization.
+  if (manifest.beaconApplied || manifest.finalizingAt !== undefined) {
+    return false;
+  }
   let endDateMs: number | null;
   try {
     endDateMs = getEndDateDeadlineMs(manifest.endDate);
