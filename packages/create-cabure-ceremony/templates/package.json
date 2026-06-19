@@ -10,6 +10,7 @@
     "init:ceremony": "NODE_OPTIONS=--max-old-space-size=8192 tsx scripts/init-ceremony.ts",
     "reset:ceremony": "tsx scripts/reset-ceremony.ts",
     "finalize:ceremony": "NODE_OPTIONS=--max-old-space-size=8192 tsx scripts/finalize-ceremony.ts",
+    "localstack:setup": "tsx scripts/localstack-setup.ts",
     "deploy": "sst deploy",
     "test": "vitest run"
   },

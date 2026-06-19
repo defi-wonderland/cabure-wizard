@@ -76,47 +76,37 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000).
 
-## Local development (LocalStack)
+## Local development (MinIO)
 
 Storage is the one piece that cannot run on `next dev` alone: the upload and
 download paths talk to S3. To develop fully offline — no AWS account, no
-credentials — emulate S3 with [LocalStack](https://localstack.cloud) (or MinIO)
-and keep ceremony state on your existing Upstash database.
+credentials — emulate S3 with [MinIO](https://min.io) (Docker) and keep ceremony
+state on your existing Upstash database.
 
-The app reads `S3_ENDPOINT` to target a local S3 server; leave it unset in real
-deployments.
+MinIO needs no license or signup. [LocalStack](https://localstack.cloud) also
+works but now requires an auth token even to start, so MinIO is the simpler
+default. The app reads `S3_ENDPOINT` to target a local S3 server; leave it unset
+in real deployments.
 
-### 1. Start LocalStack
+### 1. Start MinIO
 
-```bash
-docker run --rm -d --name localstack -p 4566:4566 localstack/localstack
-```
-
-### 2. Create the bucket
-
-LocalStack accepts any credentials, so dummy values are fine.
+MinIO serves the S3 API on container port 9000; map it to host `4566` so
+`S3_ENDPOINT` is a round number. The password must be at least 8 characters.
 
 ```bash
-export AWS_ACCESS_KEY_ID=test AWS_SECRET_ACCESS_KEY=test AWS_REGION=us-east-1
-AWS="aws --endpoint-url=http://localhost:4566"
-
-$AWS s3 mb s3://cabure-local
-
-# Downloads (genesis/current/ptau) are fetched by plain GET — allow public read.
-$AWS s3api put-bucket-policy --bucket cabure-local --policy \
-'{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":"*","Action":"s3:GetObject","Resource":"arn:aws:s3:::cabure-local/*"}]}'
-
-# The browser PUTs to the presigned URL cross-origin (3000 -> 4566) — allow CORS.
-$AWS s3api put-bucket-cors --bucket cabure-local --cors-configuration \
-'{"CORSRules":[{"AllowedOrigins":["http://localhost:3000"],"AllowedMethods":["PUT","GET"],"AllowedHeaders":["*"]}]}'
+docker run --rm -d --name minio -p 4566:9000 \
+  -e MINIO_ROOT_USER=test -e MINIO_ROOT_PASSWORD=test12345 \
+  minio/minio server /data
 ```
 
-### 3. Point `.env` at LocalStack
+### 2. Point `.env` at MinIO
+
+The access key/secret must match MinIO's root user/password above.
 
 ```bash
 AWS_REGION=us-east-1
-AWS_ACCESS_KEY_ID=test          # dummy — only safe because this is LocalStack
-AWS_SECRET_ACCESS_KEY=test
+AWS_ACCESS_KEY_ID=test
+AWS_SECRET_ACCESS_KEY=test12345
 S3_ENDPOINT=http://localhost:4566
 CEREMONY_BUCKET=cabure-local
 CLOUDFRONT_DOMAIN=http://localhost:4566/cabure-local   # path-style object URL
@@ -126,15 +116,28 @@ CLOUDFRONT_DOMAIN=http://localhost:4566/cabure-local   # path-style object URL
 `CLOUDFRONT_DOMAIN` points at the bucket path-style, so download URLs resolve to
 `http://localhost:4566/cabure-local/<key>` — real, fetchable objects.
 
+### 3. Create the bucket
+
+```bash
+npm run localstack:setup
+```
+
+(The name is historical — it sets up whatever local S3 `S3_ENDPOINT` points at.)
+It uses the AWS SDK already in the project — no AWS CLI needed — to create the
+bucket and open it to public reads (downloads use plain GET). It refuses to run
+unless `S3_ENDPOINT` is set, so it can never touch real AWS. The CORS step is
+best-effort: MinIO does not implement `PutBucketCors` and is permissive by
+default, so a skip there is fine.
+
 ### 4. Run the flow
 
 ```bash
 npm run setup:ptau        # downloads the ptau into circuits/
-npm run init:ceremony     # uploads genesis/current/ptau to LocalStack, manifest to Upstash
+npm run init:ceremony     # uploads genesis/current/ptau to S3, manifest to Upstash
 npm run dev               # http://localhost:3000 — log in, join queue, contribute
-npm run finalize:ceremony # downloads from LocalStack, verifies the chain, applies the beacon
+npm run finalize:ceremony # downloads from S3, verifies the chain, applies the beacon
 npm run reset:ceremony    # wipes the S3 prefixes and KV
-docker stop localstack
+docker stop minio
 ```
 
 **Scope:** this exercises the whole storage path (presigned upload, read-by-key,
@@ -142,10 +145,9 @@ deletes, download URLs, the full contribute -> finalize chain) against real
 Upstash. It does NOT cover CloudFront's response time limit, Lambda `/tmp`
 sizing, or OpenNext bundling — those only appear under `sst dev` / `sst deploy`.
 
-**Gotchas:** the genesis pin uses an S3 conditional create (`If-None-Match`);
-old LocalStack images may ignore it and overwrite — only matters if you re-run
-`init:ceremony` without `--force`. The CLI's upload is a plain Node `fetch` PUT
-and needs no CORS; only the browser does.
+**Gotchas:** a queue slot expires after `queueTimeoutSeconds` (default 300s), so
+join the queue and contribute in one go. The CLI's upload is a plain Node
+`fetch` PUT and needs no CORS; only the browser does.
 
 ## Deploy
 

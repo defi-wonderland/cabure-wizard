@@ -38,7 +38,10 @@ function isValidPendingKey(key: string, circuitId: string): boolean {
   if (key.includes("..") || key.includes("//")) {
     return false;
   }
-  return /^[A-Za-z0-9._/-]+$/.test(key);
+  // ":" is allowed because participantId is "github:<id>" (see auth.ts), so a
+  // valid pending key contains a colon. It is safe in an S3 key, and the
+  // ".."/"//" checks above still block traversal.
+  return /^[A-Za-z0-9._:/-]+$/.test(key);
 }
 
 type EligibilityResult =
