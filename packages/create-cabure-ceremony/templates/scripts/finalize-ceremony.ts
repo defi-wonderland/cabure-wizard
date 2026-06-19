@@ -299,7 +299,10 @@ async function sealCeremony(
     finalizeId,
     beaconHash: `0x${beacon.hex}`,
     beaconSource: beacon.source,
-    ...(beacon.slot !== undefined && { beaconSlot: beacon.slot }),
+    // Write the slot unconditionally (setJson drops an undefined value): a
+    // recovery run that switches to a slotless beacon must clear a slot left
+    // over from the prior seal, not inherit it via the ...manifest spread.
+    beaconSlot: beacon.slot,
   };
   await setJson(manifestPath, sealed);
   Object.assign(manifest, sealed);
@@ -429,7 +432,7 @@ async function main() {
   // ceremony unsealed, with nothing to recover.
   const persistedBeacon: ResolvedBeacon | null = manifest.beaconHash
     ? {
-        hex: manifest.beaconHash.slice(2),
+        hex: manifest.beaconHash.replace(/^0x/, ""),
         source: manifest.beaconSource ?? "persisted beacon",
         slot: manifest.beaconSlot,
       }
