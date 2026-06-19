@@ -3,7 +3,12 @@ import process from "node:process";
 import { del, list } from "@vercel/blob";
 import { loadEnvConfig } from "@next/env";
 
-import { clearParticipantContributions, listClear } from "@/lib/kv-store";
+import {
+  clearParticipantContributions,
+  getJson,
+  listClear,
+} from "@/lib/kv-store";
+import type { ManifestState } from "@/lib/ceremony-state";
 import { ceremonyConfig } from "../ceremony.config";
 
 async function main() {
@@ -22,6 +27,24 @@ async function main() {
   }
 
   const { storage, circuits } = ceremonyConfig;
+
+  // Guard a finalized ceremony. reset wipes the live manifest, receipts, circuit
+  // states and zkey blobs; the published transcript and final zkeys under
+  // public/finalize/ are on disk and survive, but the running app loses its
+  // status/receipt/download state for good. Only beaconApplied is guarded, not
+  // finalizingAt: reset is the documented recovery path for an interrupted
+  // finalize seal.
+  const force = process.argv.includes("--force");
+  const manifest = await getJson<ManifestState>(storage.manifestPath);
+  if (manifest?.beaconApplied && !force) {
+    const when = manifest.finalizedAt
+      ? ` on ${new Date(manifest.finalizedAt).toISOString()}`
+      : "";
+    throw new Error(
+      `Ceremony is finalized (beacon applied${when}). Resetting erases the live ` +
+        "manifest, receipts, circuit states and all zkey blobs. Pass --force to wipe anyway.",
+    );
+  }
 
   console.log("Deleting Redis keys...");
 

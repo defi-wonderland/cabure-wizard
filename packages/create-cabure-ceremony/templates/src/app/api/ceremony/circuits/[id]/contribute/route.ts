@@ -288,10 +288,19 @@ export async function POST(
 
   try {
     // Authoritative re-check: state may have changed since the pre-check.
+    // Re-read the manifest under the lock. A read before the lock could miss
+    // the finalizer's seal and let a contribution slip in after it. The only
+    // steps between here and the commit are cheap KV reads, so no slow
+    // operation can miss the seal. Accepted residual: this is not atomic with
+    // the finalizer, which does not hold this lock, so a contribution can still
+    // slip past in the tiny gap before commit. Bounded and low severity
+    // (operator-triggered finalize; a dropped late contribution does not weaken
+    // the setup) — full atomicity needs a shared lock. Deliberate; see PR #62.
+    const lockedManifest = await getManifest();
     const eligible = await checkEligibility(
       id,
       participantId,
-      manifest,
+      lockedManifest,
       circuitConfig.targetContributions,
       config.queueTimeoutSeconds,
     );
