@@ -153,7 +153,7 @@ export function useContributionFlow(options: {
       setContributionPhase("uploading");
       setContributionProgress(85);
 
-      const blobUrl = await uploadZkey({
+      const objectKey = await uploadZkey({
         circuitId,
         payload: result.zkey,
         signal: controller.signal,
@@ -168,7 +168,7 @@ export function useContributionFlow(options: {
       const receipt = await submitContribution({
         circuitId,
         contributionHash: result.contributionHash,
-        blobUrl,
+        objectKey,
         signal: controller.signal,
       });
       if (receipt.contributionHash.toLowerCase() !== result.zkeyHash.toLowerCase()) {

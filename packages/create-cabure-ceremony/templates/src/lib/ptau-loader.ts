@@ -7,10 +7,11 @@ import path from "node:path";
 // Prefer a local file when present, so `next dev` and the operator scripts read
 // the on-disk copy with no download.
 //
-// Do NOT cache the ptau to /tmp. verifyChain writes the ptau (~300 MB) plus the
-// genesis and latest zkey into /tmp, and Vercel caps /tmp at 512 MB. A second
-// 300 MB ptau copy here pushes the total past that cap, so writes fail with
-// ENOSPC and verifyChain returns false for a valid contribution.
+// Cache the ptau in memory, not on /tmp. verifyChain already writes the ptau
+// (~300 MB) plus the genesis and latest zkey into /tmp; a second on-disk copy
+// here just competes for the same ephemeral space. Size /tmp via the Lambda
+// `storage` setting in sst.config.ts (default 512 MB) so verifyChain's own
+// writes do not hit ENOSPC and return false for a valid contribution.
 let cached: { key: string; bytes: Uint8Array } | null = null;
 
 export async function loadPtau(options: {

@@ -21,7 +21,7 @@ describe("summary output", () => {
     expect(summary).toContain("    2. npm install");
     expect(summary).toContain("npm run setup:ptau");
     expect(summary).toContain(
-      "Review env vars and deployment settings before importing into Vercel.",
+      "Set env vars (.env), then deploy to AWS with `npm run deploy` (SST). See README.",
     );
     expect(summary).not.toContain(process.cwd());
   });

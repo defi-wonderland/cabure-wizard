@@ -154,28 +154,42 @@ export async function getZkeyInfo(
   );
 }
 
+// Ask the server for a presigned S3 PUT URL (it runs the eligibility checks and
+// chooses the object key), upload the zkey straight to S3, then return the key
+// for submitContribution to hand to the contribute route.
 export async function uploadZkey(options: {
   circuitId: string;
   payload: Uint8Array;
   signal?: AbortSignal;
 }): Promise<string> {
-  const { upload } = await import("@vercel/blob/client");
-  const blob = await upload(
-    `contributions/${options.circuitId}/pending.zkey`,
-    new Blob([options.payload as BlobPart]),
+  const { uploadUrl, key } = await apiFetch<{ uploadUrl: string; key: string }>(
+    `/api/ceremony/circuits/${options.circuitId}/upload`,
     {
-      access: "public",
-      handleUploadUrl: `/api/ceremony/circuits/${options.circuitId}/upload`,
-      abortSignal: options.signal,
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+      signal: options.signal,
     },
   );
-  return blob.url;
+
+  const response = await fetch(uploadUrl, {
+    method: "PUT",
+    body: new Blob([options.payload as BlobPart]),
+    signal: options.signal,
+  });
+  if (!response.ok) {
+    throw new Error(
+      `Failed to upload contribution to storage (status ${response.status}).`,
+    );
+  }
+
+  return key;
 }
 
 export async function submitContribution(options: {
   circuitId: string;
   contributionHash: string;
-  blobUrl: string;
+  objectKey: string;
   signal?: AbortSignal;
 }): Promise<ReceiptResponse> {
   return await apiFetch<ReceiptResponse>(
@@ -184,7 +198,7 @@ export async function submitContribution(options: {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        blobUrl: options.blobUrl,
+        objectKey: options.objectKey,
         contributionHash: options.contributionHash,
       }),
       signal: options.signal,

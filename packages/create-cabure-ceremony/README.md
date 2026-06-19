@@ -9,7 +9,7 @@ CLI wizard that scaffolds a deploy-ready Groth16 Phase 2 trusted setup ceremony 
 - `circuits/` directory — populated automatically with `.r1cs` files when you provide a circuit path in prompt #4, otherwise empty for manual setup
 - API route stubs under `app/api/ceremony/*`
 - Operator scripts: `setup:ptau`, `init:ceremony`, `finalize:ceremony`, `reset:ceremony`
-- Minimal `vercel.json` and `.env.example`
+- `sst.config.ts` for AWS deployment (Lambda + S3 + CloudFront) and `.env.example`
 
 ### Wizard prompts
 
@@ -45,9 +45,9 @@ npm run dev
 | Script                      | Description                                                            |
 | --------------------------- | ---------------------------------------------------------------------- |
 | `npm run setup:ptau`        | Detect circuit constraints, download the correct PPoT ptau, and update config |
-| `npm run init:ceremony`     | Generate genesis zkey, upload to Blob, write manifest to KV. Saves local copies and transcript to `public/genesis/` |
+| `npm run init:ceremony`     | Generate genesis zkey, upload to S3, write manifest to KV. Saves local copies and transcript to `public/genesis/` |
 | `npm run finalize:ceremony` | Apply beacon (Ethereum RANDAO by default), verify zkeys. Saves final zkeys, vkeys, and transcript to `public/finalize/` |
-| `npm run reset:ceremony`    | Wipe all KV keys and Blob zkeys for a fresh start |
+| `npm run reset:ceremony`    | Wipe all KV keys and S3 zkeys for a fresh start |
 
 Initialization generates `public/genesis/init-transcript.json` and `public/genesis/{circuitId}.genesis.zkey` for each circuit.
 

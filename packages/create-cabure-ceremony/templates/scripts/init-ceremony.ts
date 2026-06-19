@@ -3,10 +3,10 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 
-import { put } from "@vercel/blob";
 import { loadEnvConfig } from "@next/env";
 import { generateInitialZkey, verify } from "@wonderland/cabure-crypto";
 
+import { putBinary } from "@/lib/blob-store";
 import { getEndDateDeadlineMs } from "@/lib/ceremony-state";
 import {
   clearParticipantContributions,
@@ -97,15 +97,16 @@ async function main() {
     );
   }
 
-  const token = process.env.BLOB_READ_WRITE_TOKEN?.trim();
-  if (!token) {
+  if (!process.env.CEREMONY_BUCKET || !process.env.CLOUDFRONT_DOMAIN) {
     throw new Error(
-      "BLOB_READ_WRITE_TOKEN is required. Ensure it is set in your shell or loaded via .env/.env.local.",
+      "CEREMONY_BUCKET and CLOUDFRONT_DOMAIN are required. Take them from the " +
+        "`sst deploy` outputs and set them in .env/.env.local. AWS credentials " +
+        "come from your AWS CLI profile or environment.",
     );
   }
   if (!process.env.KV_REST_API_URL || !process.env.KV_REST_API_TOKEN) {
     throw new Error(
-      "KV_REST_API_URL and KV_REST_API_TOKEN are required. Pull env vars from Vercel or set them in .env/.env.local.",
+      "KV_REST_API_URL and KV_REST_API_TOKEN are required. Set them in .env/.env.local.",
     );
   }
 
@@ -208,25 +209,21 @@ async function main() {
     // parameters must live at their own path to stay checkable for the whole
     // ceremony. `current.zkey` is the mutable live pointer.
     //
-    // allowOverwrite stays false on a plain re-run so it cannot silently replace
-    // the pinned root once a ceremony is live. --force flips it to true, which
-    // replaces the pin in a single put. We never delete first: a delete-then-put
-    // would leave a window where a transient put failure strands the ceremony
-    // with no genesis pin at all. An overwriting put either succeeds with the new
-    // pin or fails with the old pin still in place.
-    console.log(`  Uploading genesis zkey to Vercel Blob...`);
+    // overwrite stays false on a plain re-run (S3 conditional create), so a put
+    // cannot silently replace the pinned root once a ceremony is live. --force
+    // flips it to a plain put that replaces the pin in one call. We never delete
+    // first: a delete-then-put would leave a window where a transient put failure
+    // strands the ceremony with no genesis pin at all. An overwriting put either
+    // succeeds with the new pin or fails with the old pin still in place.
+    console.log(`  Uploading genesis zkey to S3...`);
     const genesisBlobPath = `${ceremonyConfig.storage.zkeyPrefix}/${circuit.id}/genesis.zkey`;
 
-    const genesisUpload = await put(genesisBlobPath, Buffer.from(zkey), {
-      access: "public",
-      token,
-      contentType: "application/octet-stream",
-      addRandomSuffix: false,
-      allowOverwrite: force,
+    const genesisUpload = await putBinary(genesisBlobPath, zkey, {
+      overwrite: force,
     }).catch((error) => {
       throw new Error(
         `Failed to pin genesis for ${circuit.id} at ${genesisBlobPath}. ` +
-          "A genesis blob may already exist; re-run with --force to replace it, " +
+          "A genesis object may already exist; re-run with --force to replace it, " +
           "or run reset:ceremony for a full reset. " +
           `Cause: ${error instanceof Error ? error.message : String(error)}`,
       );
@@ -234,13 +231,7 @@ async function main() {
     console.log(`  Genesis pinned at: ${genesisUpload.url}`);
 
     const blobPath = `${ceremonyConfig.storage.zkeyPrefix}/${circuit.id}/current.zkey`;
-    const zkeyUpload = await put(blobPath, Buffer.from(zkey), {
-      access: "public",
-      token,
-      contentType: "application/octet-stream",
-      addRandomSuffix: false,
-      allowOverwrite: true,
-    });
+    const zkeyUpload = await putBinary(blobPath, zkey);
     console.log(`  Uploaded live pointer to: ${zkeyUpload.url}`);
 
     const localZkeyFile = `${circuit.id}.genesis.zkey`;
@@ -255,16 +246,9 @@ async function main() {
     let circuitPtauUrl = ptauUrlByPath.get(ptauPath);
     if (!circuitPtauUrl) {
       const ptauHash = createHash("sha256").update(ptau).digest("hex");
-      const ptauUpload = await put(
+      const ptauUpload = await putBinary(
         `${ceremonyConfig.storage.zkeyPrefix}/pot-${ptauHash}.ptau`,
-        Buffer.from(ptau),
-        {
-          access: "public",
-          token,
-          contentType: "application/octet-stream",
-          addRandomSuffix: false,
-          allowOverwrite: true,
-        },
+        ptau,
       );
       circuitPtauUrl = ptauUpload.url;
       ptauUrlByPath.set(ptauPath, circuitPtauUrl);

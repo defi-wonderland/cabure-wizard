@@ -30,22 +30,30 @@ Copy `.env.example` to `.env` and fill in the values:
 cp .env.example .env
 ```
 
-| Variable                | Source              | Purpose                           |
-| ----------------------- | ------------------- | --------------------------------- |
-| `BLOB_READ_WRITE_TOKEN` | Vercel Blob         | Read/write zkey files             |
-| `KV_REST_API_URL`       | Vercel KV (Upstash) | Redis endpoint for ceremony state |
-| `KV_REST_API_TOKEN`     | Vercel KV (Upstash) | Redis auth token                  |
-| `GITHUB_CLIENT_ID`      | GitHub OAuth App    | OAuth client ID                   |
-| `GITHUB_CLIENT_SECRET`  | GitHub OAuth App    | OAuth client secret               |
-| `NEXTAUTH_SECRET`       | Generated locally   | JWT session encryption secret     |
-| `NEXTAUTH_URL`          | Deployment URL      | Canonical app URL                 |
+| Variable               | Source                | Purpose                              |
+| ---------------------- | --------------------- | ------------------------------------ |
+| `AWS_REGION`           | Your AWS account      | Region to deploy into                |
+| `CEREMONY_BUCKET`      | `sst deploy` output   | S3 bucket holding zkeys + ptau       |
+| `CLOUDFRONT_DOMAIN`    | `sst deploy` output   | CloudFront origin for zkey downloads |
+| `KV_REST_API_URL`      | Upstash Redis         | Redis endpoint for ceremony state    |
+| `KV_REST_API_TOKEN`    | Upstash Redis         | Redis auth token                     |
+| `GITHUB_CLIENT_ID`     | GitHub OAuth App      | OAuth client ID                      |
+| `GITHUB_CLIENT_SECRET` | GitHub OAuth App      | OAuth client secret                  |
+| `NEXTAUTH_SECRET`      | Generated locally     | JWT session encryption secret        |
+| `NEXTAUTH_URL`         | Deployed app URL      | Canonical app URL                    |
 
-### 4. Provision Vercel storage
+AWS credentials are not env vars here — they come from your AWS CLI profile or
+environment (e.g. `aws configure` / `AWS_PROFILE`). `CEREMONY_BUCKET` and
+`CLOUDFRONT_DOMAIN` do not exist until your first `sst deploy`; copy them from
+its output into `.env` before running the operator scripts.
 
-1. Link to a Vercel project: `vercel link`
-2. Create a **Blob** store in the Vercel dashboard (Storage tab).
-3. Create a **KV (Upstash)** store in the same tab.
-4. Pull the generated env vars: `vercel env pull`
+### 4. Provision storage
+
+1. Configure AWS credentials (`aws configure`, or set `AWS_PROFILE`). The S3
+   bucket and CloudFront distribution are created for you by `sst deploy`
+   (see [Deploy](#deploy)).
+2. Create an **Upstash Redis** database (console.upstash.com) and copy its REST
+   URL and token into `KV_REST_API_URL` / `KV_REST_API_TOKEN`.
 
 ### 5. GitHub OAuth
 
@@ -68,23 +76,117 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000).
 
-## Deploy
+## Local development (MinIO)
+
+Storage is the one piece that cannot run on `next dev` alone: the upload and
+download paths talk to S3. To develop fully offline — no AWS account, no
+credentials — emulate S3 with [MinIO](https://min.io) (Docker) and keep ceremony
+state on your existing Upstash database.
+
+MinIO needs no license or signup. [LocalStack](https://localstack.cloud) also
+works but now requires an auth token even to start, so MinIO is the simpler
+default. The app reads `S3_ENDPOINT` to target a local S3 server; leave it unset
+in real deployments.
+
+### 1. Start MinIO
+
+MinIO serves the S3 API on container port 9000; map it to host `4566` so
+`S3_ENDPOINT` is a round number. The password must be at least 8 characters.
 
 ```bash
-vercel --prod
+docker run --rm -d --name minio -p 4566:9000 \
+  -e MINIO_ROOT_USER=test -e MINIO_ROOT_PASSWORD=test12345 \
+  minio/minio server /data
 ```
 
-Add all environment variables in the Vercel dashboard under **Settings > Environment Variables**. Set `NEXTAUTH_URL` to your production domain.
+### 2. Point `.env` at MinIO
 
-The init script only needs to run once. After deploying, the API routes handle ceremony state automatically.
+The access key/secret must match MinIO's root user/password above.
+
+```bash
+AWS_REGION=us-east-1
+AWS_ACCESS_KEY_ID=test
+AWS_SECRET_ACCESS_KEY=test12345
+S3_ENDPOINT=http://localhost:4566
+CEREMONY_BUCKET=cabure-local
+CLOUDFRONT_DOMAIN=http://localhost:4566/cabure-local   # path-style object URL
+# KV_REST_API_*, GITHUB_*, NEXTAUTH_* as usual (Upstash + GitHub stay remote)
+```
+
+`CLOUDFRONT_DOMAIN` points at the bucket path-style, so download URLs resolve to
+`http://localhost:4566/cabure-local/<key>` — real, fetchable objects.
+
+### 3. Create the bucket
+
+```bash
+npm run localstack:setup
+```
+
+(The name is historical — it sets up whatever local S3 `S3_ENDPOINT` points at.)
+It uses the AWS SDK already in the project — no AWS CLI needed — to create the
+bucket and open it to public reads (downloads use plain GET). It refuses to run
+unless `S3_ENDPOINT` is set, so it can never touch real AWS. The CORS step is
+best-effort: MinIO does not implement `PutBucketCors` and is permissive by
+default, so a skip there is fine.
+
+### 4. Run the flow
+
+```bash
+npm run setup:ptau        # downloads the ptau into circuits/
+npm run init:ceremony     # uploads genesis/current/ptau to S3, manifest to Upstash
+npm run dev               # http://localhost:3000 — log in, join queue, contribute
+npm run finalize:ceremony # downloads from S3, verifies the chain, applies the beacon
+npm run reset:ceremony    # wipes the S3 prefixes and KV
+docker stop minio
+```
+
+**Scope:** this exercises the whole storage path (presigned upload, read-by-key,
+deletes, download URLs, the full contribute -> finalize chain) against real
+Upstash. It does NOT cover CloudFront's response time limit, Lambda `/tmp`
+sizing, or OpenNext bundling — those only appear under `sst dev` / `sst deploy`.
+
+**Gotchas:** a queue slot expires after `queueTimeoutSeconds` (default 300s), so
+join the queue and contribute in one go. The CLI's upload is a plain Node
+`fetch` PUT and needs no CORS; only the browser does.
+
+## Deploy
+
+Deploys to AWS with [SST](https://sst.dev): the app runs as a Lambda behind
+CloudFront, zkeys/ptau live in S3.
+
+```bash
+npm run deploy   # sst deploy --stage production
+```
+
+First deploy:
+
+1. Run `npm run deploy`. SST creates the S3 bucket, CloudFront distribution, and
+   the app Lambda, then prints `url`, `cdn`, and `bucket`.
+2. Copy `bucket` → `CEREMONY_BUCKET` and `cdn` → `CLOUDFRONT_DOMAIN` in `.env`
+   (the operator scripts need them).
+3. Set `NEXTAUTH_URL` to the printed `url` and point your GitHub OAuth App
+   callback at `<url>/api/auth/callback/github`, then run `npm run deploy` again
+   so the Lambda picks up `NEXTAUTH_URL`.
+4. Run `npm run init:ceremony` once. After that the API routes handle ceremony
+   state automatically.
+
+`sst remove` tears the whole stack down (the bucket is retained on the
+`production` stage).
+
+> Heavy-circuit note: the contribute route runs `verifyChain` inline. Requests
+> reach the Lambda through CloudFront, which caps an origin response at 60s
+> (180s max via an AWS Support limit increase). A circuit whose verify exceeds
+> that needs verification moved to an async worker — the Lambda itself is sized
+> for memory and `/tmp` headroom in `sst.config.ts`, but the synchronous request
+> path is bounded by CloudFront.
 
 ## Scripts
 
 | Script                      | Description                                                                               |
 | --------------------------- | ----------------------------------------------------------------------------------------- |
 | `npm run setup:ptau`        | Detect circuit constraints, download the correct PPoT ptau, and update config             |
-| `npm run init:ceremony`     | Generate genesis zkey, upload to Blob, write manifest to KV. Outputs to `public/genesis/` |
-| `npm run reset:ceremony`    | Wipe all KV keys and Blob zkeys for a fresh start                                         |
+| `npm run init:ceremony`     | Generate genesis zkey, upload to S3, write manifest to KV. Outputs to `public/genesis/`   |
+| `npm run reset:ceremony`    | Wipe all KV keys and S3 zkeys for a fresh start                                            |
 | `npm run finalize:ceremony` | Apply beacon (Ethereum RANDAO by default), verify zkeys. Outputs to `public/finalize/`    |
 
 ### Setup ptau

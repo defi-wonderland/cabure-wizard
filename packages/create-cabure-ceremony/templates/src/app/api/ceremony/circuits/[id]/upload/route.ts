@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { handleUpload, type HandleUploadBody } from "@vercel/blob/client";
 
 import { getCeremonyConfig } from "@/lib/ceremony-config";
 import {
@@ -11,66 +10,66 @@ import {
   pruneExpiredEntries,
 } from "@/lib/ceremony-state";
 import { getParticipant } from "@/lib/participant-auth";
+import { presignPut } from "@/lib/blob-store";
 
+// Gate eligibility, then hand back a presigned S3 PUT URL the client uploads to
+// directly. This replaces Vercel Blob's handleUpload token flow. The eligibility
+// checks here mirror the contribute route's pre-check; the contribute route is
+// still authoritative (it re-checks under the per-circuit lock), so a stale
+// allow here only wastes an upload, it cannot commit an ineligible contribution.
 export async function POST(
   request: Request,
   context: { params: Promise<{ id: string }> },
 ) {
   const { id } = await context.params;
-  const body = (await request.json()) as HandleUploadBody;
 
   try {
-    const jsonResponse = await handleUpload({
-      body,
-      request,
-      onBeforeGenerateToken: async () => {
-        const participant = await getParticipant(request);
-        if (!participant) {
-          throw new Error("Unauthorized");
-        }
+    const participant = await getParticipant(request);
+    if (!participant) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
 
-        const config = getCeremonyConfig();
-        const manifest = await getManifest();
-        const allCircuits = await getAllCircuitStates();
+    const config = getCeremonyConfig();
+    const manifest = await getManifest();
+    const allCircuits = await getAllCircuitStates();
 
-        if (!isCeremonyActive(manifest, allCircuits)) {
-          throw new Error("Ceremony is not active");
-        }
+    if (!isCeremonyActive(manifest, allCircuits)) {
+      return NextResponse.json(
+        { error: "Ceremony is not active" },
+        { status: 403 },
+      );
+    }
 
-        if (
-          await hasParticipantContributedToCircuit(
-            participant.participantId,
-            id,
-          )
-        ) {
-          throw new Error("You have already contributed to this circuit");
-        }
+    if (
+      await hasParticipantContributedToCircuit(participant.participantId, id)
+    ) {
+      return NextResponse.json(
+        { error: "You have already contributed to this circuit" },
+        { status: 403 },
+      );
+    }
 
-        const circuit = await getCircuitState(id);
-        const pruned = pruneExpiredEntries(
-          circuit.queue,
-          config.queueTimeoutSeconds,
-        );
+    const circuit = await getCircuitState(id);
+    const pruned = pruneExpiredEntries(
+      circuit.queue,
+      config.queueTimeoutSeconds,
+    );
+    if (pruned[0]?.participantId !== participant.participantId) {
+      return NextResponse.json(
+        { error: "Not at front of the queue" },
+        { status: 409 },
+      );
+    }
 
-        if (pruned[0]?.participantId !== participant.participantId) {
-          throw new Error("Not at front of the queue");
-        }
+    // Per-attempt key. The contribute route validates this prefix and reads the
+    // object back by key. A UUID keeps two uploads from the same participant from
+    // clobbering each other.
+    const key = `contributions/${id}/pending-${participant.participantId}-${crypto.randomUUID()}.zkey`;
+    const uploadUrl = await presignPut(key);
 
-        return {
-          allowedContentTypes: ["application/octet-stream"],
-          addRandomSuffix: true,
-          tokenPayload: JSON.stringify({
-            participantId: participant.participantId,
-            circuitId: id,
-          }),
-        };
-      },
-    });
-
-    return NextResponse.json(jsonResponse);
+    return NextResponse.json({ uploadUrl, key });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    const status = message === "Unauthorized" ? 401 : 400;
-    return NextResponse.json({ error: message }, { status });
+    return NextResponse.json({ error: message }, { status: 400 });
   }
 }

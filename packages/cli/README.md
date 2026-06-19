@@ -60,11 +60,11 @@ For the device flow to work, the ceremony operator must check **Enable Device Fl
 For each circuit:
 
 1. **Queue** — join the contribution queue and poll until at the front.
-2. **Download** — fetch the current zkey from Vercel Blob, verify its SHA-256 hash.
+2. **Download** — fetch the current zkey from the ceremony CDN, verify its SHA-256 hash.
 3. **Entropy** — generate 64 bytes from the system CSPRNG (`node:crypto.randomBytes`).
 4. **Compute** — run `zKey.contribute()` via `@wonderland/cabure-crypto`.
-5. **Upload** — upload the contributed zkey to Vercel Blob via `@vercel/blob/client`.
-6. **Submit** — POST the blob URL and contribution hash to the ceremony server for validation.
+5. **Upload** — request a presigned S3 URL from the server, then PUT the contributed zkey to it.
+6. **Submit** — POST the object key and contribution hash to the ceremony server for validation.
 
 ## Development
 
@@ -79,5 +79,7 @@ The build uses esbuild to bundle `src/index.ts` into `dist/index.js` (ESM, Node 
 ## Dependencies
 
 - `@wonderland/cabure-crypto` — snarkjs contribute/verify/entropy
-- `@vercel/blob` — client upload to Vercel Blob
 - `commander` — argument parsing
+
+The contributed zkey is uploaded with a presigned S3 URL the server mints, so the
+CLI needs no storage SDK or cloud credentials of its own.
