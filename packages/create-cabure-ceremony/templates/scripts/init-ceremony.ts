@@ -148,10 +148,11 @@ async function main() {
     ptauPath: string;
   }> = [];
 
-  // Maps an artifacts.ptauPath to the URL it was uploaded to, so circuits that
-  // share one ptau upload it once instead of re-reading and re-uploading ~300 MB
-  // per circuit.
-  const ptauUrlByPath = new Map<string, string>();
+  // Caches ptau bytes and the uploaded URL per artifacts.ptauPath, so circuits
+  // sharing one ptau read it from disk and upload it once instead of once per
+  // circuit. The bytes stay resident for the whole loop — one ~300 MB buffer for
+  // a single shared ptau, which the script's heap budget covers.
+  const ptauByPath = new Map<string, { bytes: Uint8Array; url?: string }>();
 
   for (const circuit of ceremonyConfig.circuits) {
     console.log(`[${circuit.id}] Generating genesis zkey...`);
@@ -159,8 +160,15 @@ async function main() {
     console.log(`  Loading r1cs: ${circuit.artifacts.r1csPath}`);
     const r1cs = await readArtifact(circuit.artifacts.r1csPath);
 
-    console.log(`  Loading ptau: ${circuit.artifacts.ptauPath}`);
-    const ptau = await readArtifact(circuit.artifacts.ptauPath);
+    let ptauEntry = ptauByPath.get(circuit.artifacts.ptauPath);
+    if (!ptauEntry) {
+      console.log(`  Loading ptau: ${circuit.artifacts.ptauPath}`);
+      ptauEntry = { bytes: await readArtifact(circuit.artifacts.ptauPath) };
+      ptauByPath.set(circuit.artifacts.ptauPath, ptauEntry);
+    } else {
+      console.log(`  Reusing loaded ptau: ${circuit.artifacts.ptauPath}`);
+    }
+    const ptau = ptauEntry.bytes;
 
     console.log(`  Running Phase 2 setup...`);
     const zkey = await generateInitialZkey(ptau, r1cs);
@@ -228,7 +236,7 @@ async function main() {
     // not on the deployed function's filesystem. Content-addressed so a changed
     // ptau gets a new URL (busts the route's URL-keyed cache). Deduped by path:
     // circuits sharing one ptau upload it once.
-    let circuitPtauUrl = ptauUrlByPath.get(circuit.artifacts.ptauPath);
+    let circuitPtauUrl = ptauEntry.url;
     if (!circuitPtauUrl) {
       const ptauHash = createHash("sha256").update(ptau).digest("hex");
       const ptauUpload = await put(
@@ -243,7 +251,7 @@ async function main() {
         },
       );
       circuitPtauUrl = ptauUpload.url;
-      ptauUrlByPath.set(circuit.artifacts.ptauPath, circuitPtauUrl);
+      ptauEntry.url = circuitPtauUrl;
       console.log(`  Ptau published at: ${circuitPtauUrl}`);
     } else {
       console.log(`  Ptau already published at: ${circuitPtauUrl}`);
