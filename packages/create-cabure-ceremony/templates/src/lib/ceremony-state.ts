@@ -49,8 +49,13 @@ export interface ManifestState {
   endDate: string | null;
   startedAt: number;
   circuits: Array<{ id: string }>;
+  // Resolved beacon, persisted at seal time so an interrupted finalize reuses
+  // the same value on recovery and can never re-roll it. See finalize-ceremony.
   beaconHash?: string;
+  beaconSource?: string;
+  beaconSlot?: number;
   beaconApplied?: boolean;
+  finalizingAt?: number;
   finalizedAt?: number;
 }
 
@@ -150,6 +155,16 @@ export function isCeremonyActive(
 ): boolean {
   const config = getCeremonyConfig();
   const now = Date.now();
+  // Hard seal. The ceremony stops accepting contributions for good once
+  // finalization starts: beaconApplied means it finished, finalizingAt means a
+  // finalize:ceremony run is in progress or was interrupted. Neither expires on
+  // its own. Auto-reopening would let contributions resume while a finalizer is
+  // still working from its snapshot, and they would be dropped from the final
+  // artifacts. An interrupted run is recovered explicitly: finalize --force to
+  // take over and resume, or reset:ceremony to start clean.
+  if (manifest.beaconApplied || manifest.finalizingAt !== undefined) {
+    return false;
+  }
   let endDateMs: number | null;
   try {
     endDateMs = getEndDateDeadlineMs(manifest.endDate);
@@ -180,6 +195,12 @@ export function isCircuitActive(
   circuit: CircuitState,
   targetContributions: number,
 ): boolean {
+  // Same hard seal as isCeremonyActive. The contribute path uses this function
+  // and is the only one that overwrites current.zkey, so without this check a
+  // --force early finalize would let contributions slip in during finalization.
+  if (manifest.beaconApplied || manifest.finalizingAt !== undefined) {
+    return false;
+  }
   let endDateMs: number | null;
   try {
     endDateMs = getEndDateDeadlineMs(manifest.endDate);

@@ -84,7 +84,7 @@ The init script only needs to run once. After deploying, the API routes handle c
 | --------------------------- | ----------------------------------------------------------------------------------------- |
 | `npm run setup:ptau`        | Detect circuit constraints, download the correct PPoT ptau, and update config             |
 | `npm run init:ceremony`     | Generate genesis zkey, upload to Blob, write manifest to KV. Outputs to `public/genesis/` |
-| `npm run reset:ceremony`    | Wipe all KV keys and Blob zkeys for a fresh start                                         |
+| `npm run reset:ceremony`    | Wipe all KV keys and Blob zkeys for a fresh start (refuses a finalized ceremony unless `-- --force`) |
 | `npm run finalize:ceremony` | Apply beacon (Ethereum RANDAO by default), verify zkeys. Outputs to `public/finalize/`    |
 
 ### Setup ptau
@@ -108,6 +108,8 @@ npm run finalize:ceremony -- --force                   # finalize before target 
 ```
 
 For maximum verifiability, announce a future beacon chain slot number publicly before running with `--beacon-slot`. The RANDAO reveal is fetched from the Ethereum Beacon API (`BEACON_API_URL` env var overrides the default public endpoint).
+
+Finalization seals the ceremony the moment it starts and commits the beacon at the same time. If a run is interrupted, the ceremony stays sealed: resume with `npm run finalize:ceremony -- --force`, which reuses the committed beacon so the result is reproducible, or run `npm run reset:ceremony` to start over. The beacon cannot be silently re-rolled by re-running.
 
 ### Initialization output
 
