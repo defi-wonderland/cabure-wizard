@@ -5,6 +5,10 @@ AWS_REGION=us-east-1
 CEREMONY_BUCKET=
 CLOUDFRONT_DOMAIN=
 
+# Local testing only: point the S3 client at a local S3-compatible server
+# (LocalStack / MinIO). Leave unset in real deployments.
+# S3_ENDPOINT=http://localhost:4566
+
 KV_REST_API_URL=
 KV_REST_API_TOKEN=
 

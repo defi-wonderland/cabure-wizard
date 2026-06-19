@@ -76,6 +76,77 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000).
 
+## Local development (LocalStack)
+
+Storage is the one piece that cannot run on `next dev` alone: the upload and
+download paths talk to S3. To develop fully offline — no AWS account, no
+credentials — emulate S3 with [LocalStack](https://localstack.cloud) (or MinIO)
+and keep ceremony state on your existing Upstash database.
+
+The app reads `S3_ENDPOINT` to target a local S3 server; leave it unset in real
+deployments.
+
+### 1. Start LocalStack
+
+```bash
+docker run --rm -d --name localstack -p 4566:4566 localstack/localstack
+```
+
+### 2. Create the bucket
+
+LocalStack accepts any credentials, so dummy values are fine.
+
+```bash
+export AWS_ACCESS_KEY_ID=test AWS_SECRET_ACCESS_KEY=test AWS_REGION=us-east-1
+AWS="aws --endpoint-url=http://localhost:4566"
+
+$AWS s3 mb s3://cabure-local
+
+# Downloads (genesis/current/ptau) are fetched by plain GET — allow public read.
+$AWS s3api put-bucket-policy --bucket cabure-local --policy \
+'{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":"*","Action":"s3:GetObject","Resource":"arn:aws:s3:::cabure-local/*"}]}'
+
+# The browser PUTs to the presigned URL cross-origin (3000 -> 4566) — allow CORS.
+$AWS s3api put-bucket-cors --bucket cabure-local --cors-configuration \
+'{"CORSRules":[{"AllowedOrigins":["http://localhost:3000"],"AllowedMethods":["PUT","GET"],"AllowedHeaders":["*"]}]}'
+```
+
+### 3. Point `.env` at LocalStack
+
+```bash
+AWS_REGION=us-east-1
+AWS_ACCESS_KEY_ID=test          # dummy — only safe because this is LocalStack
+AWS_SECRET_ACCESS_KEY=test
+S3_ENDPOINT=http://localhost:4566
+CEREMONY_BUCKET=cabure-local
+CLOUDFRONT_DOMAIN=http://localhost:4566/cabure-local   # path-style object URL
+# KV_REST_API_*, GITHUB_*, NEXTAUTH_* as usual (Upstash + GitHub stay remote)
+```
+
+`CLOUDFRONT_DOMAIN` points at the bucket path-style, so download URLs resolve to
+`http://localhost:4566/cabure-local/<key>` — real, fetchable objects.
+
+### 4. Run the flow
+
+```bash
+npm run setup:ptau        # downloads the ptau into circuits/
+npm run init:ceremony     # uploads genesis/current/ptau to LocalStack, manifest to Upstash
+npm run dev               # http://localhost:3000 — log in, join queue, contribute
+npm run finalize:ceremony # downloads from LocalStack, verifies the chain, applies the beacon
+npm run reset:ceremony    # wipes the S3 prefixes and KV
+docker stop localstack
+```
+
+**Scope:** this exercises the whole storage path (presigned upload, read-by-key,
+deletes, download URLs, the full contribute -> finalize chain) against real
+Upstash. It does NOT cover CloudFront's response time limit, Lambda `/tmp`
+sizing, or OpenNext bundling — those only appear under `sst dev` / `sst deploy`.
+
+**Gotchas:** the genesis pin uses an S3 conditional create (`If-None-Match`);
+old LocalStack images may ignore it and overwrite — only matters if you re-run
+`init:ceremony` without `--force`. The CLI's upload is a plain Node `fetch` PUT
+and needs no CORS; only the browser does.
+
 ## Deploy
 
 Deploys to AWS with [SST](https://sst.dev): the app runs as a Lambda behind

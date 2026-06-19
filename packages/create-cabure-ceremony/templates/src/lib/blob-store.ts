@@ -26,9 +26,14 @@ let _client: S3Client | null = null;
 // The region and credentials come from the ambient environment: the Lambda
 // execution role in production, the operator's AWS profile/env for the local
 // scripts. No explicit token, unlike Vercel Blob.
+//
+// S3_ENDPOINT points the client at a local S3-compatible server (LocalStack,
+// MinIO) for offline testing. Unset in production. forcePathStyle is required
+// there because those servers do not serve virtual-host bucket subdomains.
 function client(): S3Client {
   if (!_client) {
-    _client = new S3Client({});
+    const endpoint = process.env.S3_ENDPOINT?.trim();
+    _client = new S3Client(endpoint ? { endpoint, forcePathStyle: true } : {});
   }
   return _client;
 }
