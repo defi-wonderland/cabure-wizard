@@ -22,6 +22,16 @@ import {
 import { deleteBinary, putBinary } from "@/lib/blob-store";
 import { acquireLock, releaseLock, writeContribution } from "@/lib/kv-store";
 
+// This route downloads the ptau and genesis, then runs verifyChain — all in
+// the request. Pin the function timeout above that budget (ptau 120s + genesis
+// 60s + verify), or the platform kills the request before our own AbortSignals
+// fire. A Next.js route-segment export; OpenNext maps it to the Lambda timeout,
+// so it is not Vercel-specific. Circuits too large to finish under this must
+// verify on an external worker instead.
+export const maxDuration = 300;
+// snarkjs needs Node APIs and worker threads. Never run this route on edge.
+export const runtime = "nodejs";
+
 const BLOB_HOST_SUFFIX = ".public.blob.vercel-storage.com";
 
 function isValidPendingBlobUrl(url: string, circuitId: string): boolean {
@@ -204,7 +214,7 @@ export async function POST(
       // matches the hash from init, so the chain roots in the real genesis, not
       // a swapped blob.
       const genesisResponse = await fetch(precheck.circuit.initialZkeyUrl, {
-        signal: AbortSignal.timeout(120_000),
+        signal: AbortSignal.timeout(60_000),
       });
       if (!genesisResponse.ok) {
         await deleteBinary(blobUrl).catch(() => {});

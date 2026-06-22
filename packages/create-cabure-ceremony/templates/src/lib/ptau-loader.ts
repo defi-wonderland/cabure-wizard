@@ -43,8 +43,9 @@ export async function loadPtau(options: {
   }
 
   // Time-box the download. The signal aborts the whole request, including the
-  // body stream, so a stalled ~300 MB transfer fails fast instead of burning
-  // the function's entire time budget and surfacing as an opaque platform kill.
+  // body stream, so a stalled ~300 MB transfer fails fast with our own error
+  // instead of an opaque platform kill. Keep this plus the genesis fetch and
+  // verify under the deploy's function timeout, or the platform kills first.
   try {
     const response = await fetch(options.url, {
       signal: AbortSignal.timeout(120_000),
