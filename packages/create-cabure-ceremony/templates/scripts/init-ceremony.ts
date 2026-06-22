@@ -52,7 +52,6 @@ type CircuitState = {
   initialZkeyHash: string;
   initialZkeyUrl: string;
   ptauUrl: string;
-  headCount: number;
   headContributionHash: string | null;
   csHash: string;
 };
@@ -297,7 +296,6 @@ async function main() {
       initialZkeyHash: genesisHash,
       initialZkeyUrl: genesisUpload.url,
       ptauUrl: circuitPtauUrl,
-      headCount: 0,
       headContributionHash: null,
       csHash,
     };

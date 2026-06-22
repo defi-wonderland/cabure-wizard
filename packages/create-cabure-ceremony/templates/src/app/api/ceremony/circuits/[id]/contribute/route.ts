@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createHash } from "node:crypto";
 
-import { parseMpcParams, verifyChain } from "@wonderland/cabure-crypto";
+import {
+  parseMpcParams,
+  verifyChain,
+  type MpcParams,
+} from "@wonderland/cabure-crypto";
 
 import "@/lib/snarkjs-gc-guard";
 import { getCeremonyConfig } from "@/lib/ceremony-config";
@@ -45,17 +49,18 @@ const BLOB_HOST_SUFFIX = ".public.blob.vercel-storage.com";
 // genesis, not that it extends the head, so this is the part that stops a
 // front-of-queue contributor from rebasing onto the genesis and discarding the
 // prior honest contributions. Returns an error message, or null if it extends
-// the head. `mpc` is the parsed result; `headCount`/`headContributionHash`/
-// `csHash` come from the circuit state.
-function checkContinuity(
-  circuit: CircuitState,
-  mpc: { csHash: string; contributions: { hash(): string }[] },
-): string | null {
+// the head.
+//
+// The head's contribution count is `circuit.totalContributions` (every accepted
+// contribution increments it). `headContributionHash` and `csHash` are the
+// cryptographic anchors that come from the circuit state.
+function checkContinuity(circuit: CircuitState, mpc: MpcParams): string | null {
+  const headCount = circuit.totalContributions;
   const count = mpc.contributions.length;
-  if (count !== circuit.headCount + 1) {
+  if (count !== headCount + 1) {
     return "Contribution does not extend the current head: wrong contribution count.";
   }
-  if (circuit.headCount === 0) {
+  if (headCount === 0) {
     // Empty chain. There is no head to link to, so bind the first contribution
     // to this circuit's identity instead. No underflow on headCount - 1.
     if (mpc.csHash !== circuit.csHash) {
@@ -65,11 +70,79 @@ function checkContinuity(
   }
   // The entry at the head position must hash to the recorded head. This ties
   // the upload to the exact chain the coordinator advanced.
-  const linkHash = mpc.contributions[circuit.headCount - 1].hash();
+  const linkHash = mpc.contributions[headCount - 1].hash();
   if (linkHash !== circuit.headContributionHash) {
     return "Contribution does not build on the current head: head hash mismatch.";
   }
   return null;
+}
+
+type ContinuityGateResult =
+  | { ok: true; serverContributionHash: string }
+  | { ok: false; response: NextResponse };
+
+// Run the C-1 continuity gate inside the per-circuit lock. Parses the uploaded
+// zkey, requires it to extend the recorded head (checkContinuity), and on
+// success returns the server-recomputed hash of the new head.
+//
+// Any rejection — a parse failure or a failed continuity check — consumes the
+// front-of-queue turn: the rejected participant is at queue[0], so shift them
+// off and persist that under the lock, otherwise they could sit at the front
+// replaying garbage and grief the queue. The fenced write lands only while we
+// hold the lock; if it does not, another writer owns the state and we drop the
+// change. The rejected upload blob is always removed. Mutates `circuit.queue`
+// on rejection; the caller must run this before the accept-path mutations.
+async function runContinuityGate(opts: {
+  circuit: CircuitState;
+  body: Uint8Array;
+  storedUrl: string;
+  lockKey: string;
+  lockToken: string;
+  circuitStateKey: string;
+}): Promise<ContinuityGateResult> {
+  const { circuit, body, storedUrl, lockKey, lockToken, circuitStateKey } =
+    opts;
+
+  const rejectAndConsumeTurn = async (
+    error: string,
+    status: number,
+  ): Promise<ContinuityGateResult> => {
+    circuit.queue.shift();
+    await writeCircuitStateFenced({
+      lockKey,
+      lockToken,
+      circuitStateKey,
+      circuitState: circuit,
+    });
+    await deleteBinary(storedUrl).catch(() => {});
+    return { ok: false, response: NextResponse.json({ error }, { status }) };
+  };
+
+  // Cap the contribution count at the head count + 1 so a forged file claiming
+  // a huge count is rejected before the parser walks it.
+  let mpc: MpcParams;
+  try {
+    mpc = await parseMpcParams(body, {
+      maxContributions: circuit.totalContributions + 1,
+    });
+  } catch {
+    return rejectAndConsumeTurn(
+      "Contribution is not a parseable zkey for this circuit.",
+      400,
+    );
+  }
+
+  const continuityError = checkContinuity(circuit, mpc);
+  if (continuityError) {
+    return rejectAndConsumeTurn(continuityError, 409);
+  }
+
+  // The new head's hash, recomputed by the server from the uploaded bytes.
+  return {
+    ok: true,
+    serverContributionHash:
+      mpc.contributions[mpc.contributions.length - 1].hash(),
+  };
 }
 
 function isValidPendingBlobUrl(url: string, circuitId: string): boolean {
@@ -351,51 +424,23 @@ export async function POST(
     }
     const circuit = eligible.circuit;
 
-    // Reject a submission that fails the continuity gate, but consume the
-    // front-of-queue turn first. The rejected participant is at queue[0]; shift
-    // them off and persist that under the lock so they cannot sit at the front
-    // replaying garbage. The fenced write lands only while we hold the lock; if
-    // it does not, the state is owned by another writer and we simply drop the
-    // change. The rejected upload blob is always removed.
-    const rejectAndConsumeTurn = async (error: string, status: number) => {
-      circuit.queue.shift();
-      await writeCircuitStateFenced({
-        lockKey,
-        lockToken,
-        circuitStateKey: kvKey(config.storage.circuitStatePrefix, id),
-        circuitState: circuit,
-      });
-      await deleteBinary(stored.url).catch(() => {});
-      return NextResponse.json({ error }, { status });
-    };
-
-    // C-1 continuity gate. Parse the uploaded zkey's MPC params and require it
-    // to extend the recorded head. Cap the contribution count at headCount + 1
-    // so a forged file claiming a huge count is rejected before the parser
-    // walks it. A parse failure is treated as a failed turn, same as a gate
-    // failure, so malformed uploads cannot grief the queue either.
-    let mpc;
-    try {
-      mpc = await parseMpcParams(body, {
-        maxContributions: circuit.headCount + 1,
-      });
-    } catch {
-      return await rejectAndConsumeTurn(
-        "Contribution is not a parseable zkey for this circuit.",
-        400,
-      );
+    // C-1 continuity gate: require the upload to extend the recorded head. On
+    // any rejection it consumes the front-of-queue turn and returns the response
+    // to send. Runs before the accept-path mutations below. The resulting
+    // serverContributionHash is the new head link, also stored in the receipt
+    // for the finalize re-walk.
+    const gate = await runContinuityGate({
+      circuit,
+      body,
+      storedUrl: stored.url,
+      lockKey,
+      lockToken,
+      circuitStateKey: kvKey(config.storage.circuitStatePrefix, id),
+    });
+    if (!gate.ok) {
+      return gate.response;
     }
-
-    const continuityError = checkContinuity(circuit, mpc);
-    if (continuityError) {
-      return await rejectAndConsumeTurn(continuityError, 409);
-    }
-
-    // The new head's hash, recomputed by the server from the uploaded bytes.
-    // Recorded as the head link for the next submission and in the receipt for
-    // the finalize re-walk.
-    const serverContributionHash =
-      mpc.contributions[mpc.contributions.length - 1].hash();
+    const { serverContributionHash } = gate;
 
     const hadPriorContribution = circuit.totalContributions > 0;
     const previousZkeyUrl = circuit.currentZkeyUrl;
@@ -414,8 +459,8 @@ export async function POST(
     circuit.queue.shift();
     circuit.currentZkeyPath = stored.pathname;
     circuit.currentZkeyUrl = stored.url;
-    // Advance the continuity head. The next submission must extend this.
-    circuit.headCount = mpc.contributions.length;
+    // Advance the continuity head: totalContributions (incremented above) is the
+    // new head count, and this is the hash the next submission must link to.
     circuit.headContributionHash = serverContributionHash;
 
     const receipt: ContributionReceipt = {

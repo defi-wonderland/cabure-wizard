@@ -52,15 +52,15 @@ export interface CircuitState {
   // fetches it here for verifyChain. Per-circuit so circuits may use different
   // (right-sized) ptau files. Required: init always publishes it.
   ptauUrl: string;
-  // Continuity head, the state snarkjs cannot give us: which zkey is the
-  // recorded latest. snarkjs only proves a zkey is some valid chain from the
-  // genesis, not that it extends the head, so the coordinator tracks the head
-  // itself and the contribute route gates every submission to extend it.
-  // headCount is the number of contributions in the head (0 at genesis).
-  headCount: number;
+  // Continuity anchors, the state snarkjs cannot give us. snarkjs only proves a
+  // zkey is some valid chain from the genesis, not that it extends the recorded
+  // head, so the coordinator tracks the head itself and the contribute route
+  // gates every submission to extend it. The head's contribution count is
+  // `totalContributions`; these two are the cryptographic anchors.
+  //
   // Blake2b hash (snarkjs hashPubKey) of the head's last contribution; null at
-  // genesis. A submission must carry this exact hash at position headCount-1,
-  // which ties it to the recorded head. Comes only from server state.
+  // genesis. A submission must carry this exact hash at the head position, which
+  // ties it to the recorded head. Comes only from server state.
   headContributionHash: string | null;
   // Circuit identity from the genesis zkey's MPC params (the 64-byte csHash,
   // the same for every zkey in this circuit's chain). The empty-chain gate
@@ -324,7 +324,6 @@ export function createCircuitState(options: {
     initialZkeyHash: options.initialZkeyHash,
     initialZkeyUrl: options.initialZkeyUrl,
     ptauUrl: options.ptauUrl,
-    headCount: 0,
     headContributionHash: null,
     csHash: options.csHash,
   };
