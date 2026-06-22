@@ -47,6 +47,7 @@ type CircuitState = {
   currentZkeyUrl: string;
   initialZkeyHash: string;
   initialZkeyUrl: string;
+  ptauUrl: string;
 };
 
 type ManifestState = {
@@ -89,6 +90,12 @@ async function main() {
   loadEnvConfig(process.cwd(), true);
 
   console.log("=== Initialize Ceremony ===\n");
+
+  if (ceremonyConfig.circuits.length === 0) {
+    throw new Error(
+      "No circuits configured in ceremony.config.ts — nothing to initialize.",
+    );
+  }
 
   const token = process.env.BLOB_READ_WRITE_TOKEN?.trim();
   if (!token) {
@@ -141,14 +148,43 @@ async function main() {
     ptauPath: string;
   }> = [];
 
+  // A ptau is ~300 MB. To avoid re-reading a shared ptau per circuit without
+  // holding every distinct ptau for the whole loop (which would OOM a ceremony
+  // with many different ptau files), keep each buffer in memory only while
+  // circuits still need it, then drop it. ptauUsesLeft counts remaining uses per
+  // path; the buffer is evicted after its last use.
+  const ptauUsesLeft = new Map<string, number>();
+  for (const c of ceremonyConfig.circuits) {
+    const p = c.artifacts.ptauPath;
+    ptauUsesLeft.set(p, (ptauUsesLeft.get(p) ?? 0) + 1);
+  }
+  const ptauBytesByPath = new Map<string, Uint8Array>();
+  // URL per path is tiny; keep it all loop long to dedupe uploads of a shared ptau.
+  const ptauUrlByPath = new Map<string, string>();
+
   for (const circuit of ceremonyConfig.circuits) {
     console.log(`[${circuit.id}] Generating genesis zkey...`);
 
     console.log(`  Loading r1cs: ${circuit.artifacts.r1csPath}`);
     const r1cs = await readArtifact(circuit.artifacts.r1csPath);
 
-    console.log(`  Loading ptau: ${circuit.artifacts.ptauPath}`);
-    const ptau = await readArtifact(circuit.artifacts.ptauPath);
+    const ptauPath = circuit.artifacts.ptauPath;
+    let ptau = ptauBytesByPath.get(ptauPath);
+    if (!ptau) {
+      console.log(`  Loading ptau: ${ptauPath}`);
+      ptau = await readArtifact(ptauPath);
+    } else {
+      console.log(`  Reusing loaded ptau: ${ptauPath}`);
+    }
+    // Retain the buffer only while later circuits still need it; drop it after
+    // the last use so a many-distinct-ptau run does not accumulate buffers.
+    const usesLeft = (ptauUsesLeft.get(ptauPath) ?? 1) - 1;
+    ptauUsesLeft.set(ptauPath, usesLeft);
+    if (usesLeft > 0) {
+      ptauBytesByPath.set(ptauPath, ptau);
+    } else {
+      ptauBytesByPath.delete(ptauPath);
+    }
 
     console.log(`  Running Phase 2 setup...`);
     const zkey = await generateInitialZkey(ptau, r1cs);
@@ -212,6 +248,31 @@ async function main() {
     await writeFile(localZkeyPath, Buffer.from(zkey));
     console.log(`  Saved locally to: public/genesis/${localZkeyFile}`);
 
+    // Publish this circuit's ptau for the contribute route's verifyChain — it is
+    // not on the deployed function's filesystem. Content-addressed so a changed
+    // ptau gets a new URL (busts the route's URL-keyed cache). Deduped by path:
+    // circuits sharing one ptau upload it once.
+    let circuitPtauUrl = ptauUrlByPath.get(ptauPath);
+    if (!circuitPtauUrl) {
+      const ptauHash = createHash("sha256").update(ptau).digest("hex");
+      const ptauUpload = await put(
+        `${ceremonyConfig.storage.zkeyPrefix}/pot-${ptauHash}.ptau`,
+        Buffer.from(ptau),
+        {
+          access: "public",
+          token,
+          contentType: "application/octet-stream",
+          addRandomSuffix: false,
+          allowOverwrite: true,
+        },
+      );
+      circuitPtauUrl = ptauUpload.url;
+      ptauUrlByPath.set(ptauPath, circuitPtauUrl);
+      console.log(`  Ptau published at: ${circuitPtauUrl}`);
+    } else {
+      console.log(`  Ptau already published at: ${circuitPtauUrl}`);
+    }
+
     const circuitState: CircuitState = {
       id: circuit.id,
       totalContributions: 0,
@@ -222,6 +283,7 @@ async function main() {
       currentZkeyUrl: zkeyUpload.url,
       initialZkeyHash: genesisHash,
       initialZkeyUrl: genesisUpload.url,
+      ptauUrl: circuitPtauUrl,
     };
 
     const kvKey = `${ceremonyConfig.storage.circuitStatePrefix}:${circuit.id}`;
@@ -242,6 +304,10 @@ async function main() {
 
     console.log();
   }
+
+  // Each circuit's ptau was published in the loop above (see ptauUrlByPath),
+  // and its URL recorded on that circuit's KV state. The manifest no longer
+  // carries a single global ptau URL — circuits may use different ptau files.
 
   const startedAt = Date.now();
   const manifest: ManifestState = {

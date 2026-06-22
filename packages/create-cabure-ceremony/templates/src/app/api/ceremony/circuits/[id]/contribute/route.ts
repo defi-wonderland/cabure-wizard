@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createHash } from "node:crypto";
 
-import { verify } from "@wonderland/cabure-crypto";
+import { verifyChain } from "@wonderland/cabure-crypto";
 
+import "@/lib/snarkjs-gc-guard";
 import { getCeremonyConfig } from "@/lib/ceremony-config";
+import { loadPtau } from "@/lib/ptau-loader";
 import { getParticipant } from "@/lib/participant-auth";
 import {
   computeChainHash,
@@ -13,13 +15,22 @@ import {
   isCircuitActive,
   kvKey,
   pruneExpiredEntries,
-  readCircuitBytes,
   type CircuitState,
   type ContributionReceipt,
   type ManifestState,
 } from "@/lib/ceremony-state";
 import { deleteBinary, putBinary } from "@/lib/blob-store";
 import { acquireLock, releaseLock, writeContribution } from "@/lib/kv-store";
+
+// This route downloads the ptau and genesis, then runs verifyChain — all in
+// the request. Pin the function timeout above that budget (ptau 120s + genesis
+// 60s + verify), or the platform kills the request before our own AbortSignals
+// fire. A Next.js route-segment export; OpenNext maps it to the Lambda timeout,
+// so it is not Vercel-specific. Circuits too large to finish under this must
+// verify on an external worker instead.
+export const maxDuration = 300;
+// snarkjs needs Node APIs and worker threads. Never run this route on edge.
+export const runtime = "nodejs";
 
 const BLOB_HOST_SUFFIX = ".public.blob.vercel-storage.com";
 
@@ -175,20 +186,73 @@ export async function POST(
   // Heavy work (verify + upload) runs before the lock, so the locked commit
   // section below stays brief and cannot outlive the lock TTL.
 
-  // Per-contribution verification is opt-in: pairing checks can exceed
-  // serverless timeouts for large circuits.
-  if (config.verifyContributions) {
-    const [r1cs, ptau] = await Promise.all([
-      readCircuitBytes(circuitConfig.artifacts.r1csPath),
-      readCircuitBytes(circuitConfig.artifacts.ptauPath),
-    ]);
+  // Per-contribution verify: re-walk the chain from the pinned genesis.
+  // verifyChain runs the sameRatio test over L and H at every step, catching a
+  // poisoned contribution (header advanced to the new delta while L/H stay on
+  // the old one) at submit time. Mandatory in production: deferring to finalize
+  // would accept a poisoned contribution live and reject it only at finalize, a
+  // late denial of service with no rollback. The flag may disable it only
+  // outside production (dev / CI). Circuits too large for the serverless time
+  // limit should verify on an external worker, not skip it.
+  //
+  // This checks per-contribution validity, not continuity: a chain rebuilt from
+  // genesis is valid here. The rebase/continuity gate is tracked separately.
+  // NODE_ENV is "production" for any deployed build (prod, staging, preview) and
+  // only "development"/"test" under `next dev` or CI. So every deployment always
+  // verifies; the flag can only ADD verification in dev / CI, never remove it
+  // from a deployment. Fail-safe: a deploy cannot silently skip the check.
+  const mustVerify =
+    process.env.NODE_ENV === "production" || config.verifyContributions;
+  if (mustVerify) {
+    try {
+      const ptau = await loadPtau({
+        url: precheck.circuit.ptauUrl,
+        localPath: circuitConfig.artifacts.ptauPath,
+      });
 
-    const isValid = await verify(r1cs, ptau, body);
-    if (!isValid) {
+      // Verify against the pinned genesis: download it and confirm it still
+      // matches the hash from init, so the chain roots in the real genesis, not
+      // a swapped blob.
+      const genesisResponse = await fetch(precheck.circuit.initialZkeyUrl, {
+        signal: AbortSignal.timeout(60_000),
+      });
+      if (!genesisResponse.ok) {
+        await deleteBinary(blobUrl).catch(() => {});
+        return NextResponse.json(
+          { error: "Could not load the pinned genesis to verify against" },
+          { status: 502 },
+        );
+      }
+      const genesis = new Uint8Array(await genesisResponse.arrayBuffer());
+      const genesisHash = `0x${createHash("sha256").update(genesis).digest("hex")}`;
+      if (genesisHash !== precheck.circuit.initialZkeyHash) {
+        await deleteBinary(blobUrl).catch(() => {});
+        return NextResponse.json(
+          { error: "Pinned genesis does not match its recorded hash" },
+          { status: 500 },
+        );
+      }
+
+      const isValid = await verifyChain(ptau, genesis, body);
+      if (!isValid) {
+        await deleteBinary(blobUrl).catch(() => {});
+        return NextResponse.json(
+          { error: "Invalid contribution: verification failed" },
+          { status: 400 },
+        );
+      }
+    } catch (error) {
+      // A throw here means the verifier could not run (ptau download, genesis
+      // fetch, hashing, or a snarkjs crash) — NOT that the contribution is bad.
+      // Without this catch the pending blob leaks and the client gets an opaque
+      // 500. Clean up and return 503 so the contributor retries: 503 ("could not
+      // verify, try again") must stay distinct from the 400 above ("contribution
+      // is invalid"), or a transient server fault brands valid work as poisoned.
+      console.error(`Verification failed to run for circuit ${id}:`, error);
       await deleteBinary(blobUrl).catch(() => {});
       return NextResponse.json(
-        { error: "Invalid contribution: verification failed" },
-        { status: 400 },
+        { error: "Verification temporarily unavailable. Please retry." },
+        { status: 503 },
       );
     }
   }

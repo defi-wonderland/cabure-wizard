@@ -159,6 +159,10 @@ export function useContributionFlow(options: {
         signal: controller.signal,
       });
 
+      // The submit POST runs the mandatory server-side verifyChain, seconds on
+      // large circuits. Distinct phase so the contributor sees verification, not
+      // a frozen "Upload".
+      setContributionPhase("verifying");
       setContributionProgress(92);
 
       const receipt = await submitContribution({

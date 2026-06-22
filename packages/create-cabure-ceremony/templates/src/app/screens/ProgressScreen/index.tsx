@@ -6,7 +6,20 @@ import { Button } from "@/app/components/Button";
 import { ScreenWrapper } from "@/app/components/ScreenWrapper";
 import styles from "./ProgressScreen.module.css";
 
-export type ContribPhase = "downloading" | "computing" | "uploading";
+export type ContribPhase =
+  | "downloading"
+  | "computing"
+  | "uploading"
+  | "verifying";
+
+// Canonical phase order. The progress bar marks a step done when its index is
+// before the current phase, so any new phase only needs adding here in order.
+const PHASE_ORDER: ContribPhase[] = [
+  "downloading",
+  "computing",
+  "uploading",
+  "verifying",
+];
 
 export type CircuitRunStatus = "waiting" | "active" | "done" | "error";
 
@@ -89,12 +102,10 @@ export function ProgressScreen({
 
       {showActive && (
         <div className={styles.phaseBar}>
-          {(["downloading", "computing", "uploading"] as ContribPhase[]).map(
+          {PHASE_ORDER.map(
             (p, i) => {
               const isActive = phase === p;
-              const isDone =
-                ("computing" === phase && p === "downloading") ||
-                ("uploading" === phase && p !== "uploading");
+              const isDone = PHASE_ORDER.indexOf(phase) > i;
 
               return (
                 <div key={p} className={styles.phaseGroup}>
