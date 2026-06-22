@@ -122,12 +122,10 @@ export async function writeContribution<TCircuit, TReceipt>(options: {
   return Number(result) === 1;
 }
 
-// Fence for a circuit-state-only write, same lock-token check as
-// writeContribution but without the contribution side effects. The continuity
-// gate uses it to persist a queue advance when it rejects a submission: the
-// front-of-queue turn is consumed so garbage cannot stay at the front and grief
-// the queue. Returns false if the lock was lost (a stalled writer), in which
-// case the caller drops the change.
+// Fence for a circuit-state-only write: the same lock-token check as
+// writeContribution, without the contribution side effects. Used to persist a
+// queue advance when the continuity gate rejects a submission. Returns false if
+// the lock was lost, so the caller drops the change.
 const COMMIT_CIRCUIT_STATE_SCRIPT = `
   if redis.call("get", KEYS[1]) ~= ARGV[1] then
     return 0
@@ -167,13 +165,17 @@ export async function clearParticipantContributions(options: {
   return participants.length;
 }
 
+// Acquire a single-holder key by SET NX with a TTL. Used both for the brief
+// per-circuit commit lock (default TTL) and for the longer-lived verify slot
+// that bounds one in-flight verify per participant (caller passes its own TTL).
 export async function acquireLock(
   key: string,
   token: string,
+  ttlSeconds: number = LOCK_TTL_SECONDS,
 ): Promise<boolean> {
   const result = await redis().set(key, token, {
     nx: true,
-    ex: LOCK_TTL_SECONDS,
+    ex: ttlSeconds,
   });
   return result === "OK";
 }

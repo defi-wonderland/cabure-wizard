@@ -19,11 +19,10 @@ export interface ContributionReceipt {
   contributionIndex: number;
   contributionHash: string;
   clientContributionHash: string | null;
-  // Server-recomputed Blake2b hash of this contribution's public key (snarkjs
-  // hashPubKey). Distinct from contributionHash (SHA-256 of the zkey bytes) and
-  // clientContributionHash (the client's claim, never trusted). finalize walks
-  // the final zkey and checks this sequence to prove the embedded chain is the
-  // recorded one. See the continuity gate in the contribute route.
+  // Server-recomputed Blake2b hash (snarkjs hashPubKey) of the contribution.
+  // Distinct from contributionHash (SHA-256 of the bytes) and the untrusted
+  // clientContributionHash. finalize re-walks the final zkey and checks this
+  // sequence to prove the embedded chain is the one that was recorded.
   serverContributionHash: string;
   chainHash: string;
   timestamp: number;
@@ -52,19 +51,16 @@ export interface CircuitState {
   // fetches it here for verifyChain. Per-circuit so circuits may use different
   // (right-sized) ptau files. Required: init always publishes it.
   ptauUrl: string;
-  // Continuity anchors, the state snarkjs cannot give us. snarkjs only proves a
-  // zkey is some valid chain from the genesis, not that it extends the recorded
-  // head, so the coordinator tracks the head itself and the contribute route
-  // gates every submission to extend it. The head's contribution count is
-  // `totalContributions`; these two are the cryptographic anchors.
+  // Continuity anchors snarkjs cannot give us: it proves a zkey is valid from the
+  // genesis, not that it extends the recorded head. The head count is
+  // `totalContributions`; the two fields below are the cryptographic anchors the
+  // contribute gate checks, and come only from server state.
   //
-  // Blake2b hash (snarkjs hashPubKey) of the head's last contribution; null at
-  // genesis. A submission must carry this exact hash at the head position, which
-  // ties it to the recorded head. Comes only from server state.
+  // Blake2b (hashPubKey) of the head's last contribution; null at genesis. A
+  // submission must carry this exact hash at the head position.
   headContributionHash: string | null;
-  // Circuit identity from the genesis zkey's MPC params (the 64-byte csHash,
-  // the same for every zkey in this circuit's chain). The empty-chain gate
-  // checks the first submission's csHash against this.
+  // Circuit identity (csHash) from the genesis MPC params, the same across the
+  // whole chain. The empty-chain gate checks the first submission against it.
   csHash: string;
 }
 
