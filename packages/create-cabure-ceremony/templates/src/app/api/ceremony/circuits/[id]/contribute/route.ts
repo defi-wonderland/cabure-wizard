@@ -8,7 +8,7 @@ import {
 } from "@wonderland/cabure-crypto";
 
 import "@/lib/snarkjs-gc-guard";
-import { getCeremonyConfig } from "@/lib/ceremony-config";
+import { getCeremonyConfig, type CeremonyConfig } from "@/lib/ceremony-config";
 import { loadPtau } from "@/lib/ptau-loader";
 import { getParticipant } from "@/lib/participant-auth";
 import {
@@ -146,7 +146,7 @@ async function runContinuityGate(opts: {
 // missed lock just skips the shift — no correctness impact, the gate still
 // guards the commit. Takes its own lock; do not call while holding it.
 async function consumeTurn(
-  config: ReturnType<typeof getCeremonyConfig>,
+  config: CeremonyConfig,
   id: string,
   participantId: string,
 ): Promise<void> {
@@ -336,6 +336,8 @@ export async function POST(
       { status: 400 },
     );
   }
+  // Reject now if the upload does not extend the head (count + link check),
+  // before paying for the verify; failing it consumes the turn.
   const preContinuityError = checkContinuity(precheck.circuit, preMpc);
   if (preContinuityError) {
     await consumeTurn(config, id, participantId);
@@ -368,34 +370,15 @@ export async function POST(
   }
 
   try {
-    // Verify + upload run before the commit lock, so the lock is held only for
-    // the brief commit. The verify needs no lock: it checks `body` against the
-    // immutable pinned genesis, so a concurrent commit cannot change the result.
-    // The only state-dependent check (does `body` extend the head?) is the gate,
-    // under the lock; if the head moves first, the gate rejects and the client
-    // retries.
-
-    // Per-contribution verify: re-walk the chain from the pinned genesis.
-    // verifyChain runs the sameRatio test over L and H at every step, catching a
-    // poisoned contribution (header advanced to the new delta while L/H stay on
-    // the old one) at submit time. Mandatory in production: deferring to finalize
-    // would accept a poisoned contribution live and reject it only at finalize, a
-    // late denial of service with no rollback. The flag may disable it only
-    // outside production (dev / CI). Circuits too large for the serverless time
-    // limit should verify on an external worker, not skip it.
-    //
-    // This checks per-contribution validity, not continuity (a chain rebuilt
-    // from genesis is valid here) — the continuity gate above handles that.
-    // NODE_ENV is "production" for any deployed build (prod, staging, preview) and
-    // only "development"/"test" under `next dev` or CI. So every deployment always
-    // verifies; the flag can only ADD verification in dev / CI, never remove it
-    // from a deployment. Fail-safe: a deploy cannot silently skip the check.
-    //
-    // This verify is expensive and is bounded against denial of service three
-    // ways: the continuity pre-filter above means only a head-extending zkey ever
-    // reaches it; the verify slot means at most one runs per participant at a
-    // time; and a definitive failure below consumes the turn, so a poisoned
-    // submission costs the front-of-queue slot rather than being free to repeat.
+    // verifyChain re-walks the chain and rejects a poisoned contribution at
+    // submit time (deferring to finalize would be a late, unrecoverable DoS).
+    // It is per-contribution validity, not continuity — the gate handles that —
+    // and runs outside the commit lock: `body` is checked against the immutable
+    // pinned genesis, so concurrency cannot change the result. Mandatory on every
+    // deployment; the flag can only ADD it in dev/CI, never remove it. Expensive
+    // but DoS-bounded: the pre-filter lets only a head-extending zkey reach it,
+    // the slot caps it to one verify per participant, and a definitive failure
+    // consumes the turn.
     const mustVerify =
       process.env.NODE_ENV === "production" || config.verifyContributions;
     if (mustVerify) {

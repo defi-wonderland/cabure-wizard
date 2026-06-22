@@ -180,13 +180,16 @@ export async function acquireLock(
   return result === "OK";
 }
 
+// Release a lock only if the caller still holds it (token match), so a stalled
+// holder whose TTL expired cannot delete a lock a second writer now owns.
+const RELEASE_LOCK_SCRIPT = `
+  if redis.call("get", KEYS[1]) == ARGV[1] then
+    return redis.call("del", KEYS[1])
+  else
+    return 0
+  end
+`;
+
 export async function releaseLock(key: string, token: string): Promise<void> {
-  const script = `
-    if redis.call("get", KEYS[1]) == ARGV[1] then
-      return redis.call("del", KEYS[1])
-    else
-      return 0
-    end
-  `;
-  await redis().eval(script, [key], [token]);
+  await redis().eval(RELEASE_LOCK_SCRIPT, [key], [token]);
 }
