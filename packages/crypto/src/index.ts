@@ -10,5 +10,11 @@ export { verify, verifyChain, verifyChainForCircuit } from "./verify.js";
 export { generateEntropy } from "./entropy.js";
 export { applyBeacon } from "./beacon.js";
 export { exportVerificationKey } from "./exportVerificationKey.js";
+export { parseMpcParams } from "./mpcParams.js";
+export type {
+  MpcParams,
+  ContributionDigest,
+  ParseMpcParamsOptions,
+} from "./mpcParams.js";
 export { RequestType, ResponseType } from "./worker/index.js";
 export type { WorkerRequest, WorkerResponse } from "./worker/index.js";
