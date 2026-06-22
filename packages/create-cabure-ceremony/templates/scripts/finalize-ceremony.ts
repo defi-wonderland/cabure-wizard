@@ -565,16 +565,13 @@ async function main() {
       }
       console.log(`  Chain verification passed.`);
 
-      // C-1: the chain verify above only proves current.zkey is SOME valid
-      // descendant of the pinned genesis, not that it is the chain we recorded.
-      // An attacker with blob write access but no KV access (a leaked
-      // BLOB_READ_WRITE_TOKEN) could overwrite current.zkey with a self-generated
-      // chain rooted at the real genesis and pass the check above. Close that by
-      // re-walking the embedded contribution list and matching each step's
-      // recomputed hash against the server-recorded hash in the receipts. The
-      // recorded hashes come from KV, which the blob-write attacker cannot reach,
-      // so a substituted chain fails here. Forging a different chain that still
-      // reproduces every recorded hash is a Blake2b second preimage.
+      // C-1: the chain verify above proves current.zkey is SOME valid chain from
+      // the genesis, not that it is the one we recorded. An attacker with blob
+      // write but no KV access (a leaked BLOB_READ_WRITE_TOKEN) could overwrite
+      // current.zkey with a self-generated chain and pass it. Close that by
+      // re-walking the embedded list and matching each step's hash against the
+      // receipts in KV, which that attacker cannot reach. Forging a chain that
+      // still reproduces every recorded hash is a Blake2b second preimage.
       console.log(`  Re-walking the recorded contribution chain...`);
       const recordedReceipts = (
         await listRange<ContributionReceipt>(storage.receiptsPath)
