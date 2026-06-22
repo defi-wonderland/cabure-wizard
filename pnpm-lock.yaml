@@ -52,6 +52,9 @@ importers:
 
   packages/crypto:
     dependencies:
+      ffjavascript:
+        specifier: 0.3.1
+        version: 0.3.1
       snarkjs:
         specifier: 0.7.5
         version: 0.7.5

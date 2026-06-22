@@ -19,6 +19,12 @@ export interface ContributionReceipt {
   contributionIndex: number;
   contributionHash: string;
   clientContributionHash: string | null;
+  // Server-recomputed Blake2b hash of this contribution's public key (snarkjs
+  // hashPubKey). Distinct from contributionHash (SHA-256 of the zkey bytes) and
+  // clientContributionHash (the client's claim, never trusted). finalize walks
+  // the final zkey and checks this sequence to prove the embedded chain is the
+  // recorded one. See the continuity gate in the contribute route.
+  serverContributionHash: string;
   chainHash: string;
   timestamp: number;
 }
@@ -46,6 +52,20 @@ export interface CircuitState {
   // fetches it here for verifyChain. Per-circuit so circuits may use different
   // (right-sized) ptau files. Required: init always publishes it.
   ptauUrl: string;
+  // Continuity head, the state snarkjs cannot give us: which zkey is the
+  // recorded latest. snarkjs only proves a zkey is some valid chain from the
+  // genesis, not that it extends the head, so the coordinator tracks the head
+  // itself and the contribute route gates every submission to extend it.
+  // headCount is the number of contributions in the head (0 at genesis).
+  headCount: number;
+  // Blake2b hash (snarkjs hashPubKey) of the head's last contribution; null at
+  // genesis. A submission must carry this exact hash at position headCount-1,
+  // which ties it to the recorded head. Comes only from server state.
+  headContributionHash: string | null;
+  // Circuit identity from the genesis zkey's MPC params (the 64-byte csHash,
+  // the same for every zkey in this circuit's chain). The empty-chain gate
+  // checks the first submission's csHash against this.
+  csHash: string;
 }
 
 export interface ManifestState {
@@ -291,6 +311,7 @@ export function createCircuitState(options: {
   initialZkeyHash: string;
   initialZkeyUrl: string;
   ptauUrl: string;
+  csHash: string;
 }): CircuitState {
   return {
     id: options.id,
@@ -303,6 +324,9 @@ export function createCircuitState(options: {
     initialZkeyHash: options.initialZkeyHash,
     initialZkeyUrl: options.initialZkeyUrl,
     ptauUrl: options.ptauUrl,
+    headCount: 0,
+    headContributionHash: null,
+    csHash: options.csHash,
   };
 }
 

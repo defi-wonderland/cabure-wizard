@@ -122,6 +122,34 @@ export async function writeContribution<TCircuit, TReceipt>(options: {
   return Number(result) === 1;
 }
 
+// Fence for a circuit-state-only write, same lock-token check as
+// writeContribution but without the contribution side effects. The continuity
+// gate uses it to persist a queue advance when it rejects a submission: the
+// front-of-queue turn is consumed so garbage cannot stay at the front and grief
+// the queue. Returns false if the lock was lost (a stalled writer), in which
+// case the caller drops the change.
+const COMMIT_CIRCUIT_STATE_SCRIPT = `
+  if redis.call("get", KEYS[1]) ~= ARGV[1] then
+    return 0
+  end
+  redis.call("set", KEYS[2], ARGV[2])
+  return 1
+`;
+
+export async function writeCircuitStateFenced<TCircuit>(options: {
+  lockKey: string;
+  lockToken: string;
+  circuitStateKey: string;
+  circuitState: TCircuit;
+}): Promise<boolean> {
+  const result = await redis().eval(
+    COMMIT_CIRCUIT_STATE_SCRIPT,
+    [options.lockKey, options.circuitStateKey],
+    [options.lockToken, JSON.stringify(options.circuitState)],
+  );
+  return Number(result) === 1;
+}
+
 export async function clearParticipantContributions(options: {
   participantsIndexKey: string;
   participantContributionsPrefix: string;

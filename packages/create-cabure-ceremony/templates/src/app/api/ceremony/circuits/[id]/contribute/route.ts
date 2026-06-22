@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createHash } from "node:crypto";
 
-import { verifyChain } from "@wonderland/cabure-crypto";
+import { parseMpcParams, verifyChain } from "@wonderland/cabure-crypto";
 
 import "@/lib/snarkjs-gc-guard";
 import { getCeremonyConfig } from "@/lib/ceremony-config";
@@ -20,7 +20,12 @@ import {
   type ManifestState,
 } from "@/lib/ceremony-state";
 import { deleteBinary, putBinary } from "@/lib/blob-store";
-import { acquireLock, releaseLock, writeContribution } from "@/lib/kv-store";
+import {
+  acquireLock,
+  releaseLock,
+  writeCircuitStateFenced,
+  writeContribution,
+} from "@/lib/kv-store";
 
 // This route downloads the ptau and genesis, then runs verifyChain — all in
 // the request. Pin the function timeout above that budget (ptau 120s + genesis
@@ -33,6 +38,39 @@ export const maxDuration = 300;
 export const runtime = "nodejs";
 
 const BLOB_HOST_SUFFIX = ".public.blob.vercel-storage.com";
+
+// C-1 continuity check. Confirms the uploaded zkey's embedded contribution list
+// extends the recorded head by exactly one, using only server-side KV state
+// (never the client's claim). snarkjs proves the chain is valid from the
+// genesis, not that it extends the head, so this is the part that stops a
+// front-of-queue contributor from rebasing onto the genesis and discarding the
+// prior honest contributions. Returns an error message, or null if it extends
+// the head. `mpc` is the parsed result; `headCount`/`headContributionHash`/
+// `csHash` come from the circuit state.
+function checkContinuity(
+  circuit: CircuitState,
+  mpc: { csHash: string; contributions: { hash(): string }[] },
+): string | null {
+  const count = mpc.contributions.length;
+  if (count !== circuit.headCount + 1) {
+    return "Contribution does not extend the current head: wrong contribution count.";
+  }
+  if (circuit.headCount === 0) {
+    // Empty chain. There is no head to link to, so bind the first contribution
+    // to this circuit's identity instead. No underflow on headCount - 1.
+    if (mpc.csHash !== circuit.csHash) {
+      return "Contribution is for the wrong circuit: csHash mismatch.";
+    }
+    return null;
+  }
+  // The entry at the head position must hash to the recorded head. This ties
+  // the upload to the exact chain the coordinator advanced.
+  const linkHash = mpc.contributions[circuit.headCount - 1].hash();
+  if (linkHash !== circuit.headContributionHash) {
+    return "Contribution does not build on the current head: head hash mismatch.";
+  }
+  return null;
+}
 
 function isValidPendingBlobUrl(url: string, circuitId: string): boolean {
   try {
@@ -313,6 +351,52 @@ export async function POST(
     }
     const circuit = eligible.circuit;
 
+    // Reject a submission that fails the continuity gate, but consume the
+    // front-of-queue turn first. The rejected participant is at queue[0]; shift
+    // them off and persist that under the lock so they cannot sit at the front
+    // replaying garbage. The fenced write lands only while we hold the lock; if
+    // it does not, the state is owned by another writer and we simply drop the
+    // change. The rejected upload blob is always removed.
+    const rejectAndConsumeTurn = async (error: string, status: number) => {
+      circuit.queue.shift();
+      await writeCircuitStateFenced({
+        lockKey,
+        lockToken,
+        circuitStateKey: kvKey(config.storage.circuitStatePrefix, id),
+        circuitState: circuit,
+      });
+      await deleteBinary(stored.url).catch(() => {});
+      return NextResponse.json({ error }, { status });
+    };
+
+    // C-1 continuity gate. Parse the uploaded zkey's MPC params and require it
+    // to extend the recorded head. Cap the contribution count at headCount + 1
+    // so a forged file claiming a huge count is rejected before the parser
+    // walks it. A parse failure is treated as a failed turn, same as a gate
+    // failure, so malformed uploads cannot grief the queue either.
+    let mpc;
+    try {
+      mpc = await parseMpcParams(body, {
+        maxContributions: circuit.headCount + 1,
+      });
+    } catch {
+      return await rejectAndConsumeTurn(
+        "Contribution is not a parseable zkey for this circuit.",
+        400,
+      );
+    }
+
+    const continuityError = checkContinuity(circuit, mpc);
+    if (continuityError) {
+      return await rejectAndConsumeTurn(continuityError, 409);
+    }
+
+    // The new head's hash, recomputed by the server from the uploaded bytes.
+    // Recorded as the head link for the next submission and in the receipt for
+    // the finalize re-walk.
+    const serverContributionHash =
+      mpc.contributions[mpc.contributions.length - 1].hash();
+
     const hadPriorContribution = circuit.totalContributions > 0;
     const previousZkeyUrl = circuit.currentZkeyUrl;
     const contributionIndex = circuit.totalContributions + 1;
@@ -330,6 +414,9 @@ export async function POST(
     circuit.queue.shift();
     circuit.currentZkeyPath = stored.pathname;
     circuit.currentZkeyUrl = stored.url;
+    // Advance the continuity head. The next submission must extend this.
+    circuit.headCount = mpc.contributions.length;
+    circuit.headContributionHash = serverContributionHash;
 
     const receipt: ContributionReceipt = {
       circuitId: id,
@@ -337,6 +424,7 @@ export async function POST(
       contributionIndex,
       contributionHash: computedHash,
       clientContributionHash: clientHash,
+      serverContributionHash,
       chainHash,
       timestamp,
     };
@@ -385,7 +473,11 @@ export async function POST(
     // TTL expires it anyway. Letting it throw would replace an already-committed
     // success with a 500 and make the client retry a contribution that landed.
     await releaseLock(lockKey, lockToken).catch((error) => {
-      console.error("Failed to release contribution lock for circuit:", id, error);
+      console.error(
+        "Failed to release contribution lock for circuit:",
+        id,
+        error,
+      );
     });
   }
 }
