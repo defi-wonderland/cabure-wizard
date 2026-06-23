@@ -102,13 +102,25 @@ async function runContinuityGate(opts: {
     status: number,
   ): Promise<ContinuityGateResult> => {
     circuit.queue.shift();
-    await writeCircuitStateFenced({
+    const consumed = await writeCircuitStateFenced({
       lockKey,
       lockToken,
       circuitStateKey,
       circuitState: circuit,
     });
     await deleteBinary(storedUrl).catch(() => {});
+    // If the fenced write did not land, the lock was lost — the turn was not
+    // actually consumed. Report a retry instead of the original rejection, so
+    // the response does not imply a turn-consuming outcome that did not happen.
+    if (!consumed) {
+      return {
+        ok: false,
+        response: NextResponse.json(
+          { error: "Circuit busy. Please retry." },
+          { status: 409 },
+        ),
+      };
+    }
     return { ok: false, response: NextResponse.json({ error }, { status }) };
   };
 
@@ -323,7 +335,7 @@ export async function POST(
   // snapshot: the head cannot advance under a front-of-queue participant, so it
   // never false-rejects; the gate under the lock is still authoritative. A
   // failure consumes the turn (same grief rule as the gate).
-  let preMpc;
+  let preMpc: MpcParams;
   try {
     preMpc = await parseMpcParams(body, {
       maxContributions: precheck.circuit.totalContributions + 1,

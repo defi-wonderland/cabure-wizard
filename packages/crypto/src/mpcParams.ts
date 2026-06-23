@@ -317,7 +317,13 @@ function consumeParams(reader: ByteReader, paramLength: number): void {
 let curvePromise: Promise<Bn128Curve> | null = null;
 function getCurve(): Promise<Bn128Curve> {
   if (!curvePromise) {
-    curvePromise = buildBn128(true);
+    // Do not cache a rejected promise: a transient init failure would otherwise
+    // be handed to every later call and brick parsing for the whole process.
+    // Clear the cache on failure so the next call retries.
+    curvePromise = buildBn128(true).catch((err) => {
+      curvePromise = null;
+      throw err;
+    });
   }
   return curvePromise;
 }
