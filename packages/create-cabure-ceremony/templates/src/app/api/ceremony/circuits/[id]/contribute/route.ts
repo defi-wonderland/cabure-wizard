@@ -60,12 +60,15 @@ function checkContinuity(circuit: CircuitState, mpc: MpcParams): string | null {
   if (count !== headCount + 1) {
     return "Contribution does not extend the current head: wrong contribution count.";
   }
+  // Circuit identity is pinned for every submission, not just the first: the
+  // csHash is constant across the whole chain, so a mismatch means a wrong or
+  // corrupted upload — reject it here, cheaply, before the verify.
+  if (mpc.csHash !== circuit.csHash) {
+    return "Contribution is for the wrong circuit: csHash mismatch.";
+  }
+  // Empty chain: there is no head to link to, so the csHash check above is the
+  // whole gate. No underflow on headCount - 1.
   if (headCount === 0) {
-    // Empty chain. There is no head to link to, so bind the first contribution
-    // to this circuit's identity instead. No underflow on headCount - 1.
-    if (mpc.csHash !== circuit.csHash) {
-      return "Contribution is for the wrong circuit: csHash mismatch.";
-    }
     return null;
   }
   // The entry at the head position must hash to the recorded head. This ties
