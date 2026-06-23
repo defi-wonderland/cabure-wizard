@@ -171,6 +171,18 @@ async function main() {
   const backupDir = await backup(pendingBlobs, chainBlobs);
   console.log(`  Backup written to ${backupDir}`);
 
+  // Delete blobs before KV. If a transient blob failure aborts the run, KV is
+  // still intact, so the system stays in a coherent "ceremony still here" state
+  // and the operator can safely retry — rather than being left with the live
+  // state gone but chain/pending blobs orphaned. The backup above is taken
+  // before either deletion, so data-loss safety does not depend on the order.
+  console.log("Deleting Vercel Blob objects (chain + pending uploads)...");
+  const deletedChain = await deleteAllByPrefix(`${storage.zkeyPrefix}/`, token);
+  const deletedPending = await deleteAllByPrefix(PENDING_PREFIX, token);
+  console.log(
+    `  Deleted ${deletedChain} chain blob(s) and ${deletedPending} pending upload(s).`,
+  );
+
   console.log("Deleting Redis keys...");
   const redisKeys = [
     storage.manifestPath,
@@ -189,13 +201,6 @@ async function main() {
   const deletedKeys = deletedCounts.reduce((sum, n) => sum + n, 0);
   console.log(
     `  Deleted ${deletedKeys} keys and ${clearedParticipants} participant index entries.`,
-  );
-
-  console.log("Deleting Vercel Blob objects (chain + pending uploads)...");
-  const deletedChain = await deleteAllByPrefix(`${storage.zkeyPrefix}/`, token);
-  const deletedPending = await deleteAllByPrefix(PENDING_PREFIX, token);
-  console.log(
-    `  Deleted ${deletedChain} chain blob(s) and ${deletedPending} pending upload(s).`,
   );
 
   console.log("Ceremony data reset complete.");
