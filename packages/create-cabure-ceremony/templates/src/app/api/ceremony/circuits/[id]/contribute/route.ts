@@ -154,12 +154,13 @@ async function runContinuityGate(opts: {
   };
 }
 
-// Consume the front-of-queue turn for a submission that failed a check outside
-// the commit lock (the pre-filter or the verify), so it cannot be replayed to
-// block the queue or force repeated verifies. Briefly takes the per-circuit lock
-// and shifts the participant off if they are still at the front. Best-effort: a
-// missed lock just skips the shift — no correctness impact, the gate still
-// guards the commit. Takes its own lock; do not call while holding it.
+// Consume the front-of-queue turn for a submission that failed a pre-lock check,
+// so it cannot be replayed to block the queue or force repeated verifies. Briefly
+// takes the per-circuit lock and shifts the participant off if they are still at
+// the front. Best-effort and NEVER throws: a missed lock or a KV error just skips
+// the shift (the gate still guards the commit; queue timeout still bounds grief),
+// so a caller's 4xx is never turned into a 500 and its blob cleanup still runs.
+// Takes its own lock; do not call while holding it.
 async function consumeTurn(
   config: CeremonyConfig,
   id: string,
@@ -167,20 +168,24 @@ async function consumeTurn(
 ): Promise<void> {
   const lockKey = `${config.storage.manifestPath}:lock:${id}`;
   const lockToken = crypto.randomUUID();
-  if (!(await acquireLock(lockKey, lockToken))) return;
   try {
-    const circuit = await getCircuitState(id);
-    if (circuit.queue[0]?.participantId === participantId) {
-      circuit.queue.shift();
-      await writeCircuitStateFenced({
-        lockKey,
-        lockToken,
-        circuitStateKey: kvKey(config.storage.circuitStatePrefix, id),
-        circuitState: circuit,
-      });
+    if (!(await acquireLock(lockKey, lockToken))) return;
+    try {
+      const circuit = await getCircuitState(id);
+      if (circuit.queue[0]?.participantId === participantId) {
+        circuit.queue.shift();
+        await writeCircuitStateFenced({
+          lockKey,
+          lockToken,
+          circuitStateKey: kvKey(config.storage.circuitStatePrefix, id),
+          circuitState: circuit,
+        });
+      }
+    } finally {
+      await releaseLock(lockKey, lockToken).catch(() => {});
     }
-  } finally {
-    await releaseLock(lockKey, lockToken).catch(() => {});
+  } catch (error) {
+    console.error("Failed to consume turn for circuit:", id, error);
   }
 }
 
