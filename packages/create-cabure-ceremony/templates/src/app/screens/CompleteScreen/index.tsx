@@ -4,10 +4,12 @@ import { useEffect, useState } from "react";
 
 import type { ReceiptResponse } from "@/lib/api";
 import { useCeremonyConfig } from "@/hooks/useCeremonyConfig";
+import { useParticipant } from "@/hooks/useParticipant";
 import { cn } from "@/utils/cn";
 import { Button } from "@/app/components/Button";
 import { ScreenWrapper } from "@/app/components/ScreenWrapper";
 import { useReceiptActions } from "@/hooks/useReceiptActions";
+import { publishGist } from "@/utils/attestation";
 import styles from "./CompleteScreen.module.css";
 
 export function CompleteScreen({
@@ -22,6 +24,7 @@ export function CompleteScreen({
   const config = useCeremonyConfig();
   const { copy } = config;
   const ceremonyName = config.name;
+  const { participantName, accessToken } = useParticipant();
   const {
     receiptPayload,
     latestReceipt,
@@ -39,6 +42,41 @@ export function CompleteScreen({
 
   const [showDetails, setShowDetails] = useState(false);
   const [checkmarkVisible, setCheckmarkVisible] = useState(false);
+
+  // Attestation publishing, keyed by `${circuitId}#${index}` so each receipt
+  // tracks its own state independently.
+  const [gistUrls, setGistUrls] = useState<Record<string, string>>({});
+  const [publishingKey, setPublishingKey] = useState<string | null>(null);
+  const [gistError, setGistError] = useState<string | null>(null);
+
+  const handlePublish = async (receipt: ReceiptResponse) => {
+    const key = `${receipt.circuitId}#${receipt.contributionIndex}`;
+    if (!accessToken) {
+      setGistError(copy.complete.attestationSignInError);
+      return;
+    }
+    setGistError(null);
+    setPublishingKey(key);
+    try {
+      const url = await publishGist(
+        {
+          ceremony: ceremonyName,
+          circuit: receipt.circuitId,
+          index: receipt.contributionIndex,
+          h_k: receipt.serverContributionHash,
+          h_kMinus1: receipt.previousContributionHash,
+          chainHash: receipt.chainHash,
+          login: participantName,
+        },
+        accessToken,
+      );
+      setGistUrls((prev) => ({ ...prev, [key]: url }));
+    } catch {
+      setGistError(copy.complete.attestationError);
+    } finally {
+      setPublishingKey(null);
+    }
+  };
 
   useEffect(() => {
     const checkTimer = setTimeout(() => setCheckmarkVisible(true), 400);
@@ -152,6 +190,52 @@ export function CompleteScreen({
             </div>
           ))}
         </div>
+
+        {receipts.length > 0 && (
+          <div className={styles.section}>
+            <div className="label">{copy.complete.attestationTitle}</div>
+            <p className="sectionSubtitle">{copy.complete.attestationBody}</p>
+
+            {receipts.map((receipt) => {
+              const key = `${receipt.circuitId}#${receipt.contributionIndex}`;
+              const gistUrl = gistUrls[key];
+              return (
+                <div key={`attest-${key}`} className={styles.receiptItem}>
+                  <div className={styles.receiptLeft}>
+                    <div className="accentDot" />
+                    <span className={styles.receiptCircuit}>
+                      {receipt.circuitId} #
+                      {receipt.contributionIndex.toLocaleString()}
+                    </span>
+                  </div>
+                  {gistUrl ? (
+                    <a
+                      href={gistUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={cn(styles.actionButton, styles.attestationAction)}
+                    >
+                      {copy.complete.attestationViewCta}
+                    </a>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => handlePublish(receipt)}
+                      disabled={publishingKey === key}
+                      className={cn(styles.actionButton, styles.attestationAction)}
+                    >
+                      {publishingKey === key
+                        ? copy.complete.attestationPublishingCta
+                        : copy.complete.attestationPublishCta}
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+
+            {gistError && <p className={styles.errorText}>{gistError}</p>}
+          </div>
+        )}
 
         <div className={styles.actionsGrid}>
           <button

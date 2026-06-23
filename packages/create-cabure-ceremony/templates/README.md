@@ -84,7 +84,7 @@ The init script only needs to run once. After deploying, the API routes handle c
 | --------------------------- | ----------------------------------------------------------------------------------------- |
 | `npm run setup:ptau`        | Detect circuit constraints, download the correct PPoT ptau, and update config             |
 | `npm run init:ceremony`     | Generate genesis zkey, upload to Blob, write manifest to KV. Outputs to `public/genesis/` |
-| `npm run reset:ceremony`    | Wipe all KV keys and Blob zkeys for a fresh start (refuses a finalized ceremony unless `-- --force`) |
+| `npm run reset:ceremony`    | Back up state, then wipe all KV keys and Blob objects (chain + pending uploads). Refuses a finalized ceremony unless `-- --force`; asks for typed confirmation unless `-- --yes` |
 | `npm run finalize:ceremony` | Apply beacon (Ethereum RANDAO by default), verify zkeys. Outputs to `public/finalize/`    |
 
 ### Setup ptau
@@ -140,6 +140,21 @@ Running `finalize:ceremony` generates `public/finalize/`:
 - `transcript.json` — full ceremony record (includes beacon source and slot)
 - `{circuitId}.vkey.json` — Groth16 verification key
 - `{circuitId}.final.zkey` — finalized proving key
+
+## Contributor attestation (optional)
+
+After contributing, the Complete screen has a **Publish as Gist** button that
+posts an attestation to a public GitHub Gist on your own account in one click,
+using your GitHub login (the app requests the `gist` scope at sign-in). The CLI
+prints the same payload for you to publish manually. The attestation is a
+timestamped, public record that your contribution happened — it includes your
+contribution hash (`h_k`), its predecessor, and the chain hash.
+
+Publishing is voluntary, and it is **not** a signature. It proves **inclusion**
+(your `h_k` is recorded), not honesty, diversity, or sole authorship. Because
+every `h_k` is public, anyone can publish a valid-looking attestation for
+someone else's contribution, so a count of "N attestations" is **not** evidence
+of N independent honest participants.
 
 ## Configuration
 

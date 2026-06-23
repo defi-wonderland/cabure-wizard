@@ -1,15 +1,99 @@
+import { createInterface } from "node:readline/promises";
+import { cp, mkdir, writeFile } from "node:fs/promises";
+import path from "node:path";
 import process from "node:process";
 
-import { del, list } from "@vercel/blob";
+import { del, list, type ListBlobResultBlob } from "@vercel/blob";
 import { loadEnvConfig } from "@next/env";
 
 import {
   clearParticipantContributions,
   getJson,
   listClear,
+  listRange,
+  setMembers,
 } from "@/lib/kv-store";
-import type { ManifestState } from "@/lib/ceremony-state";
+import type {
+  CircuitState,
+  ContributionReceipt,
+  ManifestState,
+} from "@/lib/ceremony-state";
 import { ceremonyConfig } from "../ceremony.config";
+
+const { storage, circuits } = ceremonyConfig;
+
+// Client uploads land here before the contribute route copies them under
+// zkeyPrefix (see the contribute route's isValidPendingBlobUrl). An aborted
+// upload leaves an orphan here that no later run touches. Vercel Blob has no
+// native TTL, so reset is what reclaims them; a live-ceremony sweep is a
+// separate follow-up (orphan GC).
+const PENDING_PREFIX = "contributions/";
+
+async function confirmReset(force: boolean): Promise<boolean> {
+  if (process.argv.includes("--yes")) return true;
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  const warning = force
+    ? 'Type "RESET" to wipe a finalized ceremony: '
+    : 'Type "RESET" to wipe all ceremony data: ';
+  const answer = await rl.question(warning);
+  rl.close();
+  return answer.trim() === "RESET";
+}
+
+async function listAllBlobs(
+  prefix: string,
+  token: string,
+): Promise<ListBlobResultBlob[]> {
+  const blobs: ListBlobResultBlob[] = [];
+  let cursor: string | undefined;
+  do {
+    const result = await list({ prefix, token, cursor });
+    blobs.push(...result.blobs);
+    cursor = result.hasMore ? result.cursor : undefined;
+  } while (cursor);
+  return blobs;
+}
+
+// Snapshot everything reset is about to erase, so an accidental reset is
+// recoverable. The KV state and blob listings go into state.json; the locally
+// published artifacts (public/genesis, public/finalize) are copied as-is. Blob
+// bytes are not downloaded — only their metadata — because chain zkeys can be
+// large; the recoverable record is the KV receipts plus the published dirs.
+async function backup(
+  pendingBlobs: ListBlobResultBlob[],
+  chainBlobs: ListBlobResultBlob[],
+): Promise<string> {
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const dir = path.resolve(process.cwd(), "backups", stamp);
+  await mkdir(dir, { recursive: true });
+
+  const manifest = await getJson<ManifestState>(storage.manifestPath);
+  const circuitStates: Record<string, CircuitState | null> = {};
+  for (const c of circuits) {
+    circuitStates[c.id] = await getJson<CircuitState>(
+      `${storage.circuitStatePrefix}:${c.id}`,
+    );
+  }
+  const receipts = await listRange<ContributionReceipt>(storage.receiptsPath);
+  const participants = await setMembers(storage.participantsIndexPath);
+
+  await writeFile(
+    path.join(dir, "state.json"),
+    JSON.stringify(
+      { manifest, circuitStates, receipts, participants, pendingBlobs, chainBlobs },
+      null,
+      2,
+    ),
+  );
+
+  for (const sub of ["genesis", "finalize"]) {
+    const src = path.resolve(process.cwd(), "public", sub);
+    // The dir may not exist (e.g. reset before finalize). Skip silently.
+    await cp(src, path.join(dir, sub), { recursive: true }).catch(() => {});
+  }
+
+  return dir;
+}
 
 async function main() {
   loadEnvConfig(process.cwd(), true);
@@ -25,8 +109,6 @@ async function main() {
       "KV_REST_API_URL and KV_REST_API_TOKEN are required. Pull env vars from Vercel or set them in .env/.env.local.",
     );
   }
-
-  const { storage, circuits } = ceremonyConfig;
 
   // Guard a finalized ceremony. reset wipes the live manifest, receipts, circuit
   // states and zkey blobs; the published transcript and final zkeys under
@@ -46,8 +128,23 @@ async function main() {
     );
   }
 
-  console.log("Deleting Redis keys...");
+  if (!(await confirmReset(force))) {
+    console.log("Reset cancelled.");
+    process.exit(0);
+  }
 
+  // List blobs once, up front: the listing goes into the backup and then drives
+  // deletion, so a blob added between the two would not be missed by deletion
+  // (it just would not be in the backup record).
+  console.log("Listing Vercel Blob objects...");
+  const chainBlobs = await listAllBlobs(`${storage.zkeyPrefix}/`, token);
+  const pendingBlobs = await listAllBlobs(PENDING_PREFIX, token);
+
+  console.log("Backing up state...");
+  const backupDir = await backup(pendingBlobs, chainBlobs);
+  console.log(`  Backup written to ${backupDir}`);
+
+  console.log("Deleting Redis keys...");
   const redisKeys = [
     storage.manifestPath,
     storage.receiptsPath,
@@ -67,27 +164,15 @@ async function main() {
     `  Deleted ${deletedKeys} keys and ${clearedParticipants} participant index entries.`,
   );
 
-  console.log("Deleting Vercel Blob zkeys...");
+  console.log("Deleting Vercel Blob objects (chain + pending uploads)...");
+  const urls = [...chainBlobs, ...pendingBlobs].map((b) => b.url);
+  for (let i = 0; i < urls.length; i += 100) {
+    await del(urls.slice(i, i + 100), { token });
+  }
+  console.log(
+    `  Deleted ${chainBlobs.length} chain blob(s) and ${pendingBlobs.length} pending upload(s).`,
+  );
 
-  let deletedBlobs = 0;
-  let cursor: string | undefined;
-  do {
-    const result = await list({
-      prefix: `${storage.zkeyPrefix}/`,
-      token,
-      cursor,
-    });
-    if (result.blobs.length > 0) {
-      await del(
-        result.blobs.map((b) => b.url),
-        { token },
-      );
-      deletedBlobs += result.blobs.length;
-    }
-    cursor = result.hasMore ? result.cursor : undefined;
-  } while (cursor);
-
-  console.log(`  Deleted ${deletedBlobs} blob(s).`);
   console.log("Ceremony data reset complete.");
   process.exit(0);
 }

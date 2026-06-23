@@ -52,6 +52,12 @@ export interface ReceiptResponse {
   contributionIndex: number;
   contributionHash: string;
   clientContributionHash: string | null;
+  // Genuine contribution hash (h_k): the Blake2b that the chain folds over and
+  // that the attestation publishes. The /receipt and /participant/receipts
+  // routes already spread the stored receipt, so this value flows through.
+  serverContributionHash: string;
+  // h_{k-1}: predecessor hash for the attestation; null for the first.
+  previousContributionHash: string | null;
   chainHash: string;
   timestamp: number;
 }

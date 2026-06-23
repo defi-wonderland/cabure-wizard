@@ -8,3 +8,5 @@ coverage/
 # Keep template fixtures visible for create-cabure-ceremony
 !packages/create-cabure-ceremony/templates/
 !packages/create-cabure-ceremony/templates/**
+# ...but never the local TypeScript build cache the wildcard above re-included
+packages/create-cabure-ceremony/templates/**/*.tsbuildinfo

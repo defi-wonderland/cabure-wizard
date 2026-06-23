@@ -140,6 +140,13 @@ export interface CeremonyCopy {
     thankYouTitle: string;
     thankYouBody: string;
     restartCta: string;
+    attestationTitle: string;
+    attestationBody: string;
+    attestationPublishCta: string;
+    attestationPublishingCta: string;
+    attestationViewCta: string;
+    attestationError: string;
+    attestationSignInError: string;
   };
   verify: {
     title: string;

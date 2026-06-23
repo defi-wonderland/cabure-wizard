@@ -159,6 +159,30 @@ export async function contributeCommand(
     console.log(`  ${r.circuitId}: #${r.contributionIndex} — ${r.contributionHash}`);
   }
 
+  // Optional attestation. Publishing is voluntary and proves inclusion, not
+  // honesty (see docs/h4-verifiability.md). h_{k-1} is what the server reported
+  // this contribution extended; the open verifier re-derives it from the final
+  // zkey, so it is corroborating, not load-bearing.
+  console.log(
+    "\nOptional: publish any of these as a public GitHub Gist to leave a",
+  );
+  console.log("timestamped record that your contribution happened.\n");
+  for (const r of receipts) {
+    const attestation = {
+      ceremony: ceremonyUrl,
+      circuit: r.circuitId,
+      index: r.contributionIndex,
+      h_k: r.serverContributionHash,
+      h_kMinus1: r.previousContributionHash,
+      chainHash: r.chainHash,
+      login: participantName,
+    };
+    console.log(`  ${r.circuitId} #${r.contributionIndex}:`);
+    console.log(JSON.stringify(attestation, null, 2));
+    console.log();
+  }
+  console.log("  Create one at https://gist.github.com/ (optional).");
+
   console.log();
 }
 
