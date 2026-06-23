@@ -428,24 +428,23 @@ export async function POST(
 
         const isValid = await verifyChain(ptau, genesis, body);
         if (!isValid) {
-          // Poisoned: extends the head (passed the pre-filter) but fails the
-          // pairing check. Consume the turn so it cannot be replayed to force the
-          // verify again. The transient catch below keeps the turn, so flaky
-          // downloads do not cost an honest turn.
-          await consumeTurn(config, id, participantId);
+          // Don't consume the turn: verifyChain returns false on ANY failure, so
+          // an infra fault (e.g. /tmp full, OOM under load) is indistinguishable
+          // from an invalid chain — consuming would punish an honest contributor.
+          // They keep their turn and retry; poison just retries until it ages out.
           await deleteBinary(blobUrl).catch(() => {});
           return NextResponse.json(
-            { error: "Invalid contribution: verification failed" },
+            {
+              error:
+                "Verification failed. If your contribution is valid, please retry.",
+            },
             { status: 400 },
           );
         }
       } catch (error) {
-        // A throw here means the verifier could not run (ptau download, genesis
-        // fetch, hashing, or a snarkjs crash) — NOT that the contribution is bad.
-        // Without this catch the pending blob leaks and the client gets an opaque
-        // 500. Clean up and return 503 so the contributor retries: 503 ("could not
-        // verify, try again") must stay distinct from the 400 above ("contribution
-        // is invalid"), or a transient server fault brands valid work as poisoned.
+        // The verifier couldn't run (download / hashing / snarkjs crash) — 503 to
+        // retry. Like the false branch, this never consumes the turn: an infra
+        // fault must not be charged as an invalid contribution.
         console.error(`Verification failed to run for circuit ${id}:`, error);
         await deleteBinary(blobUrl).catch(() => {});
         return NextResponse.json(
