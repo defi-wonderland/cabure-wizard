@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import type { ReceiptResponse } from "@/lib/api";
 import { useCeremonyConfig } from "@/hooks/useCeremonyConfig";
@@ -48,10 +48,16 @@ export function CompleteScreen({
   const [gistUrls, setGistUrls] = useState<Record<string, string>>({});
   const [publishing, setPublishing] = useState<Set<string>>(() => new Set());
   const [gistError, setGistError] = useState<string | null>(null);
+  // Synchronous in-flight guard. `publishing` (state) drives the disabled UI but
+  // only updates on re-render, so a fast double-click could fire twice before
+  // the button disables. The ref is mutated immediately, so the second click
+  // bails — preventing duplicate Gists for one receipt.
+  const inFlight = useRef<Set<string>>(new Set());
 
   const handlePublish = async (receipt: ReceiptResponse) => {
     const key = `${receipt.circuitId}#${receipt.contributionIndex}`;
-    if (publishing.has(key)) return;
+    if (inFlight.current.has(key)) return;
+    inFlight.current.add(key);
     setGistError(null);
     setPublishing((prev) => new Set(prev).add(key));
     try {
@@ -72,6 +78,7 @@ export function CompleteScreen({
           : copy.complete.attestationError,
       );
     } finally {
+      inFlight.current.delete(key);
       setPublishing((prev) => {
         const next = new Set(prev);
         next.delete(key);

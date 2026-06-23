@@ -50,19 +50,29 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: "Attestation too large" }, { status: 400 });
   }
 
-  const response = await fetch("https://api.github.com/gists", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      Accept: "application/vnd.github+json",
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      description,
-      public: true,
-      files: { [filename]: { content } },
-    }),
-  });
+  let response: Response;
+  try {
+    response = await fetch("https://api.github.com/gists", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        Accept: "application/vnd.github+json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        description,
+        public: true,
+        files: { [filename]: { content } },
+      }),
+    });
+  } catch {
+    // Network-layer failure (DNS, timeout, connection reset). Return a
+    // controlled error instead of letting it surface as a raw 500.
+    return NextResponse.json(
+      { error: "Could not reach GitHub to publish the Gist." },
+      { status: 502 },
+    );
+  }
 
   if (!response.ok) {
     return NextResponse.json(
