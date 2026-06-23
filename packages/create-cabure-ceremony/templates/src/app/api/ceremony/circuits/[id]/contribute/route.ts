@@ -174,12 +174,22 @@ async function consumeTurn(
       const circuit = await getCircuitState(id);
       if (circuit.queue[0]?.participantId === participantId) {
         circuit.queue.shift();
-        await writeCircuitStateFenced({
+        const consumed = await writeCircuitStateFenced({
           lockKey,
           lockToken,
           circuitStateKey: kvKey(config.storage.circuitStatePrefix, id),
           circuitState: circuit,
         });
+        // Best-effort: a false here means our lock lapsed mid-shift (a 60s+
+        // stall across one read + an in-memory shift — near-impossible), so the
+        // turn was not consumed. Nothing to recover; log it so the rare skip is
+        // not silent. The gate still guards the commit; queue timeout bounds grief.
+        if (!consumed) {
+          console.warn(
+            "consumeTurn: lock lost, turn not consumed for circuit:",
+            id,
+          );
+        }
       }
     } finally {
       await releaseLock(lockKey, lockToken).catch(() => {});
