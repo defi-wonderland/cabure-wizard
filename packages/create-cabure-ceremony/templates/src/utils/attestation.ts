@@ -36,37 +36,34 @@ export function buildAttestation(input: AttestationPayload): {
 }
 
 // Publish the attestation as a public Gist on the contributor's own GitHub
-// account, using the gist-scoped token from their session. One click, no copy
-// and paste. Returns the Gist's web URL.
+// account. One click, no copy and paste. Returns the Gist's web URL.
 //
-// The token is a GitHub OAuth bearer token, so this is attributable+timestamped
-// evidence, not a signature (see the header note). Requires the session to
-// carry the `gist` scope; a session signed in before that scope was granted
-// fails here and the contributor must sign in again.
-export async function publishGist(
+// The GitHub token is never in the client: this posts to our own server route,
+// which reads the token from the session JWT and calls GitHub. Throws
+// "UNAUTHORIZED" when the session has no gist-scoped token (signed in before
+// the scope was granted) so the caller can prompt a fresh sign-in.
+export async function publishAttestation(
   input: AttestationPayload,
-  accessToken: string,
 ): Promise<string> {
   const { filename, json } = buildAttestation(input);
-  const response = await fetch("https://api.github.com/gists", {
+  const response = await fetch("/api/ceremony/attestation", {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      Accept: "application/vnd.github+json",
-      "Content-Type": "application/json",
-    },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
+      filename,
+      content: json,
       description: `Caburé attestation — ${input.ceremony} / ${input.circuit} #${input.index}`,
-      public: true,
-      files: { [filename]: { content: json } },
     }),
   });
+  if (response.status === 401) {
+    throw new Error("UNAUTHORIZED");
+  }
   if (!response.ok) {
     throw new Error(`Gist creation failed (${response.status}).`);
   }
-  const data = (await response.json()) as { html_url?: string };
-  if (!data.html_url) {
-    throw new Error("Gist was created but GitHub returned no URL.");
+  const data = (await response.json()) as { url?: string };
+  if (!data.url) {
+    throw new Error("Gist was created but no URL was returned.");
   }
-  return data.html_url;
+  return data.url;
 }

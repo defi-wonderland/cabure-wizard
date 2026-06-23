@@ -25,7 +25,10 @@ export const authOptions: NextAuthOptions = {
         token.participantName = gh.login ?? profile.name ?? "";
       }
       // `account` is set only on the initial sign-in. Keep the GitHub access
-      // token so the client can create the attestation Gist.
+      // token in the JWT (encrypted, httpOnly cookie) so the server-side
+      // attestation route can publish the Gist. It is deliberately NOT exposed
+      // on the session below: the client never sees it, so an XSS cannot read a
+      // write-scoped token. See api/ceremony/attestation.
       if (account?.access_token) {
         token.accessToken = account.access_token;
       }
@@ -34,7 +37,6 @@ export const authOptions: NextAuthOptions = {
     session({ session, token }) {
       session.participantId = token.participantId as string;
       session.participantName = token.participantName as string;
-      session.accessToken = token.accessToken as string | undefined;
       return session;
     },
   },

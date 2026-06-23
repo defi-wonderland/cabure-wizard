@@ -9,7 +9,7 @@ import { cn } from "@/utils/cn";
 import { Button } from "@/app/components/Button";
 import { ScreenWrapper } from "@/app/components/ScreenWrapper";
 import { useReceiptActions } from "@/hooks/useReceiptActions";
-import { publishGist } from "@/utils/attestation";
+import { publishAttestation } from "@/utils/attestation";
 import styles from "./CompleteScreen.module.css";
 
 export function CompleteScreen({
@@ -24,7 +24,7 @@ export function CompleteScreen({
   const config = useCeremonyConfig();
   const { copy } = config;
   const ceremonyName = config.name;
-  const { participantName, accessToken } = useParticipant();
+  const { participantName } = useParticipant();
   const {
     receiptPayload,
     latestReceipt,
@@ -46,35 +46,37 @@ export function CompleteScreen({
   // Attestation publishing, keyed by `${circuitId}#${index}` so each receipt
   // tracks its own state independently.
   const [gistUrls, setGistUrls] = useState<Record<string, string>>({});
-  const [publishingKey, setPublishingKey] = useState<string | null>(null);
+  const [publishing, setPublishing] = useState<Set<string>>(() => new Set());
   const [gistError, setGistError] = useState<string | null>(null);
 
   const handlePublish = async (receipt: ReceiptResponse) => {
     const key = `${receipt.circuitId}#${receipt.contributionIndex}`;
-    if (!accessToken) {
-      setGistError(copy.complete.attestationSignInError);
-      return;
-    }
+    if (publishing.has(key)) return;
     setGistError(null);
-    setPublishingKey(key);
+    setPublishing((prev) => new Set(prev).add(key));
     try {
-      const url = await publishGist(
-        {
-          ceremony: ceremonyName,
-          circuit: receipt.circuitId,
-          index: receipt.contributionIndex,
-          h_k: receipt.serverContributionHash,
-          h_kMinus1: receipt.previousContributionHash,
-          chainHash: receipt.chainHash,
-          login: participantName,
-        },
-        accessToken,
-      );
+      const url = await publishAttestation({
+        ceremony: ceremonyName,
+        circuit: receipt.circuitId,
+        index: receipt.contributionIndex,
+        h_k: receipt.serverContributionHash,
+        h_kMinus1: receipt.previousContributionHash,
+        chainHash: receipt.chainHash,
+        login: participantName,
+      });
       setGistUrls((prev) => ({ ...prev, [key]: url }));
-    } catch {
-      setGistError(copy.complete.attestationError);
+    } catch (error) {
+      setGistError(
+        error instanceof Error && error.message === "UNAUTHORIZED"
+          ? copy.complete.attestationSignInError
+          : copy.complete.attestationError,
+      );
     } finally {
-      setPublishingKey(null);
+      setPublishing((prev) => {
+        const next = new Set(prev);
+        next.delete(key);
+        return next;
+      });
     }
   };
 
@@ -221,10 +223,10 @@ export function CompleteScreen({
                     <button
                       type="button"
                       onClick={() => handlePublish(receipt)}
-                      disabled={publishingKey === key}
+                      disabled={publishing.has(key)}
                       className={cn(styles.actionButton, styles.attestationAction)}
                     >
-                      {publishingKey === key
+                      {publishing.has(key)
                         ? copy.complete.attestationPublishingCta
                         : copy.complete.attestationPublishCta}
                     </button>

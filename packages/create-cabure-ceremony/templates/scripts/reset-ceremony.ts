@@ -54,6 +54,27 @@ async function listAllBlobs(
   return blobs;
 }
 
+// Delete every blob under a prefix, re-listing until none remain. Re-listing
+// (rather than deleting a single up-front snapshot) makes the wipe exhaustive:
+// it also removes anything uploaded after the snapshot was taken. Safe to loop
+// because reset runs against a halted ceremony, so no new uploads arrive.
+async function deleteAllByPrefix(
+  prefix: string,
+  token: string,
+): Promise<number> {
+  let total = 0;
+  for (;;) {
+    const { blobs } = await list({ prefix, token });
+    if (blobs.length === 0) break;
+    await del(
+      blobs.map((b) => b.url),
+      { token },
+    );
+    total += blobs.length;
+  }
+  return total;
+}
+
 // Snapshot everything reset is about to erase, so an accidental reset is
 // recoverable. The KV state and blob listings go into state.json; the locally
 // published artifacts (public/genesis, public/finalize) are copied as-is. Blob
@@ -88,8 +109,14 @@ async function backup(
 
   for (const sub of ["genesis", "finalize"]) {
     const src = path.resolve(process.cwd(), "public", sub);
-    // The dir may not exist (e.g. reset before finalize). Skip silently.
-    await cp(src, path.join(dir, sub), { recursive: true }).catch(() => {});
+    // Ignore only a missing dir (e.g. reset before finalize). Any other copy
+    // failure must abort the reset: this backup runs before the wipe, so
+    // swallowing it would destroy data with no recoverable copy.
+    await cp(src, path.join(dir, sub), { recursive: true }).catch(
+      (error: NodeJS.ErrnoException) => {
+        if (error.code !== "ENOENT") throw error;
+      },
+    );
   }
 
   return dir;
@@ -133,9 +160,9 @@ async function main() {
     process.exit(0);
   }
 
-  // List blobs once, up front: the listing goes into the backup and then drives
-  // deletion, so a blob added between the two would not be missed by deletion
-  // (it just would not be in the backup record).
+  // Snapshot the blobs once for the backup record. Deletion below re-lists
+  // independently, so anything uploaded after this snapshot is still deleted
+  // (it just is not in the backup listing).
   console.log("Listing Vercel Blob objects...");
   const chainBlobs = await listAllBlobs(`${storage.zkeyPrefix}/`, token);
   const pendingBlobs = await listAllBlobs(PENDING_PREFIX, token);
@@ -165,12 +192,10 @@ async function main() {
   );
 
   console.log("Deleting Vercel Blob objects (chain + pending uploads)...");
-  const urls = [...chainBlobs, ...pendingBlobs].map((b) => b.url);
-  for (let i = 0; i < urls.length; i += 100) {
-    await del(urls.slice(i, i + 100), { token });
-  }
+  const deletedChain = await deleteAllByPrefix(`${storage.zkeyPrefix}/`, token);
+  const deletedPending = await deleteAllByPrefix(PENDING_PREFIX, token);
   console.log(
-    `  Deleted ${chainBlobs.length} chain blob(s) and ${pendingBlobs.length} pending upload(s).`,
+    `  Deleted ${deletedChain} chain blob(s) and ${deletedPending} pending upload(s).`,
   );
 
   console.log("Ceremony data reset complete.");
