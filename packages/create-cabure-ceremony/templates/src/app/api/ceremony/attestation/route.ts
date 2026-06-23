@@ -64,6 +64,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         public: true,
         files: { [filename]: { content } },
       }),
+      // Fail fast on a stalled upstream instead of holding the request (and the
+      // client's "Publishing…" state) open indefinitely. Trips the catch below.
+      signal: AbortSignal.timeout(15_000),
     });
   } catch {
     // Network-layer failure (DNS, timeout, connection reset). Return a

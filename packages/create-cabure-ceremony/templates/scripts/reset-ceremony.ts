@@ -62,14 +62,26 @@ async function deleteAllByPrefix(
   prefix: string,
   token: string,
 ): Promise<number> {
+  // Delete in modest batches: one del() with ~1000 URLs raises rate-limit
+  // failures. The round cap is a safety stop — if it is hit, something is still
+  // writing (reset expects a halted ceremony), so fail loudly rather than loop
+  // forever.
+  const DELETE_BATCH = 100;
+  const MAX_ROUNDS = 1000;
   let total = 0;
-  for (;;) {
+  for (let round = 0; ; round++) {
+    if (round >= MAX_ROUNDS) {
+      throw new Error(
+        `Blob deletion under "${prefix}" did not converge after ${MAX_ROUNDS} rounds. ` +
+          "Halt any process still uploading, then re-run reset.",
+      );
+    }
     const { blobs } = await list({ prefix, token });
     if (blobs.length === 0) break;
-    await del(
-      blobs.map((b) => b.url),
-      { token },
-    );
+    const urls = blobs.map((b) => b.url);
+    for (let i = 0; i < urls.length; i += DELETE_BATCH) {
+      await del(urls.slice(i, i + DELETE_BATCH), { token });
+    }
     total += blobs.length;
   }
   return total;
