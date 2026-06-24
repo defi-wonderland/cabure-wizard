@@ -1,13 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
-import type { ReceiptResponse } from "@/lib/api";
+import type { ContributionReceiptWithClient } from "@/hooks/useContributionFlow";
 import { useCeremonyConfig } from "@/hooks/useCeremonyConfig";
 import { cn } from "@/utils/cn";
 import { Button } from "@/app/components/Button";
 import { ScreenWrapper } from "@/app/components/ScreenWrapper";
 import { useReceiptActions } from "@/hooks/useReceiptActions";
+import { publishAttestation } from "@/utils/attestation";
 import styles from "./CompleteScreen.module.css";
 
 export function CompleteScreen({
@@ -15,7 +16,7 @@ export function CompleteScreen({
   onRestart,
   onVerify,
 }: {
-  receipts: ReceiptResponse[];
+  receipts: ContributionReceiptWithClient[];
   onRestart: () => void;
   onVerify: () => void;
 }) {
@@ -39,6 +40,48 @@ export function CompleteScreen({
 
   const [showDetails, setShowDetails] = useState(false);
   const [checkmarkVisible, setCheckmarkVisible] = useState(false);
+
+  // Attestation publishing, keyed by `${circuitId}#${index}` so each receipt
+  // tracks its own state independently.
+  const [gistUrls, setGistUrls] = useState<Record<string, string>>({});
+  const [publishing, setPublishing] = useState<Set<string>>(() => new Set());
+  const [gistError, setGistError] = useState<string | null>(null);
+  // Synchronous in-flight guard. `publishing` (state) drives the disabled UI but
+  // only updates on re-render, so a fast double-click could fire twice before
+  // the button disables. The ref is mutated immediately, so the second click
+  // bails — preventing duplicate Gists for one receipt.
+  const inFlight = useRef<Set<string>>(new Set());
+
+  const handlePublish = async (receipt: ContributionReceiptWithClient) => {
+    const key = `${receipt.circuitId}#${receipt.contributionIndex}`;
+    if (inFlight.current.has(key)) return;
+    inFlight.current.add(key);
+    setGistError(null);
+    setPublishing((prev) => new Set(prev).add(key));
+    try {
+      const url = await publishAttestation({
+        ceremony: ceremonyName,
+        circuit: receipt.circuitId,
+        index: receipt.contributionIndex,
+        // The contributor's own client-computed h_k — the only value they vouch for.
+        h_k: receipt.clientHk,
+      });
+      setGistUrls((prev) => ({ ...prev, [key]: url }));
+    } catch (error) {
+      setGistError(
+        error instanceof Error && error.message === "UNAUTHORIZED"
+          ? copy.complete.attestationSignInError
+          : copy.complete.attestationError,
+      );
+    } finally {
+      inFlight.current.delete(key);
+      setPublishing((prev) => {
+        const next = new Set(prev);
+        next.delete(key);
+        return next;
+      });
+    }
+  };
 
   useEffect(() => {
     const checkTimer = setTimeout(() => setCheckmarkVisible(true), 400);
@@ -152,6 +195,52 @@ export function CompleteScreen({
             </div>
           ))}
         </div>
+
+        {receipts.length > 0 && (
+          <div className={styles.section}>
+            <div className="label">{copy.complete.attestationTitle}</div>
+            <p className="sectionSubtitle">{copy.complete.attestationBody}</p>
+
+            {receipts.map((receipt) => {
+              const key = `${receipt.circuitId}#${receipt.contributionIndex}`;
+              const gistUrl = gistUrls[key];
+              return (
+                <div key={`attest-${key}`} className={styles.receiptItem}>
+                  <div className={styles.receiptLeft}>
+                    <div className="accentDot" />
+                    <span className={styles.receiptCircuit}>
+                      {receipt.circuitId} #
+                      {receipt.contributionIndex.toLocaleString()}
+                    </span>
+                  </div>
+                  {gistUrl ? (
+                    <a
+                      href={gistUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={cn(styles.actionButton, styles.attestationAction)}
+                    >
+                      {copy.complete.attestationViewCta}
+                    </a>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => handlePublish(receipt)}
+                      disabled={publishing.has(key)}
+                      className={cn(styles.actionButton, styles.attestationAction)}
+                    >
+                      {publishing.has(key)
+                        ? copy.complete.attestationPublishingCta
+                        : copy.complete.attestationPublishCta}
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+
+            {gistError && <p className={styles.errorText}>{gistError}</p>}
+          </div>
+        )}
 
         <div className={styles.actionsGrid}>
           <button

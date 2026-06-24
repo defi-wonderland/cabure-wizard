@@ -96,15 +96,16 @@ function buildTierPreview(
   );
   const tierIds = new Set(tier.circuitIds);
 
-  const items = tier.circuitIds.map((circuitId) => {
-    if (willRunIds.has(circuitId)) {
-      return { circuitId, state: "willRun" as const };
-    }
-    if (contributedCircuitIds.has(circuitId)) {
-      return { circuitId, state: "alreadyContributed" as const };
-    }
-    return { circuitId, state: "targetReached" as const };
-  });
+  const items: Array<{ circuitId: string; state: CircuitPreviewState }> =
+    tier.circuitIds.map((circuitId) => {
+      if (willRunIds.has(circuitId)) {
+        return { circuitId, state: "willRun" as const };
+      }
+      if (contributedCircuitIds.has(circuitId)) {
+        return { circuitId, state: "alreadyContributed" as const };
+      }
+      return { circuitId, state: "targetReached" as const };
+    });
 
   for (const circuitId of willRunIds) {
     if (!tierIds.has(circuitId)) {

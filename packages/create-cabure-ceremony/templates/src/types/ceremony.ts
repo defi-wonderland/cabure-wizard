@@ -106,11 +106,13 @@ export interface CeremonyCopy {
       downloading: string;
       computing: string;
       uploading: string;
+      verifying: string;
     };
     phaseStatus: {
       downloading: string;
       computing: string;
       uploading: string;
+      verifying: string;
     };
     finalizeCta: string;
     retryCta: string;
@@ -138,6 +140,13 @@ export interface CeremonyCopy {
     thankYouTitle: string;
     thankYouBody: string;
     restartCta: string;
+    attestationTitle: string;
+    attestationBody: string;
+    attestationPublishCta: string;
+    attestationPublishingCta: string;
+    attestationViewCta: string;
+    attestationError: string;
+    attestationSignInError: string;
   };
   verify: {
     title: string;

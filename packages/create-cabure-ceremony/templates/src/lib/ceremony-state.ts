@@ -10,6 +10,7 @@ import {
 } from "./ceremony-config";
 import { getJson, listRange, setIsMember, setMembers } from "./kv-store";
 
+// Seed of the contribution chain (32 zero bytes).
 const GENESIS_CHAIN_HASH = `0x${"0".repeat(64)}`;
 const END_DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -19,6 +20,14 @@ export interface ContributionReceipt {
   contributionIndex: number;
   contributionHash: string;
   clientContributionHash: string | null;
+  // Server-recomputed Blake2b hash (snarkjs hashPubKey) of the contribution.
+  // Distinct from contributionHash (SHA-256 of the bytes) and the untrusted
+  // clientContributionHash. finalize re-walks the final zkey and checks this
+  // sequence to prove the embedded chain is the one that was recorded.
+  serverContributionHash: string;
+  // h_{k-1}: the head hash this contribution extended; null for the first
+  // contribution. Lets the contributor's attestation name its predecessor.
+  previousContributionHash: string | null;
   chainHash: string;
   timestamp: number;
 }
@@ -36,6 +45,27 @@ export interface CircuitState {
   queue: QueueEntry[];
   currentZkeyPath: string;
   currentZkeyUrl: string;
+  // Genesis zkey, pinned at init and never overwritten. Lets the contribution
+  // and finalize paths check that a chain really extends the original
+  // parameters instead of trusting the mutable `current` pointer.
+  initialZkeyHash: string;
+  initialZkeyUrl: string;
+  // Public URL of the ptau this circuit was set up with, published at init. The
+  // file is not on the deployed function's filesystem; the contribute route
+  // fetches it here for verifyChain. Per-circuit so circuits may use different
+  // (right-sized) ptau files. Required: init always publishes it.
+  ptauUrl: string;
+  // Continuity anchors snarkjs cannot give us: it proves a zkey is valid from the
+  // genesis, not that it extends the recorded head. The head count is
+  // `totalContributions`; the two fields below are the cryptographic anchors the
+  // contribute gate checks, and come only from server state.
+  //
+  // Blake2b (hashPubKey) of the head's last contribution; null at genesis. A
+  // submission must carry this exact hash at the head position.
+  headContributionHash: string | null;
+  // Circuit identity (csHash) from the genesis MPC params, the same across the
+  // whole chain. The empty-chain gate checks the first submission against it.
+  csHash: string;
 }
 
 export interface ManifestState {
@@ -44,8 +74,13 @@ export interface ManifestState {
   endDate: string | null;
   startedAt: number;
   circuits: Array<{ id: string }>;
+  // Resolved beacon, persisted at seal time so an interrupted finalize reuses
+  // the same value on recovery and can never re-roll it. See finalize-ceremony.
   beaconHash?: string;
+  beaconSource?: string;
+  beaconSlot?: number;
   beaconApplied?: boolean;
+  finalizingAt?: number;
   finalizedAt?: number;
 }
 
@@ -145,6 +180,16 @@ export function isCeremonyActive(
 ): boolean {
   const config = getCeremonyConfig();
   const now = Date.now();
+  // Hard seal. The ceremony stops accepting contributions for good once
+  // finalization starts: beaconApplied means it finished, finalizingAt means a
+  // finalize:ceremony run is in progress or was interrupted. Neither expires on
+  // its own. Auto-reopening would let contributions resume while a finalizer is
+  // still working from its snapshot, and they would be dropped from the final
+  // artifacts. An interrupted run is recovered explicitly: finalize --force to
+  // take over and resume, or reset:ceremony to start clean.
+  if (manifest.beaconApplied || manifest.finalizingAt !== undefined) {
+    return false;
+  }
   let endDateMs: number | null;
   try {
     endDateMs = getEndDateDeadlineMs(manifest.endDate);
@@ -161,6 +206,38 @@ export function isCeremonyActive(
     const state = allCircuits.find((s) => s.id === c.id);
     return !state || state.totalContributions < c.targetContributions;
   });
+}
+
+/**
+ * Whether one circuit can still accept a contribution: the ceremony deadline
+ * has not passed and this circuit is below its target. Per-circuit, so it needs
+ * only this circuit's state — no global read of every circuit. The contribute
+ * path uses this instead of isCeremonyActive: a contribution to a full circuit
+ * must be rejected even while other circuits are still open.
+ */
+export function isCircuitActive(
+  manifest: ManifestState,
+  circuit: CircuitState,
+  targetContributions: number,
+): boolean {
+  // Same hard seal as isCeremonyActive. The contribute path uses this function
+  // and is the only one that overwrites current.zkey, so without this check a
+  // --force early finalize would let contributions slip in during finalization.
+  if (manifest.beaconApplied || manifest.finalizingAt !== undefined) {
+    return false;
+  }
+  let endDateMs: number | null;
+  try {
+    endDateMs = getEndDateDeadlineMs(manifest.endDate);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(
+      `Ceremony inactive because manifest.endDate is invalid: ${message}`,
+    );
+    return false;
+  }
+  if (endDateMs !== null && Date.now() > endDateMs) return false;
+  return circuit.totalContributions < targetContributions;
 }
 
 /**
@@ -207,14 +284,22 @@ export function selectCircuitsForTier(
   return [...needed, ...backfill];
 }
 
+// Chain-of-custody over the genuine per-contribution hashes. Each link is
+// SHA-256(previousChainHash ‖ h_k), where h_k is the contribution's Blake2b
+// hash (serverContributionHash, snarkjs hashPubKey) recomputed server-side from
+// the submitted zkey. Both operands are folded as raw bytes, not as text.
+//
+// Chaining over h_k, not operator-controlled strings (SHA-256 of the bytes,
+// participantId, timestamp), keeps the chain tied to values that exist in the
+// final zkey's section 10: the same sequence can be recomputed from the
+// published parameters. The attestation publishes each h_k and this chain hash.
 export function computeChainHash(options: {
   previousChainHash: string;
   contributionHash: string;
-  participantId: string;
-  timestamp: number;
 }): string {
-  const input = `${options.previousChainHash}:${options.contributionHash}:${options.participantId}:${options.timestamp}`;
-  const digest = createHash("sha256").update(input).digest("hex");
+  const prev = Buffer.from(options.previousChainHash.replace(/^0x/, ""), "hex");
+  const hk = Buffer.from(options.contributionHash.replace(/^0x/, ""), "hex");
+  const digest = createHash("sha256").update(prev).update(hk).digest("hex");
   return `0x${digest}`;
 }
 
@@ -231,6 +316,10 @@ export function createCircuitState(options: {
   id: string;
   zkeyPath: string;
   zkeyUrl: string;
+  initialZkeyHash: string;
+  initialZkeyUrl: string;
+  ptauUrl: string;
+  csHash: string;
 }): CircuitState {
   return {
     id: options.id,
@@ -240,6 +329,11 @@ export function createCircuitState(options: {
     queue: [],
     currentZkeyPath: options.zkeyPath,
     currentZkeyUrl: options.zkeyUrl,
+    initialZkeyHash: options.initialZkeyHash,
+    initialZkeyUrl: options.initialZkeyUrl,
+    ptauUrl: options.ptauUrl,
+    headContributionHash: null,
+    csHash: options.csHash,
   };
 }
 

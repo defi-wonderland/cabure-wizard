@@ -78,14 +78,26 @@ Add all environment variables in the Vercel dashboard under **Settings > Environ
 
 The init script only needs to run once. After deploying, the API routes handle ceremony state automatically.
 
+### Keep Vercel Fluid Compute OFF
+
+The contribution route downloads the Powers of Tau file (large — often hundreds of MB) and runs `verifyChain` inside the request, writing temp files to `/tmp` (512 MB hard cap on Vercel).
+
+**Turn Fluid Compute off** (Project → Settings → Functions). Fluid reuses instances and shares `/tmp` and memory across concurrent invocations, so two contributions verifying at the same time overflow `/tmp` (two copies of the ptau exceed 512 MB) and fail with:
+
+> Verification failed. If your contribution is valid, please retry.
+
+even though the contribution is valid. With Fluid off, each verify runs in its own isolated instance and fits.
+
+Trade-off: classic functions cap `maxDuration` at 300 s (the contribute route sets exactly that). A circuit whose verify cannot finish under 300 s must be verified on an external worker rather than in the route.
+
 ## Scripts
 
-| Script                      | Description                                                              |
-| --------------------------- | ------------------------------------------------------------------------ |
-| `npm run setup:ptau`        | Detect circuit constraints, download the correct PPoT ptau, and update config |
+| Script                      | Description                                                                               |
+| --------------------------- | ----------------------------------------------------------------------------------------- |
+| `npm run setup:ptau`        | Detect circuit constraints, download the correct PPoT ptau, and update config             |
 | `npm run init:ceremony`     | Generate genesis zkey, upload to Blob, write manifest to KV. Outputs to `public/genesis/` |
-| `npm run reset:ceremony`    | Wipe all KV keys and Blob zkeys for a fresh start |
-| `npm run finalize:ceremony` | Apply beacon (Ethereum RANDAO by default), verify zkeys. Outputs to `public/finalize/` |
+| `npm run reset:ceremony`    | Back up state, then wipe all KV keys and Blob objects (chain + pending uploads). Refuses a finalized ceremony unless `-- --force`; asks for typed confirmation unless `-- --yes` |
+| `npm run finalize:ceremony` | Apply beacon (Ethereum RANDAO by default), verify zkeys. Outputs to `public/finalize/`    |
 
 ### Setup ptau
 
@@ -109,12 +121,29 @@ npm run finalize:ceremony -- --force                   # finalize before target 
 
 For maximum verifiability, announce a future beacon chain slot number publicly before running with `--beacon-slot`. The RANDAO reveal is fetched from the Ethereum Beacon API (`BEACON_API_URL` env var overrides the default public endpoint).
 
+Finalization seals the ceremony the moment it starts and commits the beacon at the same time. If a run is interrupted, the ceremony stays sealed: resume with `npm run finalize:ceremony -- --force`, which reuses the committed beacon so the result is reproducible, or run `npm run reset:ceremony` to start over. The beacon cannot be silently re-rolled by re-running.
+
 ### Initialization output
 
 Running `init:ceremony` generates `public/genesis/`:
 
 - `init-transcript.json` — full initialization record (ceremony config, circuit hashes, storage paths)
 - `{circuitId}.genesis.zkey` — local copy of each genesis zkey
+
+### Pin the genesis hash externally
+
+`init:ceremony` records each circuit's genesis hash — as `genesisZkeyHash` in
+`init-transcript.json` and as `initialZkeyHash` in KV. `finalize:ceremony` checks
+the genesis blob against that hash before
+verifying the chain, which catches a swapped or corrupted genesis blob while KV
+is intact.
+
+It does NOT defend against an attacker who can write both the blob and KV: they
+rewrite the pinned hash to match the swapped genesis. To close that gap, publish
+each `genesisZkeyHash` somewhere outside this deployment's control at the start
+of the ceremony — commit it to a public Git repo, post it where contributors can
+read it. Contributors and auditors can then confirm the finalized parameters
+were built on the genesis announced at the start, not one substituted later.
 
 ### Finalization output
 
@@ -123,6 +152,21 @@ Running `finalize:ceremony` generates `public/finalize/`:
 - `transcript.json` — full ceremony record (includes beacon source and slot)
 - `{circuitId}.vkey.json` — Groth16 verification key
 - `{circuitId}.final.zkey` — finalized proving key
+
+## Contributor attestation (optional)
+
+After contributing, the Complete screen has a **Publish as Gist** button that
+posts an attestation to a public GitHub Gist on your own account in one click,
+using your GitHub login (the app requests the `gist` scope at sign-in). The CLI
+prints the same payload for you to publish manually. The attestation is a
+timestamped, public record that your contribution happened — it includes your
+contribution hash (`h_k`), its predecessor, and the chain hash.
+
+Publishing is voluntary, and it is **not** a signature. It proves **inclusion**
+(your `h_k` is recorded), not honesty, diversity, or sole authorship. Because
+every `h_k` is public, anyone can publish a valid-looking attestation for
+someone else's contribution, so a count of "N attestations" is **not** evidence
+of N independent honest participants.
 
 ## Configuration
 

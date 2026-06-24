@@ -81,11 +81,13 @@ export const defaultCopy: CeremonyCopy = {
       downloading: "Download",
       computing: "Compute",
       uploading: "Upload",
+      verifying: "Verify",
     },
     phaseStatus: {
       downloading: "Downloading zkey...",
       computing: "Computing contribution...",
       uploading: "Uploading result...",
+      verifying: "Verifying contribution on the server...",
     },
     finalizeCta: "FINALIZE CONTRIBUTION",
     retryCta: "Retry",
@@ -120,6 +122,15 @@ export const defaultCopy: CeremonyCopy = {
     thankYouBody:
       "Only one honest participant is needed. You might be that one.",
     restartCta: "CONTRIBUTE AGAIN (DIFFERENT TIER)",
+    attestationTitle: "Publish an attestation (optional)",
+    attestationBody:
+      "Publish a public GitHub Gist — one click, using your GitHub login — leaving a timestamped record that your contribution happened. Voluntary; it proves inclusion, not honesty.",
+    attestationPublishCta: "Publish as Gist",
+    attestationPublishingCta: "Publishing…",
+    attestationViewCta: "View Gist",
+    attestationError: "Could not publish the Gist. Please try again.",
+    attestationSignInError:
+      "Sign in with GitHub again to grant Gist access, then retry.",
   },
   verify: {
     title: "Verify a receipt",
