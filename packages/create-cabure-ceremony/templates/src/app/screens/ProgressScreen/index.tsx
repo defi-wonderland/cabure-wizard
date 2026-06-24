@@ -183,11 +183,10 @@ export function ProgressScreen({
                 </span>
               )}
 
-              {circuit.status === "waiting" && circuit.etaSeconds && (
-                <span>
-                  {copy.progress.etaLabel} ~{circuit.etaSeconds}s
-                </span>
-              )}
+              {/* ETA hidden: the current estimate is a flat position*60s
+                  placeholder, not per-circuit. The plumbing (etaSeconds /
+                  estimatedWaitSeconds) is kept so it can be re-shown once real
+                  per-circuit estimates exist. */}
             </div>
           </div>
         ))}

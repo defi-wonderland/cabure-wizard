@@ -78,6 +78,18 @@ Add all environment variables in the Vercel dashboard under **Settings > Environ
 
 The init script only needs to run once. After deploying, the API routes handle ceremony state automatically.
 
+### Keep Vercel Fluid Compute OFF
+
+The contribution route downloads the Powers of Tau file (large — often hundreds of MB) and runs `verifyChain` inside the request, writing temp files to `/tmp` (512 MB hard cap on Vercel).
+
+**Turn Fluid Compute off** (Project → Settings → Functions). Fluid reuses instances and shares `/tmp` and memory across concurrent invocations, so two contributions verifying at the same time overflow `/tmp` (two copies of the ptau exceed 512 MB) and fail with:
+
+> Verification failed. If your contribution is valid, please retry.
+
+even though the contribution is valid. With Fluid off, each verify runs in its own isolated instance and fits.
+
+Trade-off: classic functions cap `maxDuration` at 300 s (the contribute route sets exactly that). A circuit whose verify cannot finish under 300 s must be verified on an external worker rather than in the route.
+
 ## Scripts
 
 | Script                      | Description                                                                               |

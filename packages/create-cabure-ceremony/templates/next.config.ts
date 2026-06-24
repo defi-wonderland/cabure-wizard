@@ -4,7 +4,11 @@ const nextConfig: NextConfig = {
   // snarkjs spawns worker threads (ffjavascript + web-worker) for verifyChain's
   // curve math. Bundling rewrites the worker source, so workers never start and
   // verify hangs forever. Keep them external = runtime require from node_modules.
-  serverExternalPackages: ["snarkjs", "ffjavascript", "@wonderland/cabure-crypto"],
+  // @wonderland/cabure-crypto is deliberately NOT listed: it is ESM and exposes a
+  // "/worker" subpath. Externalizing it makes Next emit a bare runtime require for
+  // that subpath, which fails to resolve and breaks the deployed build. Let it be
+  // bundled; the snarkjs/ffjavascript it pulls in stay external via the block below.
+  serverExternalPackages: ["snarkjs", "ffjavascript"],
   webpack: (config, { isServer }) => {
     if (!isServer) {
       config.resolve.fallback = {
