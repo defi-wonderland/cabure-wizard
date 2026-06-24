@@ -8,6 +8,7 @@ import {
   verifyChain,
   verifyChainForCircuit,
   generateEntropy,
+  deriveSeed,
   applyBeacon,
   exportVerificationKey,
 } from "../src/index.js";
@@ -235,6 +236,39 @@ describe("generateEntropy", () => {
     ]);
     expect(result).toBeInstanceOf(Uint8Array);
     expect(result.length).toBe(64);
+  });
+});
+
+describe("deriveSeed", () => {
+  const ikm = new Uint8Array(64).fill(0x42);
+
+  it("returns 64 bytes by default", async () => {
+    const seed = await deriveSeed(ikm);
+    expect(seed).toBeInstanceOf(Uint8Array);
+    expect(seed.length).toBe(64);
+  });
+
+  it("honors a custom output length", async () => {
+    const seed = await deriveSeed(ikm, new Uint8Array(), 32);
+    expect(seed.length).toBe(32);
+  });
+
+  it("is deterministic for the same ikm and info", async () => {
+    const a = await deriveSeed(ikm, new TextEncoder().encode("circuit-1"));
+    const b = await deriveSeed(ikm, new TextEncoder().encode("circuit-1"));
+    expect(Buffer.from(a).equals(Buffer.from(b))).toBe(true);
+  });
+
+  it("domain-separates by info", async () => {
+    const a = await deriveSeed(ikm, new TextEncoder().encode("circuit-1"));
+    const b = await deriveSeed(ikm, new TextEncoder().encode("circuit-2"));
+    expect(Buffer.from(a).equals(Buffer.from(b))).toBe(false);
+  });
+
+  it("produces different output for different ikm", async () => {
+    const a = await deriveSeed(new Uint8Array(64).fill(0x01));
+    const b = await deriveSeed(new Uint8Array(64).fill(0x02));
+    expect(Buffer.from(a).equals(Buffer.from(b))).toBe(false);
   });
 });
 

@@ -1,6 +1,6 @@
 {
   "name": "@wonderland/cabure-crypto",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Typed exports for all Groth16 Phase 2 ceremony operations",
   "repository": {
     "type": "git",
@@ -34,6 +34,16 @@
       "require": {
         "types": "./dist/worker/protocol.d.cts",
         "default": "./dist/worker/protocol.cjs"
+      }
+    },
+    "./entropy": {
+      "import": {
+        "types": "./dist/esm/entropy.d.ts",
+        "default": "./dist/entropy/index.js"
+      },
+      "require": {
+        "types": "./dist/entropy/index.d.cts",
+        "default": "./dist/entropy/index.cjs"
       }
     }
   },
