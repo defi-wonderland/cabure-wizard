@@ -5,7 +5,11 @@ import process from "node:process";
 
 import { put } from "@vercel/blob";
 import { loadEnvConfig } from "@next/env";
-import { generateInitialZkey, verify } from "@wonderland/cabure-crypto";
+import {
+  generateInitialZkey,
+  parseMpcParams,
+  verify,
+} from "@wonderland/cabure-crypto";
 
 import { getEndDateDeadlineMs } from "@/lib/ceremony-state";
 import {
@@ -48,6 +52,8 @@ type CircuitState = {
   initialZkeyHash: string;
   initialZkeyUrl: string;
   ptauUrl: string;
+  headContributionHash: string | null;
+  csHash: string;
 };
 
 type ManifestState = {
@@ -140,6 +146,7 @@ async function main() {
     circuitId: string;
     label: string;
     genesisZkeyHash: string;
+    csHash: string;
     genesisZkeySize: number;
     genesisZkeyUrl: string;
     genesisZkeyPath: string;
@@ -203,6 +210,11 @@ async function main() {
           "Check that the r1cs and ptau inputs are correct.",
       );
     }
+
+    // Read the circuit identity (csHash) from the genesis MPC params. The
+    // continuity gate pins it so a first contribution to the wrong circuit is
+    // rejected. The genesis has no contributions yet, so cap the parse at 0.
+    const { csHash } = await parseMpcParams(zkey, { maxContributions: 0 });
 
     // Immutable copy: contributions overwrite `current.zkey`, so the original
     // parameters must live at their own path to stay checkable for the whole
@@ -284,6 +296,8 @@ async function main() {
       initialZkeyHash: genesisHash,
       initialZkeyUrl: genesisUpload.url,
       ptauUrl: circuitPtauUrl,
+      headContributionHash: null,
+      csHash,
     };
 
     const kvKey = `${ceremonyConfig.storage.circuitStatePrefix}:${circuit.id}`;
@@ -294,6 +308,7 @@ async function main() {
       circuitId: circuit.id,
       label: circuit.label,
       genesisZkeyHash: genesisHash,
+      csHash,
       genesisZkeySize: zkey.length,
       genesisZkeyUrl: genesisUpload.url,
       genesisZkeyPath: genesisUpload.pathname,

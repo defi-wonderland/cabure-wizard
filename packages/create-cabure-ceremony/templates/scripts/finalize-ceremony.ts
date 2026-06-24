@@ -8,6 +8,7 @@ import {
   applyBeacon,
   exportVerificationKey,
   type Groth16VerificationKey,
+  parseMpcParams,
   verify,
   verifyChainForCircuit,
 } from "@wonderland/cabure-crypto";
@@ -76,6 +77,9 @@ interface ContributionReceipt {
   contributionIndex: number;
   contributionHash: string;
   clientContributionHash: string | null;
+  // Server-recomputed Blake2b hash (snarkjs hashPubKey) of the contribution.
+  // The finalize re-walk matches the final zkey's embedded hashes against this.
+  serverContributionHash: string;
   chainHash: string;
   timestamp: number;
 }
@@ -561,15 +565,50 @@ async function main() {
       }
       console.log(`  Chain verification passed.`);
 
-      // TODO(C-1): the chain verify above only proves current.zkey is SOME valid
-      // descendant of the pinned genesis, not that it is the chain we recorded.
-      // An attacker with blob write access but no KV access (a leaked
-      // BLOB_READ_WRITE_TOKEN) can overwrite current.zkey with a self-generated
-      // chain rooted at the real genesis and pass here. Close this by comparing
-      // the embedded transcript (snarkjs zKey.exportJson -> contributions)
-      // against the contribution count and per-contribution hashes recorded in
-      // KV before applying the beacon. Needs the contribute route to record the
-      // server-computed Blake2b contribution hash per step first.
+      // C-1: the chain verify above proves current.zkey is SOME valid chain from
+      // the genesis, not that it is the one we recorded. An attacker with blob
+      // write but no KV access (a leaked BLOB_READ_WRITE_TOKEN) could overwrite
+      // current.zkey with a self-generated chain and pass it. Close that by
+      // re-walking the embedded list and matching each step's hash against the
+      // receipts in KV, which that attacker cannot reach. Forging a chain that
+      // still reproduces every recorded hash is a Blake2b second preimage.
+      console.log(`  Re-walking the recorded contribution chain...`);
+      const recordedReceipts = (
+        await listRange<ContributionReceipt>(storage.receiptsPath)
+      )
+        .filter((r) => r.circuitId === circuitConfig.id)
+        .sort((a, b) => a.contributionIndex - b.contributionIndex);
+
+      if (recordedReceipts.length !== state.totalContributions) {
+        throw new Error(
+          `Recorded receipts for ${circuitConfig.id} (${recordedReceipts.length}) ` +
+            `do not match the circuit's contribution count (${state.totalContributions}).`,
+        );
+      }
+
+      const embedded = await parseMpcParams(currentZkey, {
+        maxContributions: state.totalContributions,
+      });
+      if (embedded.contributions.length !== state.totalContributions) {
+        throw new Error(
+          `Final zkey for ${circuitConfig.id} embeds ` +
+            `${embedded.contributions.length} contributions, but ` +
+            `${state.totalContributions} were recorded.`,
+        );
+      }
+
+      for (let i = 0; i < embedded.contributions.length; i++) {
+        const recomputed = embedded.contributions[i].hash();
+        const recorded = recordedReceipts[i].serverContributionHash;
+        if (recomputed !== recorded) {
+          throw new Error(
+            `Contribution ${i + 1} of ${circuitConfig.id} does not match the ` +
+              "recorded chain. The current zkey is not the chain that was " +
+              "contributed. Refusing to finalize.",
+          );
+        }
+      }
+      console.log(`  Recorded chain re-walk passed.`);
 
       console.log(`  Applying beacon...`);
       const beaconResult = await applyBeacon(currentZkey, beaconHex);

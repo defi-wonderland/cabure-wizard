@@ -17,7 +17,11 @@ import {
   type TierId,
 } from "@/lib/ceremony-config";
 import { getParticipant } from "@/lib/participant-auth";
-import { acquireLock, releaseLock, setJson } from "@/lib/kv-store";
+import {
+  acquireLock,
+  releaseLock,
+  writeCircuitStateFenced,
+} from "@/lib/kv-store";
 
 type QueuePosition = {
   participantId: string;
@@ -170,9 +174,30 @@ export async function POST(request: NextRequest) {
           joinedAt: now,
         });
         index = circuit.queue.length - 1;
-        await setJson(key, circuit);
+        // Fenced: the state blob also holds the contribution head, so a stale
+        // write (expired lock) could revert a contribution that committed in the
+        // gap and brick finalize. The fence drops it on lost lock; client retries.
+        const written = await writeCircuitStateFenced({
+          lockKey,
+          lockToken,
+          circuitStateKey: key,
+          circuitState: circuit,
+        });
+        if (!written) {
+          return NextResponse.json(
+            { error: "Circuit queue busy. Please retry." },
+            { status: 409 },
+          );
+        }
       } else if (prunedCount > 0) {
-        await setJson(key, circuit);
+        // Best-effort: a dropped prune (lost lock) is harmless — re-pruned next
+        // touch — so don't fail the join over it.
+        await writeCircuitStateFenced({
+          lockKey,
+          lockToken,
+          circuitStateKey: key,
+          circuitState: circuit,
+        });
       }
 
       positions.push({
@@ -185,7 +210,11 @@ export async function POST(request: NextRequest) {
       // Best-effort: a failed release is not fatal (the lock TTL expires it).
       // Throwing here would override the computed response with a 500.
       await releaseLock(lockKey, lockToken).catch((error) => {
-        console.error("Failed to release queue lock for circuit:", circuitId, error);
+        console.error(
+          "Failed to release queue lock for circuit:",
+          circuitId,
+          error,
+        );
       });
     }
   }

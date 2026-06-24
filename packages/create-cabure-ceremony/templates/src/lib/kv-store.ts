@@ -122,6 +122,32 @@ export async function writeContribution<TCircuit, TReceipt>(options: {
   return Number(result) === 1;
 }
 
+// Fence for a circuit-state-only write: the same lock-token check as
+// writeContribution, without the contribution side effects. Used to persist a
+// queue advance when the continuity gate rejects a submission. Returns false if
+// the lock was lost, so the caller drops the change.
+const COMMIT_CIRCUIT_STATE_SCRIPT = `
+  if redis.call("get", KEYS[1]) ~= ARGV[1] then
+    return 0
+  end
+  redis.call("set", KEYS[2], ARGV[2])
+  return 1
+`;
+
+export async function writeCircuitStateFenced<TCircuit>(options: {
+  lockKey: string;
+  lockToken: string;
+  circuitStateKey: string;
+  circuitState: TCircuit;
+}): Promise<boolean> {
+  const result = await redis().eval(
+    COMMIT_CIRCUIT_STATE_SCRIPT,
+    [options.lockKey, options.circuitStateKey],
+    [options.lockToken, JSON.stringify(options.circuitState)],
+  );
+  return Number(result) === 1;
+}
+
 export async function clearParticipantContributions(options: {
   participantsIndexKey: string;
   participantContributionsPrefix: string;
@@ -139,24 +165,31 @@ export async function clearParticipantContributions(options: {
   return participants.length;
 }
 
+// Acquire a single-holder key by SET NX with a TTL. Used both for the brief
+// per-circuit commit lock (default TTL) and for the longer-lived verify slot
+// that bounds one in-flight verify per participant (caller passes its own TTL).
 export async function acquireLock(
   key: string,
   token: string,
+  ttlSeconds: number = LOCK_TTL_SECONDS,
 ): Promise<boolean> {
   const result = await redis().set(key, token, {
     nx: true,
-    ex: LOCK_TTL_SECONDS,
+    ex: ttlSeconds,
   });
   return result === "OK";
 }
 
+// Release a lock only if the caller still holds it (token match), so a stalled
+// holder whose TTL expired cannot delete a lock a second writer now owns.
+const RELEASE_LOCK_SCRIPT = `
+  if redis.call("get", KEYS[1]) == ARGV[1] then
+    return redis.call("del", KEYS[1])
+  else
+    return 0
+  end
+`;
+
 export async function releaseLock(key: string, token: string): Promise<void> {
-  const script = `
-    if redis.call("get", KEYS[1]) == ARGV[1] then
-      return redis.call("del", KEYS[1])
-    else
-      return 0
-    end
-  `;
-  await redis().eval(script, [key], [token]);
+  await redis().eval(RELEASE_LOCK_SCRIPT, [key], [token]);
 }
