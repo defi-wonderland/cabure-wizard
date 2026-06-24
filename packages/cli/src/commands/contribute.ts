@@ -126,6 +126,16 @@ export async function contributeCommand(
     console.log(`  Contribution hash: ${result.contributionHash}`);
     console.log(`  Zkey hash: ${result.zkeyHash}`);
 
+    // Refresh our queue entry now that the long compute is done, BEFORE upload and
+    // submit. Both prune the queue and reject anyone not at the front, and a
+    // compute longer than the queue timeout would otherwise have aged us out.
+    // Bumping joinedAt (see queue POST) keeps the entry alive. Best-effort.
+    try {
+      await client.joinQueue({ circuitIds: [circuitId] });
+    } catch {
+      // Submit may still pass; otherwise the run can be retried.
+    }
+
     console.log("  Uploading...");
     const blob = await upload(
       `contributions/${circuitId}/pending.zkey`,
@@ -137,15 +147,6 @@ export async function contributeCommand(
       },
     );
     console.log("  Upload complete");
-
-    // Refresh our queue entry right before submitting: the compute above can run
-    // longer than the queue timeout, which would prune us and get the submit
-    // rejected as "not at front". Re-joining bumps joinedAt (see queue POST).
-    try {
-      await client.joinQueue({ circuitIds: [circuitId] });
-    } catch {
-      // Best-effort: submit may still pass; otherwise the run can be retried.
-    }
 
     console.log("  Submitting...");
     const receipt = await client.submitContribution(

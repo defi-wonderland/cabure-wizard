@@ -159,6 +159,19 @@ export function useContributionFlow(options: {
         signal: controller.signal,
       });
 
+      // Refresh our queue entry now that the long compute is done, BEFORE the
+      // upload and submit. Both prune the queue and reject anyone not at the front,
+      // and a compute longer than queueTimeoutSeconds would otherwise have aged our
+      // entry out. Bumping joinedAt (see the queue POST) keeps it alive through
+      // upload + verify. Best-effort: a failed refresh just means a later step may
+      // be rejected and retried; a cancel propagates through the calls below (same
+      // abort signal).
+      try {
+        await joinQueue({ circuitIds: [circuitId], signal: controller.signal });
+      } catch {
+        // ignore — see above
+      }
+
       setContributionPhase("uploading");
       setContributionProgress(85);
 
@@ -173,18 +186,6 @@ export function useContributionFlow(options: {
       // a frozen "Upload".
       setContributionPhase("verifying");
       setContributionProgress(92);
-
-      // Refresh our queue entry right before submitting. The compute above can run
-      // longer than queueTimeoutSeconds, which would otherwise prune our entry and
-      // make the contribute route reject the submit as "not at front". Re-joining
-      // bumps joinedAt for our existing entry (see the queue POST). Best-effort: a
-      // failed refresh just means the submit may be rejected and retried; a cancel
-      // still propagates through submitContribution below (same abort signal).
-      try {
-        await joinQueue({ circuitIds: [circuitId], signal: controller.signal });
-      } catch {
-        // ignore — see above
-      }
 
       const receipt = await submitContribution({
         circuitId,

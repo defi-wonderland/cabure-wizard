@@ -156,6 +156,18 @@ export async function POST(request: NextRequest) {
       const circuit = await getCircuitState(circuitId);
       const key = kvKey(config.storage.circuitStatePrefix, circuitId);
 
+      // Refresh our own entry BEFORE pruning. A join request proves the caller is
+      // alive, so their entry is exempt from the timeout: a contributor whose
+      // compute ran longer than queueTimeoutSeconds would otherwise be pruned here
+      // and re-added at the back, losing their front-of-queue turn — the exact case
+      // this refresh exists to protect. Other stale entries are still pruned below.
+      const existing = circuit.queue.find(
+        (entry) => entry.participantId === participantId,
+      );
+      if (existing) {
+        existing.joinedAt = now;
+      }
+
       circuit.queue = pruneExpiredEntries(
         circuit.queue,
         config.queueTimeoutSeconds,
@@ -172,12 +184,6 @@ export async function POST(request: NextRequest) {
           joinedAt: now,
         });
         index = circuit.queue.length - 1;
-      } else {
-        // Refresh liveness. A contributor whose compute runs longer than
-        // queueTimeoutSeconds would otherwise be pruned mid-flight and rejected as
-        // "not at front" on submit. The client re-joins right before submitting;
-        // bumping joinedAt keeps the entry alive without changing its queue order.
-        circuit.queue[index].joinedAt = now;
       }
 
       // Fenced: the state blob also holds the contribution head, so a stale write
