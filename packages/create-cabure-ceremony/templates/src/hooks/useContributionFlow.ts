@@ -20,6 +20,15 @@ import type { ClientCircuitConfig } from "@/lib/ceremony-config";
 import { runContribution } from "@/lib/worker-client";
 import { deriveEntropy, sha256 } from "@/utils/entropy";
 
+// Server receipt plus the contributor's OWN h_k, computed client-side
+// (`result.contributionHash` from contribute(), not the server's
+// `serverContributionHash`). The attestation publishes this so it is the
+// contributor's own statement and can surface an operator that recorded a
+// different hash. See CompleteScreen.
+export interface ContributionReceiptWithClient extends ReceiptResponse {
+  clientHk: string;
+}
+
 export interface ContributionFlowState {
   circuitRuns: CircuitRunItem[];
   currentCircuitIndex: number;
@@ -30,7 +39,7 @@ export interface ContributionFlowState {
   contributionError: string | null;
   queueError: string | null;
   finalizeReady: boolean;
-  receipts: ReceiptResponse[];
+  receipts: ContributionReceiptWithClient[];
 }
 
 export interface JoinOptions {
@@ -72,7 +81,7 @@ export function useContributionFlow(options: {
   const [contributionError, setContributionError] = useState<string | null>(
     null,
   );
-  const [receipts, setReceipts] = useState<ReceiptResponse[]>([]);
+  const [receipts, setReceipts] = useState<ContributionReceiptWithClient[]>([]);
 
   const contributionAbortRef = useRef<AbortController | null>(null);
 
@@ -177,7 +186,9 @@ export function useContributionFlow(options: {
         );
       }
 
-      return receipt;
+      // Attach the contributor's own h_k for the attestation (client-computed,
+      // not the server's serverContributionHash).
+      return { ...receipt, clientHk: result.contributionHash };
     },
     onSuccess: (receipt) => {
       const circuitId = receipt.circuitId;

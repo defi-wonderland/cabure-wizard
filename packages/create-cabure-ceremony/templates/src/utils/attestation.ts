@@ -11,14 +11,16 @@
 export interface AttestationPayload {
   ceremony: string;
   circuit: string;
-  // 1-based position of this contribution in the circuit's chain.
+  // 1-based position the coordinator assigned. Informational only: a verifier
+  // finds h_k's real position in the final zkey regardless of what is claimed here.
   index: number;
-  // h_k: this contribution's genuine Blake2b hash (snarkjs hashPubKey).
+  // The contributor's OWN contribution hash (snarkjs hashPubKey), computed
+  // client-side. This is the one value the contributor can vouch for: a verifier
+  // confirms it appears in the final zkey's contribution list. Server-reported
+  // values (the server's h_k, the predecessor, the chain hash) are deliberately
+  // NOT included — the server can fabricate them, so they would not be the
+  // contributor's own statement and add nothing a verifier can't re-derive.
   h_k: string;
-  // h_{k-1}: the predecessor's hash; null when this is the first contribution.
-  h_kMinus1: string | null;
-  // Chain-of-custody hash after this contribution.
-  chainHash: string;
   // GitHub login the contribution was made under.
   login: string;
 }

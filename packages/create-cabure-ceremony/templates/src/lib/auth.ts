@@ -10,9 +10,10 @@ export const authOptions: NextAuthOptions = {
       clientSecret: env.GITHUB_CLIENT_SECRET,
       // `gist` lets a contributor publish their own attestation Gist with one
       // click (see utils/attestation, CompleteScreen). It is the only write
-      // scope. The token reaches the client session below — the cost of letting
-      // the contributor, not the operator, own the published record. Publishing
-      // is opt-in; the scope is unused for anyone who never publishes.
+      // scope. The token it grants is kept server-side (in the JWT, see the
+      // callbacks below) and used only by the attestation route — it never
+      // reaches the client. Publishing is opt-in; the scope is unused for
+      // anyone who never publishes.
       authorization: { params: { scope: "read:user gist" } },
     }),
   ],

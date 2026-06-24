@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 
-import type { ReceiptResponse } from "@/lib/api";
+import type { ContributionReceiptWithClient } from "@/hooks/useContributionFlow";
 import { useCeremonyConfig } from "@/hooks/useCeremonyConfig";
 import { useParticipant } from "@/hooks/useParticipant";
 import { cn } from "@/utils/cn";
@@ -17,7 +17,7 @@ export function CompleteScreen({
   onRestart,
   onVerify,
 }: {
-  receipts: ReceiptResponse[];
+  receipts: ContributionReceiptWithClient[];
   onRestart: () => void;
   onVerify: () => void;
 }) {
@@ -54,7 +54,7 @@ export function CompleteScreen({
   // bails — preventing duplicate Gists for one receipt.
   const inFlight = useRef<Set<string>>(new Set());
 
-  const handlePublish = async (receipt: ReceiptResponse) => {
+  const handlePublish = async (receipt: ContributionReceiptWithClient) => {
     const key = `${receipt.circuitId}#${receipt.contributionIndex}`;
     if (inFlight.current.has(key)) return;
     inFlight.current.add(key);
@@ -65,9 +65,8 @@ export function CompleteScreen({
         ceremony: ceremonyName,
         circuit: receipt.circuitId,
         index: receipt.contributionIndex,
-        h_k: receipt.serverContributionHash,
-        h_kMinus1: receipt.previousContributionHash,
-        chainHash: receipt.chainHash,
+        // The contributor's own client-computed h_k — the only value they vouch for.
+        h_k: receipt.clientHk,
         login: participantName,
       });
       setGistUrls((prev) => ({ ...prev, [key]: url }));

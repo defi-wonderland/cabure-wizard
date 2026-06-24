@@ -89,7 +89,10 @@ export async function contributeCommand(
     console.log(`  ${pos.circuitId}: queue position ${pos.position}`);
   }
 
-  const receipts: ReceiptResponse[] = [];
+  // Server receipt plus the contributor's own client-computed h_k
+  // (result.contributionHash). The attestation publishes that, not the
+  // server-reported value, so it is the contributor's own statement.
+  const records: Array<{ receipt: ReceiptResponse; clientHk: string }> = [];
 
   for (let i = 0; i < circuitIds.length; i++) {
     const circuitId = circuitIds[i];
@@ -147,34 +150,33 @@ export async function contributeCommand(
       );
     }
 
-    receipts.push(receipt);
+    records.push({ receipt, clientHk: result.contributionHash });
     console.log(`  Contribution #${receipt.contributionIndex} accepted`);
     console.log(`  Chain hash: ${receipt.chainHash}`);
   }
 
   console.log("\n" + "=".repeat(50));
-  console.log(`All done! ${receipts.length} contribution(s) submitted.\n`);
+  console.log(`All done! ${records.length} contribution(s) submitted.\n`);
 
-  for (const r of receipts) {
+  for (const { receipt: r } of records) {
     console.log(`  ${r.circuitId}: #${r.contributionIndex} — ${r.contributionHash}`);
   }
 
   // Optional attestation. Publishing is voluntary and proves inclusion, not
-  // honesty (see docs/h4-verifiability.md). h_{k-1} is what the server reported
-  // this contribution extended; the open verifier re-derives it from the final
-  // zkey, so it is corroborating, not load-bearing.
+  // honesty (see docs/h4-verifiability.md). h_k is the contributor's own
+  // client-computed value — the only thing they vouch for. Server-reported
+  // values are left out (the server controls them; a verifier re-derives them
+  // from the final zkey).
   console.log(
     "\nOptional: publish any of these as a public GitHub Gist to leave a",
   );
   console.log("timestamped record that your contribution happened.\n");
-  for (const r of receipts) {
+  for (const { receipt: r, clientHk } of records) {
     const attestation = {
       ceremony: ceremonyUrl,
       circuit: r.circuitId,
       index: r.contributionIndex,
-      h_k: r.serverContributionHash,
-      h_kMinus1: r.previousContributionHash,
-      chainHash: r.chainHash,
+      h_k: clientHk,
       login: participantName,
     };
     console.log(`  ${r.circuitId} #${r.contributionIndex}:`);
