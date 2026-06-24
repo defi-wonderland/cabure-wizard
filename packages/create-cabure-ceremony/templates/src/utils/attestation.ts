@@ -20,9 +20,11 @@ export interface AttestationPayload {
   // values (the server's h_k, the predecessor, the chain hash) are deliberately
   // NOT included — the server can fabricate them, so they would not be the
   // contributor's own statement and add nothing a verifier can't re-derive.
+  //
+  // No `login` field: the contributor's identity is which GitHub account the
+  // gist is published under (public + timestamped), not a self-declared string
+  // in the JSON, which would be redundant and unverifiable.
   h_k: string;
-  // GitHub login the contribution was made under.
-  login: string;
 }
 
 export function buildAttestation(input: AttestationPayload): {

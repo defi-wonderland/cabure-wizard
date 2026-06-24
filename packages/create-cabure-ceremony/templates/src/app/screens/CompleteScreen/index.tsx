@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from "react";
 
 import type { ContributionReceiptWithClient } from "@/hooks/useContributionFlow";
 import { useCeremonyConfig } from "@/hooks/useCeremonyConfig";
-import { useParticipant } from "@/hooks/useParticipant";
 import { cn } from "@/utils/cn";
 import { Button } from "@/app/components/Button";
 import { ScreenWrapper } from "@/app/components/ScreenWrapper";
@@ -24,7 +23,6 @@ export function CompleteScreen({
   const config = useCeremonyConfig();
   const { copy } = config;
   const ceremonyName = config.name;
-  const { participantName } = useParticipant();
   const {
     receiptPayload,
     latestReceipt,
@@ -67,7 +65,6 @@ export function CompleteScreen({
         index: receipt.contributionIndex,
         // The contributor's own client-computed h_k — the only value they vouch for.
         h_k: receipt.clientHk,
-        login: participantName,
       });
       setGistUrls((prev) => ({ ...prev, [key]: url }));
     } catch (error) {

@@ -177,7 +177,6 @@ export async function contributeCommand(
       circuit: r.circuitId,
       index: r.contributionIndex,
       h_k: clientHk,
-      login: participantName,
     };
     console.log(`  ${r.circuitId} #${r.contributionIndex}:`);
     console.log(JSON.stringify(attestation, null, 2));
