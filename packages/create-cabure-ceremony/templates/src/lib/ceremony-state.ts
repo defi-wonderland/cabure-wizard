@@ -10,6 +10,7 @@ import {
 } from "./ceremony-config";
 import { getJson, listRange, setIsMember, setMembers } from "./kv-store";
 
+// Seed of the contribution chain (32 zero bytes).
 const GENESIS_CHAIN_HASH = `0x${"0".repeat(64)}`;
 const END_DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -24,6 +25,9 @@ export interface ContributionReceipt {
   // clientContributionHash. finalize re-walks the final zkey and checks this
   // sequence to prove the embedded chain is the one that was recorded.
   serverContributionHash: string;
+  // h_{k-1}: the head hash this contribution extended; null for the first
+  // contribution. Lets the contributor's attestation name its predecessor.
+  previousContributionHash: string | null;
   chainHash: string;
   timestamp: number;
 }
@@ -280,14 +284,22 @@ export function selectCircuitsForTier(
   return [...needed, ...backfill];
 }
 
+// Chain-of-custody over the genuine per-contribution hashes. Each link is
+// SHA-256(previousChainHash ‖ h_k), where h_k is the contribution's Blake2b
+// hash (serverContributionHash, snarkjs hashPubKey) recomputed server-side from
+// the submitted zkey. Both operands are folded as raw bytes, not as text.
+//
+// Chaining over h_k, not operator-controlled strings (SHA-256 of the bytes,
+// participantId, timestamp), keeps the chain tied to values that exist in the
+// final zkey's section 10: the same sequence can be recomputed from the
+// published parameters. The attestation publishes each h_k and this chain hash.
 export function computeChainHash(options: {
   previousChainHash: string;
   contributionHash: string;
-  participantId: string;
-  timestamp: number;
 }): string {
-  const input = `${options.previousChainHash}:${options.contributionHash}:${options.participantId}:${options.timestamp}`;
-  const digest = createHash("sha256").update(input).digest("hex");
+  const prev = Buffer.from(options.previousChainHash.replace(/^0x/, ""), "hex");
+  const hk = Buffer.from(options.contributionHash.replace(/^0x/, ""), "hex");
+  const digest = createHash("sha256").update(prev).update(hk).digest("hex");
   return `0x${digest}`;
 }
 

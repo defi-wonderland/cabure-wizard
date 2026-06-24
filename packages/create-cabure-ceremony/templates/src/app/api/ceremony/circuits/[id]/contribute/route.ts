@@ -546,12 +546,19 @@ export async function POST(
       const hadPriorContribution = circuit.totalContributions > 0;
       const previousZkeyUrl = circuit.currentZkeyUrl;
       const contributionIndex = circuit.totalContributions + 1;
+      // h_{k-1}: the head this contribution builds on, captured before the head
+      // advances below. null for the first contribution (built on genesis). Goes
+      // into the receipt so the contributor's attestation can name its
+      // predecessor. The open verifier re-derives this from the final zkey, so a
+      // wrong value here is detectable, not load-bearing.
+      const previousContributionHash = circuit.headContributionHash;
       const timestamp = Date.now();
+      // Chain over the genuine contribution hash (h_k), not the SHA-256 of the
+      // bytes: only h_k can be rederived from the final zkey, so only this makes
+      // the chain verifiable. computedHash stays as the download-integrity hash.
       const chainHash = computeChainHash({
         previousChainHash: circuit.chainHash,
-        contributionHash: computedHash,
-        participantId,
-        timestamp,
+        contributionHash: serverContributionHash,
       });
 
       circuit.totalContributions += 1;
@@ -571,6 +578,7 @@ export async function POST(
         contributionHash: computedHash,
         clientContributionHash: clientHash,
         serverContributionHash,
+        previousContributionHash,
         chainHash,
         timestamp,
       };
