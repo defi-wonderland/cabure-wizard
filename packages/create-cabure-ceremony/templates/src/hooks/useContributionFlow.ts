@@ -163,13 +163,14 @@ export function useContributionFlow(options: {
       // upload and submit. Both prune the queue and reject anyone not at the front,
       // and a compute longer than queueTimeoutSeconds would otherwise have aged our
       // entry out. Bumping joinedAt (see the queue POST) keeps it alive through
-      // upload + verify. Best-effort: a failed refresh just means a later step may
-      // be rejected and retried; a cancel propagates through the calls below (same
-      // abort signal).
+      // upload + verify.
       try {
         await joinQueue({ circuitIds: [circuitId], signal: controller.signal });
-      } catch {
-        // ignore — see above
+      } catch (error) {
+        // If the user cancelled, re-throw so the mutation exits here. Otherwise the
+        // next state update would flash the UI to "uploading" after a cancel. Any
+        // other error is best-effort: a later step may be rejected and retried.
+        if (controller.signal.aborted) throw error;
       }
 
       setContributionPhase("uploading");
