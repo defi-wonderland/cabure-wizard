@@ -156,13 +156,11 @@ export async function POST(request: NextRequest) {
       const circuit = await getCircuitState(circuitId);
       const key = kvKey(config.storage.circuitStatePrefix, circuitId);
 
-      const pruned = pruneExpiredEntries(
+      circuit.queue = pruneExpiredEntries(
         circuit.queue,
         config.queueTimeoutSeconds,
         now,
       );
-      const prunedCount = circuit.queue.length - pruned.length;
-      circuit.queue = pruned;
 
       let index = circuit.queue.findIndex(
         (entry) => entry.participantId === participantId,
@@ -174,30 +172,28 @@ export async function POST(request: NextRequest) {
           joinedAt: now,
         });
         index = circuit.queue.length - 1;
-        // Fenced: the state blob also holds the contribution head, so a stale
-        // write (expired lock) could revert a contribution that committed in the
-        // gap and brick finalize. The fence drops it on lost lock; client retries.
-        const written = await writeCircuitStateFenced({
-          lockKey,
-          lockToken,
-          circuitStateKey: key,
-          circuitState: circuit,
-        });
-        if (!written) {
-          return NextResponse.json(
-            { error: "Circuit queue busy. Please retry." },
-            { status: 409 },
-          );
-        }
-      } else if (prunedCount > 0) {
-        // Best-effort: a dropped prune (lost lock) is harmless — re-pruned next
-        // touch — so don't fail the join over it.
-        await writeCircuitStateFenced({
-          lockKey,
-          lockToken,
-          circuitStateKey: key,
-          circuitState: circuit,
-        });
+      } else {
+        // Refresh liveness. A contributor whose compute runs longer than
+        // queueTimeoutSeconds would otherwise be pruned mid-flight and rejected as
+        // "not at front" on submit. The client re-joins right before submitting;
+        // bumping joinedAt keeps the entry alive without changing its queue order.
+        circuit.queue[index].joinedAt = now;
+      }
+
+      // Fenced: the state blob also holds the contribution head, so a stale write
+      // (expired lock) could revert a contribution that committed in the gap and
+      // brick finalize. The fence drops it on lost lock; the client retries.
+      const written = await writeCircuitStateFenced({
+        lockKey,
+        lockToken,
+        circuitStateKey: key,
+        circuitState: circuit,
+      });
+      if (!written) {
+        return NextResponse.json(
+          { error: "Circuit queue busy. Please retry." },
+          { status: 409 },
+        );
       }
 
       positions.push({

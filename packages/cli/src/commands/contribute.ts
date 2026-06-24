@@ -138,6 +138,15 @@ export async function contributeCommand(
     );
     console.log("  Upload complete");
 
+    // Refresh our queue entry right before submitting: the compute above can run
+    // longer than the queue timeout, which would prune us and get the submit
+    // rejected as "not at front". Re-joining bumps joinedAt (see queue POST).
+    try {
+      await client.joinQueue({ circuitIds: [circuitId] });
+    } catch {
+      // Best-effort: submit may still pass; otherwise the run can be retried.
+    }
+
     console.log("  Submitting...");
     const receipt = await client.submitContribution(
       circuitId,
@@ -197,9 +206,9 @@ async function waitForQueueFront(
       console.log("  At front of queue");
       return;
     }
-    process.stdout.write(
-      `\r  Queue position: ${pos.position} (est. ~${Math.ceil(pos.estimatedWaitSeconds / 60)} min)  `,
-    );
+    // ETA omitted: estimatedWaitSeconds is a flat position*60s placeholder, not a
+    // real per-circuit estimate. Show the position only until estimates exist.
+    process.stdout.write(`\r  Queue position: ${pos.position}  `);
     await sleep(QUEUE_POLL_INTERVAL_MS);
   }
 }

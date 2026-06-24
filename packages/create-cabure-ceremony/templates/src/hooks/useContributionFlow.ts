@@ -174,6 +174,18 @@ export function useContributionFlow(options: {
       setContributionPhase("verifying");
       setContributionProgress(92);
 
+      // Refresh our queue entry right before submitting. The compute above can run
+      // longer than queueTimeoutSeconds, which would otherwise prune our entry and
+      // make the contribute route reject the submit as "not at front". Re-joining
+      // bumps joinedAt for our existing entry (see the queue POST). Best-effort: a
+      // failed refresh just means the submit may be rejected and retried; a cancel
+      // still propagates through submitContribution below (same abort signal).
+      try {
+        await joinQueue({ circuitIds: [circuitId], signal: controller.signal });
+      } catch {
+        // ignore — see above
+      }
+
       const receipt = await submitContribution({
         circuitId,
         contributionHash: result.contributionHash,
