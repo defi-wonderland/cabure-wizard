@@ -5,6 +5,10 @@ dist/
 .env.*
 coverage/
 
+# pnpm is the single package manager; never track stray npm/yarn locks
+package-lock.json
+yarn.lock
+
 # Keep template fixtures visible for create-cabure-ceremony
 !packages/create-cabure-ceremony/templates/
 !packages/create-cabure-ceremony/templates/**
