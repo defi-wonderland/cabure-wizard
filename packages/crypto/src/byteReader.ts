@@ -17,7 +17,9 @@ export class ByteReader {
   }
 
   private require(n: number): void {
-    if (n < 0 || this.pos + n > this.buf.length) {
+    // NaN and fractional n slip past the range checks below (NaN compares
+    // false, and pos += NaN poisons the cursor), so reject non-integers first.
+    if (!Number.isInteger(n) || n < 0 || this.pos + n > this.buf.length) {
       throw new Error("byteReader: read past end of buffer");
     }
   }
@@ -57,7 +59,7 @@ export class ByteReader {
   }
 
   seek(p: number): void {
-    if (p < 0 || p > this.buf.length) {
+    if (!Number.isInteger(p) || p < 0 || p > this.buf.length) {
       throw new Error("byteReader: seek out of range");
     }
     this.pos = p;
