@@ -160,22 +160,70 @@ export async function getZkeyInfo(
   );
 }
 
+// Abort the upload if it makes no progress for this long. The blob PUT streams
+// straight to storage with no built-in timeout, so a stalled connection would
+// hang the contribution forever — and the progress UI has no Cancel while
+// uploading. This is an IDLE timeout (reset on every progress event), not a
+// total cap, so a legitimately slow large upload is fine; only a true stall
+// trips it.
+const UPLOAD_STALL_TIMEOUT_MS = 60_000;
+
 export async function uploadZkey(options: {
   circuitId: string;
   payload: Uint8Array;
   signal?: AbortSignal;
 }): Promise<string> {
   const { upload } = await import("@vercel/blob/client");
-  const blob = await upload(
-    `contributions/${options.circuitId}/pending.zkey`,
-    new Blob([options.payload as BlobPart]),
-    {
-      access: "public",
-      handleUploadUrl: `/api/ceremony/circuits/${options.circuitId}/upload`,
-      abortSignal: options.signal,
-    },
-  );
-  return blob.url;
+
+  // One controller drives the upload: it fires on the caller's cancel OR on the
+  // stall timeout. Forwarding the caller's signal (instead of AbortSignal.any)
+  // keeps this working on older browsers.
+  const controller = new AbortController();
+  const onCallerAbort = () => controller.abort();
+  if (options.signal) {
+    if (options.signal.aborted) {
+      controller.abort();
+    } else {
+      options.signal.addEventListener("abort", onCallerAbort, { once: true });
+    }
+  }
+
+  let stallTimer: ReturnType<typeof setTimeout> | undefined;
+  const armStallTimer = () => {
+    clearTimeout(stallTimer);
+    stallTimer = setTimeout(() => controller.abort(), UPLOAD_STALL_TIMEOUT_MS);
+  };
+
+  try {
+    armStallTimer();
+    const blob = await upload(
+      `contributions/${options.circuitId}/pending.zkey`,
+      new Blob([options.payload as BlobPart]),
+      {
+        access: "public",
+        handleUploadUrl: `/api/ceremony/circuits/${options.circuitId}/upload`,
+        abortSignal: controller.signal,
+        onUploadProgress: armStallTimer,
+      },
+    );
+    return blob.url;
+  } catch (error) {
+    // Distinguish a stall from a deliberate cancel. A cancel is the caller's
+    // signal and stays an AbortError (the contribution flow swallows it). A
+    // stall is our timeout firing with no caller cancel — surface it as a real
+    // error so the flow shows Retry instead of the silent cancel path.
+    if (controller.signal.aborted && !options.signal?.aborted) {
+      throw new Error("Upload stalled with no progress. Please retry.");
+    }
+    throw error;
+  } finally {
+    clearTimeout(stallTimer);
+    // Drop the caller-signal listener. With { once: true } it self-removes only
+    // after firing, so on the success path (no cancel) it would otherwise linger
+    // on a long-lived signal and retain this controller. removeEventListener is a
+    // no-op if it already fired.
+    options.signal?.removeEventListener("abort", onCallerAbort);
+  }
 }
 
 export async function submitContribution(options: {
