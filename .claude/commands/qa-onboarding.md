@@ -28,7 +28,7 @@ Key things to watch for:
 - Entropy requires user interaction (mouse/clicks). The UI should NOT let you proceed without enough entropy.
 - Test what happens when KV or Blob is slow, rate-limited, or returns stale data.
 - Chain hash integrity — verify the SHA-256 chain is tamper-evident across contributions.
-- Per-contribution BN254 pairing verification is optional (`verifyContributions` in `ceremony.config.ts`, default `false`). The finalize script always verifies the full chain before applying the beacon.
+- Per-contribution BN254 pairing verification is mandatory in production. The `verifyContributions` flag in `ceremony.config.ts` only disables it outside production (local dev / CI), never in prod. The finalize script always verifies the full chain before applying the beacon.
 
 ## 3. Your Test Plan
 
