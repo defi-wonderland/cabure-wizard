@@ -70,6 +70,12 @@ type ManifestState = {
 // ceremony.config.ts `beaconBufferSeconds`.
 const DEFAULT_BEACON_BUFFER_SECONDS = 3600;
 
+// Smallest gap we allow between init time and the committed cutoff. The cutoff
+// must land on a slot that does not exist yet, so its RANDAO is unknowable at
+// init. Two slots (~24s) covers the slot that could be minted between this
+// check and the manifest write. All current Ethereum networks use 12s slots.
+const MIN_CUTOFF_SLACK_MS = 2 * 12 * 1000;
+
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
@@ -161,6 +167,17 @@ async function main() {
     cutoffTimeMs: endDateMs + bufferSeconds * 1000,
     bufferSeconds,
   };
+  // The committed beacon must be unknowable at init. A hand-edited past endDate
+  // (the wizard rejects it, but init reads ceremony.config.ts directly) or too
+  // small a buffer can put the cutoff at or before now, where its slot may be
+  // finalized already and the operator could grind it.
+  if (beaconCommitment.cutoffTimeMs <= Date.now() + MIN_CUTOFF_SLACK_MS) {
+    throw new Error(
+      "Committed beacon cutoff (endDate + beaconBufferSeconds) is not safely " +
+        "in the future. Set a later endDate or a larger beaconBufferSeconds so " +
+        "the beacon target is not already on chain at init.",
+    );
+  }
 
   console.log(`Ceremony:    ${ceremonyConfig.name}`);
   console.log(`Circuits:    ${ceremonyConfig.circuits.length}`);
