@@ -42,7 +42,7 @@ export const defaultCopy: CeremonyCopy = {
   entropy: {
     topBarTitle: "ENTROPY COLLECTION",
     topBarHint: "Move around & tap for bursts",
-    strengthLabel: "Entropy strength",
+    strengthLabel: "Collection progress",
     readyCta: "CONTINUE",
     collectingCta: "COLLECTING ENTROPY...",
     helper:

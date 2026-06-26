@@ -23,7 +23,7 @@ export function EntropyScreen({
   const totalContributions = status?.totalContributions;
   const displayName = isAuthenticated ? participantName : undefined;
   const {
-    entropyPercent,
+    readinessPercent,
     isReady,
     areaRef,
     handlePointerMove,
@@ -82,7 +82,7 @@ export function EntropyScreen({
     onComplete(seed);
   }, [isReady, isSubmitting, buildSeed, onComplete]);
 
-  const barWidth = Math.min(entropyPercent, 100);
+  const barWidth = Math.min(readinessPercent, 100);
 
   return (
     <div className={styles.container}>
@@ -155,7 +155,7 @@ export function EntropyScreen({
                     isReady && styles.progressValueReady,
                   )}
                 >
-                  {entropyPercent}%
+                  {readinessPercent}%
                 </span>
               </div>
 
