@@ -69,8 +69,17 @@ export async function runWizardQuestions(
 
   const endDate = await askWithValidation(
     rl,
-    `${STEP_PADDING}3) End date (optional YYYY-MM-DD, press enter to skip): `,
+    `${STEP_PADDING}3) End date — deadline, YYYY-MM-DD, read as 23:59:59 UTC (required): `,
     validateEndDate,
+  );
+  // Echo the exact instant so the operator confirms the UTC end-of-day, not a
+  // local-timezone reading. This is the contribution deadline only. The beacon
+  // target is later (deadline + beaconBufferSeconds) and is computed at
+  // init:ceremony, so name it here instead of letting this instant read as the
+  // committed beacon timestamp.
+  rl.write(
+    `${DETAIL_PADDING}→ contributions close ${endDate} 23:59:59 UTC; ` +
+      `beacon target = this + beaconBufferSeconds (default 1h), set at init\n`,
   );
 
   let circuitArtifactsPath: string | null = null;

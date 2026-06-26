@@ -115,17 +115,37 @@ npm run setup:ptau -- --verify # also run snarkjs ptau verification
 
 ### Finalization
 
-By default, finalization uses the RANDAO reveal from the latest finalized Ethereum beacon chain slot as the beacon source. This makes the beacon publicly verifiable.
+The finalization beacon is committed in advance, at `init:ceremony`, as the
+RANDAO reveal of the first block at or after the finalized Ethereum slot for
+`endDate + buffer`. Because the target is fixed before any contribution, the
+operator cannot re-roll the beacon, and anyone can recompute it from the
+published `endDate` and buffer.
+
+The buffer is set by `beaconBufferSeconds` in `ceremony.config.ts` (defaults to
+`3600`, one hour). It must be a non-negative integer no larger than `2592000`
+(30 days), and `endDate + beaconBufferSeconds` must still be in the future at
+`init:ceremony` — otherwise the target slot would already be on chain and the
+operator could grind it. A larger buffer pushes the target slot further past the
+ceremony close, so its RANDAO is less predictable at init.
 
 ```bash
-npm run finalize:ceremony                              # latest finalized slot RANDAO (default)
-npm run finalize:ceremony -- --beacon-slot 7325000     # specific pre-announced slot
-npm run finalize:ceremony -- --beacon 0xabc123         # explicit hex beacon value
-npm run finalize:ceremony -- --random-beacon           # random beacon (local testing only)
-npm run finalize:ceremony -- --force                   # finalize before target is reached
+npm run finalize:ceremony   # use the committed beacon (errors until its slot is finalized; rerun later)
 ```
 
-For maximum verifiability, announce a future beacon chain slot number publicly before running with `--beacon-slot`. The RANDAO reveal is fetched from the Ethereum Beacon API (`BEACON_API_URL` env var overrides the default public endpoint).
+Finalization refuses to run until the committed slot has finalized on-chain. The
+RANDAO reveal is read from the Ethereum Beacon API (`BEACON_API_URL` env var
+overrides the default public endpoint).
+
+Forced early close (the committed slot does not exist yet):
+
+```bash
+npm run finalize:ceremony -- --force --beacon 0xabc... --unverifiable
+```
+
+`--beacon` requires both `--force` and `--unverifiable`, because a hand-picked
+beacon bypasses the committed target and cannot be reproduced by outsiders.
+`--force` keeps it out of normal finalization runs. The transcript records
+`beaconVerifiable: false` in that case.
 
 Finalization seals the ceremony the moment it starts and commits the beacon at the same time. If a run is interrupted, the ceremony stays sealed: resume with `npm run finalize:ceremony -- --force`, which reuses the committed beacon so the result is reproducible, or run `npm run reset:ceremony` to start over. The beacon cannot be silently re-rolled by re-running.
 

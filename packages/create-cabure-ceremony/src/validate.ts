@@ -66,20 +66,20 @@ export function validateTargetContributions(value: number): number {
 }
 
 /**
- * Validates an optional end date in YYYY-MM-DD format against the UTC calendar date.
+ * Validates a required end date in YYYY-MM-DD format against the UTC calendar date.
  *
- * @param value - Date string (blank allowed).
+ * The finalization beacon target is committed at init as endDate + buffer. A
+ * ceremony with no end date has nothing to commit to, so the date is required.
+ *
+ * @param value - Date string.
  * @param now - Reference "current" date used for the past-date check (defaults to `new Date()`).
- * @returns Trimmed date string or null if blank.
- * @throws Error if format is invalid, not a valid calendar date, or earlier than today.
+ * @returns Trimmed date string.
+ * @throws Error if blank, format is invalid, not a valid calendar date, or earlier than today.
  */
-export function validateEndDate(
-  value: string,
-  now: Date = new Date(),
-): string | null {
+export function validateEndDate(value: string, now: Date = new Date()): string {
   const trimmed = value.trim();
   if (!trimmed) {
-    return null;
+    throw new Error("End date is required (YYYY-MM-DD).");
   }
 
   if (!DATE_REGEX.test(trimmed)) {

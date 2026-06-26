@@ -84,7 +84,7 @@ const COMMIT_CONTRIBUTION_SCRIPT = `
  * lock. A plain write would still land and overwrite that second writer,
  * dropping a contribution. The token check makes the advance atomic: the
  * stalled writer sees a different token (or none) and writes nothing. This is
- * the append-only head advance the continuity gate (C-1) builds on.
+ * the append-only head advance the continuity gate builds on.
  *
  * The ARGV values must serialize the way the client's defaultSerializer does,
  * or the readers (getJson, listRange, sismember, smembers) will not parse them.

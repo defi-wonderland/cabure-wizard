@@ -1,4 +1,4 @@
-import { createHash, randomBytes, randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
@@ -13,7 +13,10 @@ import {
   verifyChainForCircuit,
 } from "@wonderland/cabure-crypto";
 
-import { getEndDateDeadlineMs } from "@/lib/ceremony-state";
+import {
+  type BeaconCommitment,
+  getEndDateDeadlineMs,
+} from "@/lib/ceremony-state";
 import { getJson, listRange, setJson } from "@/lib/kv-store";
 import { ceremonyConfig } from "../ceremony.config";
 
@@ -59,12 +62,14 @@ interface ManifestState {
   endDate: string | null;
   startedAt: number;
   circuits: Array<{ id: string }>;
+  beaconCommitment: BeaconCommitment;
   // Resolved beacon, persisted at seal time (beaconHash is 0x-prefixed). A
   // recovery run reuses it so the beacon is locked once finalization starts and
   // cannot be re-rolled. Cleared only by reset:ceremony.
   beaconHash?: string;
   beaconSource?: string;
   beaconSlot?: number;
+  beaconVerifiable?: boolean;
   beaconApplied?: boolean;
   finalizingAt?: number;
   finalizeId?: string;
@@ -86,116 +91,187 @@ interface ContributionReceipt {
 
 const OUTPUT_DIR = path.resolve(process.cwd(), "public", "finalize");
 
+// All current Ethereum networks use 12-second slots.
+const SECONDS_PER_SLOT = 12;
+
 interface ResolvedBeacon {
   hex: string;
   source: string;
   slot?: number;
+  // false only for a forced manual --beacon override; recorded so the
+  // transcript flags a finalization that outsiders cannot reproduce.
+  verifiable: boolean;
 }
 
-function parseBeaconFlag(): string | null {
+function beaconApiBase(): string {
+  return process.env.BEACON_API_URL?.trim() || DEFAULT_BEACON_API_URL;
+}
+
+// A stalled beacon node must not hang finalize:ceremony forever. The timeout is
+// per request, not global: fetchRandaoRevealFrom can make one request per
+// missed slot, and each gets its own budget. Re-running after a timeout is safe
+// because a sealed run reuses the persisted beacon (see resolveBeacon).
+const BEACON_FETCH_TIMEOUT_MS = 30_000;
+
+// origin only. BEACON_API_URL may carry credentials anywhere but the host:
+// basic-auth userinfo, an ?apikey= query param, or a token in the path (some
+// providers use https://host/<TOKEN>/...). origin is scheme + host + port, so it
+// drops userinfo, path, and query. Never put the full URL in an error or log.
+function safeUrlLabel(url: string): string {
+  try {
+    return new URL(url).origin;
+  } catch {
+    return "the beacon node";
+  }
+}
+
+async function beaconFetch(url: string): Promise<Response> {
+  try {
+    return await fetch(url, {
+      signal: AbortSignal.timeout(BEACON_FETCH_TIMEOUT_MS),
+    });
+  } catch (error) {
+    if (error instanceof Error && error.name === "TimeoutError") {
+      throw new Error(
+        `Beacon API request timed out after ` +
+          `${BEACON_FETCH_TIMEOUT_MS / 1000}s (${safeUrlLabel(url)}). Retry, ` +
+          "or set BEACON_API_URL to a different node.",
+      );
+    }
+    throw error;
+  }
+}
+
+async function beaconGet<T>(apiPath: string): Promise<T> {
+  const url = `${beaconApiBase()}${apiPath}`;
+  const response = await beaconFetch(url);
+  if (!response.ok) {
+    throw new Error(
+      `Beacon API request failed (${apiPath}): ${response.status} ` +
+        `${response.statusText}. Set BEACON_API_URL to use a different node.`,
+    );
+  }
+  return (await response.json()) as T;
+}
+
+// The committed beacon target is a wall-clock time. Convert it to a slot using
+// the network's own genesis time, so this works on any network the configured
+// beacon node serves (not just mainnet).
+async function fetchGenesisTimeSec(): Promise<number> {
+  const json = await beaconGet<{ data: { genesis_time: string } }>(
+    "/eth/v1/beacon/genesis",
+  );
+  // Validate at the source: an unvalidated Number() of a bad response gives NaN,
+  // which flows into the targetSlot math and only surfaces as a confusing "No
+  // block found" error far downstream. Fail clearly here instead.
+  const genesisTimeSec = Number(json.data?.genesis_time);
+  if (!Number.isFinite(genesisTimeSec) || genesisTimeSec < 0) {
+    throw new Error("Beacon API returned an invalid genesis_time.");
+  }
+  return genesisTimeSec;
+}
+
+async function fetchFinalizedSlot(): Promise<number> {
+  const json = await beaconGet<{
+    data: { header: { message: { slot: string } } };
+  }>("/eth/v1/beacon/headers/finalized");
+  const slot = Number(json.data?.header?.message?.slot);
+  if (!Number.isInteger(slot) || slot < 0) {
+    throw new Error("Beacon API returned an invalid finalized slot.");
+  }
+  return slot;
+}
+
+// The RANDAO reveal of the first block at or after `fromSlot`.
+//
+// We read the reveal from the block (not the accumulated mix from beacon
+// state) because public beacon nodes prune historical state within ~a day,
+// while blocks stay available. Finalization can run days after the committed
+// cutoff, so the committed slot's state may be long gone — its block is not.
+//
+// A slot can be missed (no block proposed); the API then 404s for that slot,
+// so we walk forward to the next slot that has a block. This stays
+// deterministic: a verifier recomputes "first block at/after the committed
+// slot" and gets the same value.
+async function fetchRandaoRevealFrom(
+  fromSlot: number,
+  finalizedSlot: number,
+): Promise<{ hex: string; slot: number }> {
+  for (let slot = fromSlot; slot <= finalizedSlot; slot++) {
+    const url = `${beaconApiBase()}/eth/v2/beacon/blocks/${slot}`;
+    const response = await beaconFetch(url);
+    if (response.status === 404) continue; // missed slot, try the next one
+    if (!response.ok) {
+      throw new Error(
+        `Beacon API request failed (blocks/${slot}): ${response.status} ` +
+          `${response.statusText}. Set BEACON_API_URL to use a different node.`,
+      );
+    }
+    const json = (await response.json()) as {
+      data: { message: { body: { randao_reveal: string } } };
+    };
+    const reveal = json.data?.message?.body?.randao_reveal;
+    if (!reveal) {
+      throw new Error(`No randao_reveal in beacon block at slot ${slot}.`);
+    }
+    const hex = reveal.startsWith("0x") ? reveal.slice(2) : reveal;
+    return { hex, slot };
+  }
+  throw new Error(
+    `No block found between committed slot ${fromSlot} and the finalized slot ` +
+      `${finalizedSlot}. Wait for more slots to finalize, then retry.`,
+  );
+}
+
+function parseManualBeacon(): string | null {
   const idx = process.argv.indexOf("--beacon");
   if (idx === -1) return null;
+  // A hand-picked beacon bypasses the committed target, so the operator could
+  // grind it. Only allow it behind both --force and an explicit acknowledgement,
+  // for a forced early close where no committed slot exists yet. Requiring
+  // --force keeps a manual beacon out of normal finalization runs, where the
+  // committed target must win.
+  if (!process.argv.includes("--force")) {
+    throw new Error(
+      "--beacon requires --force. A hand-picked beacon overrides the committed " +
+        "target and is only for a forced early close.",
+    );
+  }
+  if (!process.argv.includes("--unverifiable")) {
+    throw new Error(
+      "--beacon overrides the committed beacon target and is NOT publicly " +
+        "verifiable. Pass --unverifiable to acknowledge this (intended only " +
+        "for a forced early close).",
+    );
+  }
   const value = process.argv[idx + 1];
   if (!value || value.startsWith("--")) {
-    throw new Error(
-      "--beacon requires a hex value (e.g. --beacon 0xabc123...)",
-    );
+    throw new Error("--beacon requires a hex value (e.g. --beacon 0xabc...)");
   }
   const hex = value.startsWith("0x") ? value.slice(2) : value;
   if (!/^[0-9a-fA-F]+$/.test(hex) || hex.length < 64) {
     throw new Error(
-      "Invalid beacon: provide at least 32 bytes of hex (e.g. --beacon 0x<64 hex chars>)",
+      "Invalid beacon: provide at least 32 bytes of hex (64 hex chars).",
     );
   }
   return hex;
 }
 
-function parseBeaconSlotFlag(): number | null {
-  const idx = process.argv.indexOf("--beacon-slot");
-  if (idx === -1) return null;
-  const value = process.argv[idx + 1];
-  if (!value || value.startsWith("--")) {
-    throw new Error(
-      "--beacon-slot requires a slot number (e.g. --beacon-slot 7325000)",
-    );
-  }
-  const slot = parseInt(value, 10);
-  if (isNaN(slot) || slot <= 0) {
-    throw new Error("Invalid beacon slot: provide a positive integer.");
-  }
-  return slot;
-}
-
-async function fetchRandaoReveal(
-  slotOrTag: string,
-): Promise<{ hex: string; slot: number }> {
-  const beaconApiUrl =
-    process.env.BEACON_API_URL?.trim() || DEFAULT_BEACON_API_URL;
-  const url = `${beaconApiUrl}/eth/v2/beacon/blocks/${slotOrTag}`;
-
-  console.log(`  Fetching RANDAO reveal from ${url}`);
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(
-      `Failed to fetch beacon block (${slotOrTag}): ${response.status} ${response.statusText}. ` +
-        "Set BEACON_API_URL to use a different beacon node.",
-    );
-  }
-
-  const json = (await response.json()) as {
-    data: {
-      message: {
-        slot: string;
-        body: { randao_reveal: string };
-      };
-    };
-  };
-
-  const randaoReveal = json.data?.message?.body?.randao_reveal;
-  const resolvedSlot = Number(json.data?.message?.slot);
-
-  if (!randaoReveal) {
-    throw new Error(`No RANDAO reveal found in beacon block at ${slotOrTag}.`);
-  }
-
-  // The slot is operator-facing provenance and gets persisted in the manifest.
-  // Reject a malformed response here so finalization fails early instead of
-  // writing NaN (which JSON serializes to null) into the seal and transcript.
-  if (!Number.isInteger(resolvedSlot) || resolvedSlot < 0) {
-    throw new Error(`Beacon block at ${slotOrTag} returned an invalid slot.`);
-  }
-
-  const hex = randaoReveal.startsWith("0x")
-    ? randaoReveal.slice(2)
-    : randaoReveal;
-
-  return { hex, slot: resolvedSlot };
-}
-
-// Precedence: an explicit --beacon/--beacon-slot flag (operator override) wins,
-// then a persisted beacon from an interrupted run (reuse, so recovery is
-// reproducible and never re-rolls), then --random-beacon, then the latest
-// finalized slot. The persisted beacon sits below the explicit flags so an
-// operator can still force a different value on recovery, but above everything
-// that would fetch a fresh one.
+// Precedence: a manual --beacon override wins (forced early close, marked
+// unverifiable), then a beacon persisted by an interrupted run (reuse so
+// recovery is reproducible and never re-rolls), then the committed target from
+// init. The persisted beacon sits below --beacon so an operator can still force
+// a value on recovery, but above the fetch so a normal recovery never re-rolls.
 async function resolveBeacon(
+  manifest: ManifestState,
   persisted: ResolvedBeacon | null,
 ): Promise<ResolvedBeacon> {
-  const explicitHex = parseBeaconFlag();
-  if (explicitHex) {
-    return { hex: explicitHex, source: "user-supplied (--beacon)" };
-  }
-
-  const explicitSlot = parseBeaconSlotFlag();
-  if (explicitSlot) {
-    console.log(
-      `Resolving beacon from Ethereum beacon chain slot ${explicitSlot}...`,
-    );
-    const { hex, slot } = await fetchRandaoReveal(String(explicitSlot));
+  const manualHex = parseManualBeacon();
+  if (manualHex) {
     return {
-      hex,
-      source: `RANDAO reveal from Ethereum beacon chain slot ${slot}`,
-      slot,
+      hex: manualHex,
+      source: "user-supplied (--beacon, UNVERIFIABLE)",
+      verifiable: false,
     };
   }
 
@@ -206,21 +282,51 @@ async function resolveBeacon(
     return persisted;
   }
 
-  if (process.argv.includes("--random-beacon")) {
-    return {
-      hex: randomBytes(32).toString("hex"),
-      source: "random (crypto.randomBytes) -- not publicly verifiable",
-    };
+  // init:ceremony always commits beaconCommitment, so a manifest without it is
+  // corrupt, not a supported older ceremony. Do NOT advise re-running
+  // init:ceremony here: it overwrites circuit state and clears receipts, which
+  // would wipe an in-progress ceremony. The only non-destructive way forward is
+  // a forced manual beacon.
+  const commitment = manifest.beaconCommitment;
+  if (!commitment) {
+    throw new Error(
+      "Manifest has no beaconCommitment (corrupt or hand-edited manifest). " +
+        "Finalize manually with --force --beacon <hex> --unverifiable, or run " +
+        "reset:ceremony to start over. Do not re-run init:ceremony on a live " +
+        "ceremony; it wipes contributions.",
+    );
   }
 
-  console.log(
-    "Resolving beacon from Ethereum beacon chain (latest finalized slot)...",
+  console.log("Resolving committed beacon from the Ethereum beacon chain...");
+  const cutoffSec = Math.floor(commitment.cutoffTimeMs / 1000);
+  const genesisTimeSec = await fetchGenesisTimeSec();
+
+  // First slot whose start time is at or after the committed cutoff.
+  const targetSlot = Math.max(
+    0,
+    Math.ceil((cutoffSec - genesisTimeSec) / SECONDS_PER_SLOT),
   );
-  const { hex, slot } = await fetchRandaoReveal("finalized");
+
+  // Only use a finalized slot: a non-finalized slot could still be reorged,
+  // which would change the beacon value after the fact.
+  const finalizedSlot = await fetchFinalizedSlot();
+  if (targetSlot > finalizedSlot) {
+    throw new Error(
+      `Committed beacon slot ${targetSlot} ` +
+        `(at/after ${new Date(commitment.cutoffTimeMs).toISOString()}) is not ` +
+        `finalized yet (finalized slot is ${finalizedSlot}). Wait until it is ` +
+        "finalized, then re-run finalize:ceremony.",
+    );
+  }
+
+  const { hex, slot } = await fetchRandaoRevealFrom(targetSlot, finalizedSlot);
+  const missedNote =
+    slot !== targetSlot ? ` (committed slot ${targetSlot} was missed)` : "";
   return {
     hex,
-    source: `RANDAO reveal from Ethereum beacon chain slot ${slot}`,
+    source: `committed RANDAO reveal at finalized block slot ${slot}${missedNote}`,
     slot,
+    verifiable: true,
   };
 }
 
@@ -314,6 +420,10 @@ async function sealCeremony(
     // recovery run that switches to a slotless beacon must clear a slot left
     // over from the prior seal, not inherit it via the ...manifest spread.
     beaconSlot: beacon.slot,
+    // Persist verifiability so a recovery run that reuses the beacon keeps a
+    // forced --unverifiable beacon flagged, instead of silently marking it
+    // verifiable.
+    beaconVerifiable: beacon.verifiable,
   };
   await setJson(manifestPath, sealed);
   Object.assign(manifest, sealed);
@@ -446,15 +556,27 @@ async function main() {
         hex: manifest.beaconHash.replace(/^0x/, ""),
         source: manifest.beaconSource ?? "persisted beacon",
         slot: manifest.beaconSlot,
+        // Fail safe: if the seal did not record verifiability (a corrupt or
+        // pre-field manifest), treat the beacon as unverifiable. Defaulting to
+        // true would suppress the operator warning and write a transcript that
+        // claims verifiability the beacon may not have. Under-claiming is safe;
+        // over-claiming is misleading.
+        verifiable: manifest.beaconVerifiable ?? false,
       }
     : null;
-  const beacon = await resolveBeacon(persistedBeacon);
+  const beacon = await resolveBeacon(manifest, persistedBeacon);
 
   console.log(`Beacon source: ${beacon.source}`);
   if (beacon.slot !== undefined) {
     console.log(`Beacon slot:   ${beacon.slot}`);
   }
   console.log(`Beacon value:  0x${beacon.hex}`);
+  if (!beacon.verifiable) {
+    console.warn(
+      "  WARNING: this beacon is operator-supplied and cannot be " +
+        "independently verified.",
+    );
+  }
   console.log();
 
   // Seal before snapshotting the circuit states inside the try: the re-read
@@ -525,14 +647,22 @@ async function main() {
       const r1cs = await readArtifact(circuitConfig.artifacts.r1csPath);
       const ptau = await readArtifact(circuitConfig.artifacts.ptauPath);
 
-      // H-1: verify the whole chain from the pinned genesis to the latest zkey
+      // Verify the whole chain from the pinned genesis to the latest zkey
       // BEFORE applying the beacon. The beacon is irreversible, so an invalid
       // chain has to be caught first — verifying only the post-beacon zkey (the
       // old order) cannot tell whether the chain that fed it was honest.
+      // init:ceremony always pins the genesis, so missing initialZkeyUrl/Hash
+      // means corrupt circuit state, not a supported older ceremony. Without the
+      // pinned genesis the chain cannot be verified, so finalization cannot
+      // proceed. Do NOT advise re-running init:ceremony: it overwrites circuit
+      // state and clears receipts, wiping a live ceremony. reset:ceremony is the
+      // only recovery, and it is the operator's explicit choice to start over.
       if (!state.initialZkeyUrl || !state.initialZkeyHash) {
         throw new Error(
           `Circuit ${circuitConfig.id} has no pinned genesis (initialZkeyUrl/Hash). ` +
-            "It was initialized before genesis pinning; re-run init:ceremony.",
+            "The circuit state is corrupt and cannot be finalized. Run " +
+            "reset:ceremony to start over; do not re-run init:ceremony on a " +
+            "live ceremony, it wipes contributions.",
         );
       }
 
@@ -565,7 +695,7 @@ async function main() {
       }
       console.log(`  Chain verification passed.`);
 
-      // C-1: the chain verify above proves current.zkey is SOME valid chain from
+      // The chain verify above proves current.zkey is SOME valid chain from
       // the genesis, not that it is the one we recorded. An attacker with blob
       // write but no KV access (a leaked BLOB_READ_WRITE_TOKEN) could overwrite
       // current.zkey with a self-generated chain and pass it. Close that by
@@ -665,7 +795,11 @@ async function main() {
         endDate: manifest.endDate,
         beaconHash: `0x${beaconHex}`,
         beaconSource: beacon.source,
+        beaconVerifiable: beacon.verifiable,
         ...(beacon.slot !== undefined && { beaconSlot: beacon.slot }),
+        ...(manifest.beaconCommitment && {
+          beaconCommitment: manifest.beaconCommitment,
+        }),
         finalizedAt,
       },
       circuits: circuitSummaries,

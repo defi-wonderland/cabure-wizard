@@ -191,7 +191,7 @@ describe("wizard scaffold e2e", async () => {
         projectName: "Unsafe Filename",
         projectSlug: "unsafe-filename",
         targetContributions: 100,
-        endDate: null,
+        endDate: "2026-03-27",
         tiers: [],
         stateManifestBlobUrl: "",
         circuits: [

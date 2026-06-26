@@ -68,12 +68,23 @@ export interface CircuitState {
   csHash: string;
 }
 
+// Beacon target fixed at init. The finalization beacon is the RANDAO
+// reveal of the first block at or after the finalized slot for `cutoffTimeMs`.
+// Committing this before any contribution stops the operator from re-rolling
+// the beacon at finalize time until they get a result they like. Verifiers
+// recompute `cutoffTimeMs` from the ceremony endDate plus `bufferSeconds`.
+export interface BeaconCommitment {
+  cutoffTimeMs: number;
+  bufferSeconds: number;
+}
+
 export interface ManifestState {
   ceremonyName: string;
   targetContributions: number;
   endDate: string | null;
   startedAt: number;
   circuits: Array<{ id: string }>;
+  beaconCommitment: BeaconCommitment;
   // Resolved beacon, persisted at seal time so an interrupted finalize reuses
   // the same value on recovery and can never re-roll it. See finalize-ceremony.
   beaconHash?: string;
@@ -89,6 +100,30 @@ export async function getManifest(): Promise<ManifestState> {
   const manifest = await getJson<ManifestState>(config.storage.manifestPath);
   if (!manifest) {
     throw new Error("Ceremony not initialized. Run init:ceremony.");
+  }
+  // getJson casts untyped KV JSON, so the required fields are not guaranteed at
+  // runtime. beaconCommitment is the one downstream code (finalize) depends on
+  // and assumes present; validate it here so the cast cannot hand back a
+  // manifest that lies about the type. A missing/malformed commitment means a
+  // corrupt manifest, not a supported older ceremony.
+  // Match the invariants init:ceremony enforces when it writes the commitment:
+  // cutoffTimeMs is a positive ms timestamp and bufferSeconds is a non-negative
+  // integer count of seconds. A weaker finite-only check would let a negative or
+  // fractional value from a corrupt/hand-edited manifest through to the beacon
+  // target computation.
+  const c = manifest.beaconCommitment;
+  if (
+    !c ||
+    !Number.isInteger(c.cutoffTimeMs) ||
+    c.cutoffTimeMs <= 0 ||
+    !Number.isInteger(c.bufferSeconds) ||
+    c.bufferSeconds < 0
+  ) {
+    throw new Error(
+      "Manifest is missing a valid beaconCommitment (corrupt manifest). " +
+        "Recovery is reset:ceremony; do not re-run init:ceremony on a live " +
+        "ceremony, it wipes contributions.",
+    );
   }
   return manifest;
 }

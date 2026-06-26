@@ -49,7 +49,7 @@ const BLOB_HOST_SUFFIX = ".public.blob.vercel-storage.com";
 // locking the participant out indefinitely.
 const VERIFY_SLOT_TTL_SECONDS = 300;
 
-// C-1 continuity check: the upload must extend the recorded head by exactly one,
+// Continuity check: the upload must extend the recorded head by exactly one,
 // judged only from server-side KV state. verifyChain proves a zkey is valid from
 // the genesis, not that it extends the head — this is what stops a front-of-queue
 // contributor rebasing onto the genesis and dropping prior work. Returns an error
@@ -84,7 +84,7 @@ type ContinuityGateResult =
   | { ok: true; serverContributionHash: string }
   | { ok: false; response: NextResponse };
 
-// Authoritative C-1 continuity gate, run inside the per-circuit lock: parse the
+// Authoritative continuity gate, run inside the per-circuit lock: parse the
 // upload, require it to extend the head, and on success return the new head's
 // hash. Any rejection consumes the front-of-queue turn (shifts queue[0]) so the
 // participant cannot replay garbage to block the queue. Mutates circuit.queue on
@@ -264,12 +264,16 @@ async function checkEligibility(
   // finalize:ceremony verifies the chain from the pinned genesis before the
   // beacon. A circuit without that pin can never be finalized, so accepting
   // contributions here would waste participant work.
+  // init:ceremony always pins the genesis, so a missing pin means corrupt
+  // circuit state, not a supported older ceremony. The operator recovers with
+  // reset:ceremony, never by re-running init:ceremony on a live ceremony (that
+  // overwrites state and clears receipts, wiping contributions).
   if (!circuit.initialZkeyUrl || !circuit.initialZkeyHash) {
     return {
       ok: false,
       error:
-        "Ceremony has no pinned genesis and cannot be finalized. " +
-        "The operator must re-run init:ceremony.",
+        "Ceremony circuit state is corrupt (no pinned genesis) and cannot be " +
+        "finalized. Contact the operator; recovery is reset:ceremony.",
       status: 409,
     };
   }
@@ -534,7 +538,7 @@ export async function POST(
       }
       const circuit = eligible.circuit;
 
-      // C-1 continuity gate: require the upload to extend the recorded head. On
+      // Continuity gate: require the upload to extend the recorded head. On
       // any rejection it consumes the front-of-queue turn and returns the response
       // to send. Runs before the accept-path mutations below. The resulting
       // serverContributionHash is the new head link, also stored in the receipt

@@ -11,7 +11,10 @@ import {
   verify,
 } from "@wonderland/cabure-crypto";
 
-import { getEndDateDeadlineMs } from "@/lib/ceremony-state";
+import {
+  type BeaconCommitment,
+  getEndDateDeadlineMs,
+} from "@/lib/ceremony-state";
 import {
   clearParticipantContributions,
   getJson,
@@ -62,7 +65,19 @@ type ManifestState = {
   endDate: string | null;
   startedAt: number;
   circuits: Array<{ id: string }>;
+  beaconCommitment: BeaconCommitment;
 };
+
+// Default gap between the endDate deadline and the beacon target slot, so the
+// target's RANDAO is not yet on chain at init. Override via
+// ceremony.config.ts `beaconBufferSeconds`.
+const DEFAULT_BEACON_BUFFER_SECONDS = 3600;
+
+// Smallest gap we allow between init time and the committed cutoff. The cutoff
+// must land on a slot that does not exist yet, so its RANDAO is unknowable at
+// init. Two slots (~24s) covers the slot that could be minted between this
+// check and the manifest write. All current Ethereum networks use 12s slots.
+const MIN_CUTOFF_SLACK_MS = 2 * 12 * 1000;
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -130,14 +145,65 @@ async function main() {
   }
 
   const endDate = ceremonyConfig.endDate?.trim() || null;
-  getEndDateDeadlineMs(endDate);
+  const endDateMs = getEndDateDeadlineMs(endDate);
+  // endDate is required: the finalization beacon is committed as
+  // endDate + buffer here, so without it there is nothing to commit to.
+  if (endDateMs === null) {
+    throw new Error(
+      "Ceremony endDate is required. The finalization beacon target is " +
+        "committed at init as endDate + buffer; set endDate in " +
+        "ceremony.config.ts (YYYY-MM-DD).",
+    );
+  }
+
+  const bufferSeconds =
+    ceremonyConfig.beaconBufferSeconds ?? DEFAULT_BEACON_BUFFER_SECONDS;
+  // A bad buffer corrupts the committed cutoff: a negative value can pull it
+  // into the past (making the beacon knowable at init), and NaN/fractional
+  // values give a non-deterministic target nobody can recompute.
+  if (!Number.isInteger(bufferSeconds) || bufferSeconds < 0) {
+    throw new Error(
+      `beaconBufferSeconds must be a non-negative integer; got ${bufferSeconds}.`,
+    );
+  }
+  // Cap the buffer. It is the gap between the ceremony close and the beacon
+  // target slot, so realistic values are minutes to hours. A huge value pushes
+  // cutoffTimeMs past the JS Date range (the toISOString log below throws) and
+  // commits to a slot nobody will wait for. 30 days is far beyond any real gap.
+  const MAX_BUFFER_SECONDS = 30 * 24 * 60 * 60;
+  if (bufferSeconds > MAX_BUFFER_SECONDS) {
+    throw new Error(
+      `beaconBufferSeconds must be at most ${MAX_BUFFER_SECONDS} (30 days); ` +
+        `got ${bufferSeconds}.`,
+    );
+  }
+  const beaconCommitment = {
+    cutoffTimeMs: endDateMs + bufferSeconds * 1000,
+    bufferSeconds,
+  };
+  // The committed beacon must be unknowable at init. A hand-edited past endDate
+  // (the wizard rejects it, but init reads ceremony.config.ts directly) or too
+  // small a buffer can put the cutoff at or before now, where its slot may be
+  // finalized already and the operator could grind it.
+  if (beaconCommitment.cutoffTimeMs <= Date.now() + MIN_CUTOFF_SLACK_MS) {
+    throw new Error(
+      "Committed beacon cutoff (endDate + beaconBufferSeconds) is not safely " +
+        "in the future. Set a later endDate or a larger beaconBufferSeconds so " +
+        "the beacon target is not already on chain at init.",
+    );
+  }
 
   console.log(`Ceremony:    ${ceremonyConfig.name}`);
   console.log(`Circuits:    ${ceremonyConfig.circuits.length}`);
   console.log(
     `Target:      ${ceremonyConfig.targetContributions} contributions`,
   );
-  console.log(`End date:    ${endDate ?? "(none)"}`);
+  console.log(`End date:    ${endDate}`);
+  console.log(
+    `Beacon:      first finalized slot at/after ` +
+      `${new Date(beaconCommitment.cutoffTimeMs).toISOString()} ` +
+      `(endDate + ${bufferSeconds}s)`,
+  );
   console.log();
 
   await mkdir(OUTPUT_DIR, { recursive: true });
@@ -331,6 +397,7 @@ async function main() {
     endDate,
     startedAt,
     circuits: circuitSummaries.map((c) => ({ id: c.circuitId })),
+    beaconCommitment,
   };
 
   await setJson(ceremonyConfig.storage.manifestPath, manifest);
@@ -359,6 +426,7 @@ async function main() {
       startedAt,
       initializedAt: new Date(startedAt).toISOString(),
       genesisChainHash: GENESIS_CHAIN_HASH,
+      beaconCommitment,
     },
     circuits: circuitSummaries,
     storage: {
