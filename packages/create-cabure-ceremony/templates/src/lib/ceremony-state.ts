@@ -68,7 +68,7 @@ export interface CircuitState {
   csHash: string;
 }
 
-// Beacon target fixed at init (H-2). The finalization beacon is the RANDAO
+// Beacon target fixed at init. The finalization beacon is the RANDAO
 // reveal of the first block at or after the finalized slot for `cutoffTimeMs`.
 // Committing this before any contribution stops the operator from re-rolling
 // the beacon at finalize time until they get a result they like. Verifiers

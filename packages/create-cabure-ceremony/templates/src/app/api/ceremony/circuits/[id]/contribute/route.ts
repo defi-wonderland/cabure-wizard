@@ -49,7 +49,7 @@ const BLOB_HOST_SUFFIX = ".public.blob.vercel-storage.com";
 // locking the participant out indefinitely.
 const VERIFY_SLOT_TTL_SECONDS = 300;
 
-// C-1 continuity check: the upload must extend the recorded head by exactly one,
+// Continuity check: the upload must extend the recorded head by exactly one,
 // judged only from server-side KV state. verifyChain proves a zkey is valid from
 // the genesis, not that it extends the head — this is what stops a front-of-queue
 // contributor rebasing onto the genesis and dropping prior work. Returns an error
@@ -84,7 +84,7 @@ type ContinuityGateResult =
   | { ok: true; serverContributionHash: string }
   | { ok: false; response: NextResponse };
 
-// Authoritative C-1 continuity gate, run inside the per-circuit lock: parse the
+// Authoritative continuity gate, run inside the per-circuit lock: parse the
 // upload, require it to extend the head, and on success return the new head's
 // hash. Any rejection consumes the front-of-queue turn (shifts queue[0]) so the
 // participant cannot replay garbage to block the queue. Mutates circuit.queue on
@@ -529,7 +529,7 @@ export async function POST(
       }
       const circuit = eligible.circuit;
 
-      // C-1 continuity gate: require the upload to extend the recorded head. On
+      // Continuity gate: require the upload to extend the recorded head. On
       // any rejection it consumes the front-of-queue turn and returns the response
       // to send. Runs before the accept-path mutations below. The resulting
       // serverContributionHash is the new head link, also stored in the receipt

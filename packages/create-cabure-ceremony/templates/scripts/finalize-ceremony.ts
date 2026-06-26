@@ -635,7 +635,7 @@ async function main() {
       const r1cs = await readArtifact(circuitConfig.artifacts.r1csPath);
       const ptau = await readArtifact(circuitConfig.artifacts.ptauPath);
 
-      // H-1: verify the whole chain from the pinned genesis to the latest zkey
+      // Verify the whole chain from the pinned genesis to the latest zkey
       // BEFORE applying the beacon. The beacon is irreversible, so an invalid
       // chain has to be caught first — verifying only the post-beacon zkey (the
       // old order) cannot tell whether the chain that fed it was honest.
@@ -683,7 +683,7 @@ async function main() {
       }
       console.log(`  Chain verification passed.`);
 
-      // C-1: the chain verify above proves current.zkey is SOME valid chain from
+      // The chain verify above proves current.zkey is SOME valid chain from
       // the genesis, not that it is the one we recorded. An attacker with blob
       // write but no KV access (a leaked BLOB_READ_WRITE_TOKEN) could overwrite
       // current.zkey with a self-generated chain and pass it. Close that by
