@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, it, expect } from "vitest";
 import {
   generateInitialZkey,
@@ -14,7 +15,7 @@ import {
 } from "../src/index.js";
 import { bytesToHexRaw, toHex } from "../src/hex.js";
 
-const FIXTURES = join(import.meta.dirname, "fixtures");
+const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), "fixtures");
 
 function loadFixture(name: string): Uint8Array {
   const buf = readFileSync(join(FIXTURES, name));
