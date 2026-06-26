@@ -21,8 +21,13 @@ export class CeremonyClient {
 
   // The participant id the server derives from this token (JWT `sub`). The
   // upload route enforces that the pending-upload path is namespaced under this
-  // id, so the path the CLI builds must use the same value. Returns null when
-  // unauthenticated.
+  // id, so the path the CLI builds must use the same value.
+  //
+  // Returns null when there is no token, or when the token cannot be decoded to
+  // a string `sub`. We do not throw here: callers treat null as "no usable id"
+  // and stop with their own error (see contribute.ts before the upload). A
+  // decode failure is near-impossible since the server issues this token, so
+  // null in practice means unauthenticated.
   get participantId(): string | null {
     if (!this.token) return null;
     try {

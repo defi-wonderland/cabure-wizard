@@ -47,6 +47,12 @@ cp .env.example .env
 3. Create a **KV (Upstash)** store in the same tab.
 4. Pull the generated env vars: `vercel env pull`
 
+> **Use a dedicated Blob and KV store for each ceremony.** Do not point two
+> ceremonies at the same `BLOB_READ_WRITE_TOKEN`. The pending-upload path
+> (`contributions/`) is not namespaced per ceremony, so `npm run reset:ceremony`
+> deletes that whole prefix and would wipe another ceremony's in-flight uploads
+> sharing the same store.
+
 ### 5. GitHub OAuth
 
 1. Create an OAuth App at [github.com/settings/developers](https://github.com/settings/developers).
@@ -96,7 +102,7 @@ Trade-off: classic functions cap `maxDuration` at 300 s (the contribute route se
 | --------------------------- | ----------------------------------------------------------------------------------------- |
 | `npm run setup:ptau`        | Detect circuit constraints, download the correct PPoT ptau, and update config             |
 | `npm run init:ceremony`     | Generate genesis zkey, upload to Blob, write manifest to KV. Outputs to `public/genesis/` |
-| `npm run reset:ceremony`    | Back up state, then wipe all KV keys and Blob objects (chain + pending uploads). Refuses a finalized ceremony unless `-- --force`; asks for typed confirmation unless `-- --yes` |
+| `npm run reset:ceremony`    | Back up state, then wipe all KV keys and Blob objects (chain + pending uploads). Refuses a finalized ceremony unless `-- --force`; asks for typed confirmation unless `-- --yes`. Wipes the whole `contributions/` Blob prefix — use a dedicated store per ceremony (see step 4) |
 | `npm run finalize:ceremony` | Apply beacon (Ethereum RANDAO by default), verify zkeys. Outputs to `public/finalize/`    |
 
 ### Setup ptau
