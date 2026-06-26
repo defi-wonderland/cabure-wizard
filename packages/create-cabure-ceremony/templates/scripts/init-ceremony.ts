@@ -11,7 +11,10 @@ import {
   verify,
 } from "@wonderland/cabure-crypto";
 
-import { getEndDateDeadlineMs } from "@/lib/ceremony-state";
+import {
+  type BeaconCommitment,
+  getEndDateDeadlineMs,
+} from "@/lib/ceremony-state";
 import {
   clearParticipantContributions,
   getJson,
@@ -62,7 +65,7 @@ type ManifestState = {
   endDate: string | null;
   startedAt: number;
   circuits: Array<{ id: string }>;
-  beaconCommitment: { cutoffTimeMs: number; bufferSeconds: number };
+  beaconCommitment: BeaconCommitment;
 };
 
 // Default gap between the endDate deadline and the beacon target slot, so the
@@ -161,6 +164,17 @@ async function main() {
   if (!Number.isInteger(bufferSeconds) || bufferSeconds < 0) {
     throw new Error(
       `beaconBufferSeconds must be a non-negative integer; got ${bufferSeconds}.`,
+    );
+  }
+  // Cap the buffer. It is the gap between the ceremony close and the beacon
+  // target slot, so realistic values are minutes to hours. A huge value pushes
+  // cutoffTimeMs past the JS Date range (the toISOString log below throws) and
+  // commits to a slot nobody will wait for. 30 days is far beyond any real gap.
+  const MAX_BUFFER_SECONDS = 30 * 24 * 60 * 60;
+  if (bufferSeconds > MAX_BUFFER_SECONDS) {
+    throw new Error(
+      `beaconBufferSeconds must be at most ${MAX_BUFFER_SECONDS} (30 days); ` +
+        `got ${bufferSeconds}.`,
     );
   }
   const beaconCommitment = {
