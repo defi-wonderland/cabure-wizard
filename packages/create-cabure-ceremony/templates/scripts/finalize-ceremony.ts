@@ -507,7 +507,12 @@ async function main() {
         hex: manifest.beaconHash.replace(/^0x/, ""),
         source: manifest.beaconSource ?? "persisted beacon",
         slot: manifest.beaconSlot,
-        verifiable: manifest.beaconVerifiable ?? true,
+        // Fail safe: if the seal did not record verifiability (a corrupt or
+        // pre-field manifest), treat the beacon as unverifiable. Defaulting to
+        // true would suppress the operator warning and write a transcript that
+        // claims verifiability the beacon may not have. Under-claiming is safe;
+        // over-claiming is misleading.
+        verifiable: manifest.beaconVerifiable ?? false,
       }
     : null;
   const beacon = await resolveBeacon(manifest, persistedBeacon);
