@@ -113,13 +113,13 @@ function beaconApiBase(): string {
 // because a sealed run reuses the persisted beacon (see resolveBeacon).
 const BEACON_FETCH_TIMEOUT_MS = 30_000;
 
-// origin + path only. BEACON_API_URL may carry credentials (basic-auth userinfo
-// or an ?apikey= query param); never put the full URL in an error or log. URL's
-// origin drops userinfo, and dropping the search drops a key in the query.
+// origin only. BEACON_API_URL may carry credentials anywhere but the host:
+// basic-auth userinfo, an ?apikey= query param, or a token in the path (some
+// providers use https://host/<TOKEN>/...). origin is scheme + host + port, so it
+// drops userinfo, path, and query. Never put the full URL in an error or log.
 function safeUrlLabel(url: string): string {
   try {
-    const u = new URL(url);
-    return `${u.origin}${u.pathname}`;
+    return new URL(url).origin;
   } catch {
     return "the beacon node";
   }
