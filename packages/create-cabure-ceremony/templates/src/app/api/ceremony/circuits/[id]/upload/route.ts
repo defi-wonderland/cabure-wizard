@@ -23,10 +23,20 @@ export async function POST(
     const jsonResponse = await handleUpload({
       body,
       request,
-      onBeforeGenerateToken: async () => {
+      onBeforeGenerateToken: async (pathname) => {
         const participant = await getParticipant(request);
         if (!participant) {
           throw new Error("Unauthorized");
+        }
+
+        // Bind the upload to this participant's own namespace. The contribute
+        // route deletes rejected uploads with the server's RW token and accepts
+        // any URL under the circuit prefix; enforcing the per-participant path
+        // here means a caller can only ever place (and thus later trigger
+        // deletion of) blobs under their own id, never another participant's.
+        const expectedPath = `contributions/${id}/${participant.participantId}/pending.zkey`;
+        if (pathname !== expectedPath) {
+          throw new Error("Invalid upload path");
         }
 
         const config = getCeremonyConfig();

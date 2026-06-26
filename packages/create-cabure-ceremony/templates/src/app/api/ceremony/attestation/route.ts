@@ -33,7 +33,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const { filename, content, description } = body;
+  const { filename, content, description } = body ?? {};
   if (
     typeof filename !== "string" ||
     typeof content !== "string" ||
@@ -78,9 +78,15 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   if (!response.ok) {
+    // Preserve GitHub's auth failures as 401 so the client's re-auth path fires
+    // (see publishAttestation in utils/attestation.ts, which branches on 401).
+    // A stale or unscoped session token surfaces here as 401/403; everything
+    // else is an upstream fault, reported as 502.
+    const status =
+      response.status === 401 || response.status === 403 ? 401 : 502;
     return NextResponse.json(
       { error: `GitHub rejected the Gist (${response.status}).` },
-      { status: 502 },
+      { status },
     );
   }
 

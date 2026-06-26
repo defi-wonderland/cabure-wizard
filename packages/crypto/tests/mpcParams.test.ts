@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { beforeAll, describe, it, expect } from "vitest";
 import {
   applyBeacon,
@@ -8,7 +9,7 @@ import {
   parseMpcParams,
 } from "../src/index.js";
 
-const FIXTURES = join(import.meta.dirname, "fixtures");
+const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), "fixtures");
 
 function loadFixture(name: string): Uint8Array {
   const buf = readFileSync(join(FIXTURES, name));

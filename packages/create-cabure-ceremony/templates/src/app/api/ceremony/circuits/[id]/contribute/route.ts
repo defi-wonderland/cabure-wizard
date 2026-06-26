@@ -199,7 +199,16 @@ async function consumeTurn(
   }
 }
 
-function isValidPendingBlobUrl(url: string, circuitId: string): boolean {
+// The blobUrl is caller-supplied and gets deleted with the server's RW token on
+// rejection paths. Bind it to this participant's own namespace so a caller can
+// never name another participant's upload for deletion. The upload route writes
+// only to `contributions/<circuitId>/<participantId>/...`, so a legitimate URL
+// always matches this prefix.
+function isValidPendingBlobUrl(
+  url: string,
+  circuitId: string,
+  participantId: string,
+): boolean {
   try {
     const parsed = new URL(url);
     if (
@@ -208,7 +217,7 @@ function isValidPendingBlobUrl(url: string, circuitId: string): boolean {
     ) {
       return false;
     }
-    const expectedPrefix = `/contributions/${circuitId}/`;
+    const expectedPrefix = `/contributions/${circuitId}/${participantId}/`;
     return parsed.pathname.startsWith(expectedPrefix);
   } catch {
     return false;
@@ -293,7 +302,7 @@ export async function POST(
       ? rawClientHash
       : null;
 
-  if (!blobUrl || !isValidPendingBlobUrl(blobUrl, id)) {
+  if (!blobUrl || !isValidPendingBlobUrl(blobUrl, id, participantId)) {
     return NextResponse.json(
       { error: "Missing or invalid blobUrl" },
       { status: 400 },

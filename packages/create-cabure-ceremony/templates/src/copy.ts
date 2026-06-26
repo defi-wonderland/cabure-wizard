@@ -138,7 +138,7 @@ export const defaultCopy: CeremonyCopy = {
       "Paste a receipt JSON to confirm it exists in the coordinator state.",
     label: "Receipt JSON",
     placeholder:
-      '{"circuitId":"multiplier","participantId":"...","contributionIndex":1}',
+      '{"circuitId":"multiplier","participantId":"...","contributionIndex":1,"contributionHash":"0x..."}',
     cta: "VERIFY RECEIPT",
     verifyingCta: "VERIFYING...",
     note: "This check confirms that the receipt's contribution hash matches the coordinator's record.",
