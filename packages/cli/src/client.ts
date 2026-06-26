@@ -19,6 +19,24 @@ export class CeremonyClient {
     return h;
   }
 
+  // The participant id the server derives from this token (JWT `sub`). The
+  // upload route enforces that the pending-upload path is namespaced under this
+  // id, so the path the CLI builds must use the same value. Returns null when
+  // unauthenticated.
+  get participantId(): string | null {
+    if (!this.token) return null;
+    try {
+      const body = this.token.split(".")[1];
+      if (!body) return null;
+      const payload = JSON.parse(
+        Buffer.from(body, "base64url").toString("utf8"),
+      ) as { sub?: unknown };
+      return typeof payload.sub === "string" ? payload.sub : null;
+    } catch {
+      return null;
+    }
+  }
+
   private async request<T>(
     path: string,
     init?: RequestInit,

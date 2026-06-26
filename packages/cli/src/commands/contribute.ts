@@ -137,8 +137,12 @@ export async function contributeCommand(
     }
 
     console.log("  Uploading...");
+    const participantId = client.participantId;
+    if (!participantId) {
+      throw new Error("Could not determine participant id from the token.");
+    }
     const blob = await upload(
-      `contributions/${circuitId}/pending.zkey`,
+      `contributions/${circuitId}/${participantId}/pending.zkey`,
         new Blob([result.zkey as BlobPart]),
       {
         access: "public",

@@ -170,6 +170,7 @@ const UPLOAD_STALL_TIMEOUT_MS = 60_000;
 
 export async function uploadZkey(options: {
   circuitId: string;
+  participantId: string;
   payload: Uint8Array;
   signal?: AbortSignal;
 }): Promise<string> {
@@ -197,7 +198,7 @@ export async function uploadZkey(options: {
   try {
     armStallTimer();
     const blob = await upload(
-      `contributions/${options.circuitId}/pending.zkey`,
+      `contributions/${options.circuitId}/${options.participantId}/pending.zkey`,
       new Blob([options.payload as BlobPart]),
       {
         access: "public",

@@ -19,6 +19,7 @@ import type {
 import type { ClientCircuitConfig } from "@/lib/ceremony-config";
 import { runContribution } from "@/lib/worker-client";
 import { deriveEntropy, sha256 } from "@/utils/entropy";
+import { useParticipant } from "@/hooks/useParticipant";
 
 // Server receipt plus the contributor's OWN h_k, computed client-side
 // (`result.contributionHash` from contribute(), not the server's
@@ -68,6 +69,7 @@ export function useContributionFlow(options: {
   } = options;
 
   const queryClient = useQueryClient();
+  const { participantId } = useParticipant();
 
   const [circuitRuns, setCircuitRuns] = useState<CircuitRunItem[]>([]);
   const [resolvedCircuitIds, setResolvedCircuitIds] = useState<string[]>([]);
@@ -176,8 +178,12 @@ export function useContributionFlow(options: {
       setContributionPhase("uploading");
       setContributionProgress(85);
 
+      if (!participantId) {
+        throw new Error("Not signed in: cannot upload contribution.");
+      }
       const blobUrl = await uploadZkey({
         circuitId,
+        participantId,
         payload: result.zkey,
         signal: controller.signal,
       });
