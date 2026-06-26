@@ -101,6 +101,23 @@ export async function getManifest(): Promise<ManifestState> {
   if (!manifest) {
     throw new Error("Ceremony not initialized. Run init:ceremony.");
   }
+  // getJson casts untyped KV JSON, so the required fields are not guaranteed at
+  // runtime. beaconCommitment is the one downstream code (finalize) depends on
+  // and assumes present; validate it here so the cast cannot hand back a
+  // manifest that lies about the type. A missing/malformed commitment means a
+  // corrupt manifest, not a supported older ceremony.
+  const c = manifest.beaconCommitment;
+  if (
+    !c ||
+    !Number.isFinite(c.cutoffTimeMs) ||
+    !Number.isFinite(c.bufferSeconds)
+  ) {
+    throw new Error(
+      "Manifest is missing a valid beaconCommitment (corrupt manifest). " +
+        "Recovery is reset:ceremony; do not re-run init:ceremony on a live " +
+        "ceremony, it wipes contributions.",
+    );
+  }
   return manifest;
 }
 

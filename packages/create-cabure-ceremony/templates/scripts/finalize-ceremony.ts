@@ -13,7 +13,10 @@ import {
   verifyChainForCircuit,
 } from "@wonderland/cabure-crypto";
 
-import { getEndDateDeadlineMs } from "@/lib/ceremony-state";
+import {
+  type BeaconCommitment,
+  getEndDateDeadlineMs,
+} from "@/lib/ceremony-state";
 import { getJson, listRange, setJson } from "@/lib/kv-store";
 import { ceremonyConfig } from "../ceremony.config";
 
@@ -59,7 +62,7 @@ interface ManifestState {
   endDate: string | null;
   startedAt: number;
   circuits: Array<{ id: string }>;
-  beaconCommitment: { cutoffTimeMs: number; bufferSeconds: number };
+  beaconCommitment: BeaconCommitment;
   // Resolved beacon, persisted at seal time (beaconHash is 0x-prefixed). A
   // recovery run reuses it so the beacon is locked once finalization starts and
   // cannot be re-rolled. Cleared only by reset:ceremony.
@@ -104,9 +107,32 @@ function beaconApiBase(): string {
   return process.env.BEACON_API_URL?.trim() || DEFAULT_BEACON_API_URL;
 }
 
+// A stalled beacon node must not hang finalize:ceremony forever. The timeout is
+// per request, not global: fetchRandaoRevealFrom can make one request per
+// missed slot, and each gets its own budget. Re-running after a timeout is safe
+// because a sealed run reuses the persisted beacon (see resolveBeacon).
+const BEACON_FETCH_TIMEOUT_MS = 30_000;
+
+async function beaconFetch(url: string): Promise<Response> {
+  try {
+    return await fetch(url, {
+      signal: AbortSignal.timeout(BEACON_FETCH_TIMEOUT_MS),
+    });
+  } catch (error) {
+    if (error instanceof Error && error.name === "TimeoutError") {
+      throw new Error(
+        `Beacon API request timed out after ` +
+          `${BEACON_FETCH_TIMEOUT_MS / 1000}s (${url}). Retry, or set ` +
+          "BEACON_API_URL to a different node.",
+      );
+    }
+    throw error;
+  }
+}
+
 async function beaconGet<T>(apiPath: string): Promise<T> {
   const url = `${beaconApiBase()}${apiPath}`;
-  const response = await fetch(url);
+  const response = await beaconFetch(url);
   if (!response.ok) {
     throw new Error(
       `Beacon API request failed (${apiPath}): ${response.status} ` +
@@ -123,14 +149,25 @@ async function fetchGenesisTimeSec(): Promise<number> {
   const json = await beaconGet<{ data: { genesis_time: string } }>(
     "/eth/v1/beacon/genesis",
   );
-  return Number(json.data.genesis_time);
+  // Validate at the source: an unvalidated Number() of a bad response gives NaN,
+  // which flows into the targetSlot math and only surfaces as a confusing "No
+  // block found" error far downstream. Fail clearly here instead.
+  const genesisTimeSec = Number(json.data?.genesis_time);
+  if (!Number.isFinite(genesisTimeSec) || genesisTimeSec < 0) {
+    throw new Error("Beacon API returned an invalid genesis_time.");
+  }
+  return genesisTimeSec;
 }
 
 async function fetchFinalizedSlot(): Promise<number> {
   const json = await beaconGet<{
     data: { header: { message: { slot: string } } };
   }>("/eth/v1/beacon/headers/finalized");
-  return Number(json.data.header.message.slot);
+  const slot = Number(json.data?.header?.message?.slot);
+  if (!Number.isInteger(slot) || slot < 0) {
+    throw new Error("Beacon API returned an invalid finalized slot.");
+  }
+  return slot;
 }
 
 // The RANDAO reveal of the first block at or after `fromSlot`.
@@ -150,7 +187,7 @@ async function fetchRandaoRevealFrom(
 ): Promise<{ hex: string; slot: number }> {
   for (let slot = fromSlot; slot <= finalizedSlot; slot++) {
     const url = `${beaconApiBase()}/eth/v2/beacon/blocks/${slot}`;
-    const response = await fetch(url);
+    const response = await beaconFetch(url);
     if (response.status === 404) continue; // missed slot, try the next one
     if (!response.ok) {
       throw new Error(
