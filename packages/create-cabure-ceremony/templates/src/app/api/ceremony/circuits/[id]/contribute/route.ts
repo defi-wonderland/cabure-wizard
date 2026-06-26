@@ -255,12 +255,16 @@ async function checkEligibility(
   // finalize:ceremony verifies the chain from the pinned genesis before the
   // beacon. A circuit without that pin can never be finalized, so accepting
   // contributions here would waste participant work.
+  // init:ceremony always pins the genesis, so a missing pin means corrupt
+  // circuit state, not a supported older ceremony. The operator recovers with
+  // reset:ceremony, never by re-running init:ceremony on a live ceremony (that
+  // overwrites state and clears receipts, wiping contributions).
   if (!circuit.initialZkeyUrl || !circuit.initialZkeyHash) {
     return {
       ok: false,
       error:
-        "Ceremony has no pinned genesis and cannot be finalized. " +
-        "The operator must re-run init:ceremony.",
+        "Ceremony circuit state is corrupt (no pinned genesis) and cannot be " +
+        "finalized. Contact the operator; recovery is reset:ceremony.",
       status: 409,
     };
   }

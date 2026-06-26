@@ -597,10 +597,18 @@ async function main() {
       // BEFORE applying the beacon. The beacon is irreversible, so an invalid
       // chain has to be caught first — verifying only the post-beacon zkey (the
       // old order) cannot tell whether the chain that fed it was honest.
+      // init:ceremony always pins the genesis, so missing initialZkeyUrl/Hash
+      // means corrupt circuit state, not a supported older ceremony. Without the
+      // pinned genesis the chain cannot be verified, so finalization cannot
+      // proceed. Do NOT advise re-running init:ceremony: it overwrites circuit
+      // state and clears receipts, wiping a live ceremony. reset:ceremony is the
+      // only recovery, and it is the operator's explicit choice to start over.
       if (!state.initialZkeyUrl || !state.initialZkeyHash) {
         throw new Error(
           `Circuit ${circuitConfig.id} has no pinned genesis (initialZkeyUrl/Hash). ` +
-            "It was initialized before genesis pinning; re-run init:ceremony.",
+            "The circuit state is corrupt and cannot be finalized. Run " +
+            "reset:ceremony to start over; do not re-run init:ceremony on a " +
+            "live ceremony, it wipes contributions.",
         );
       }
 

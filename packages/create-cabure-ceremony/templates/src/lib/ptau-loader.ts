@@ -32,9 +32,10 @@ export async function loadPtau(options: {
   if (!options.url) {
     throw new Error(
       "ptau is unavailable: no local file and no ptauUrl for this circuit. " +
-        "Re-run init:ceremony to publish the ptau. In production this is the " +
-        "only fix: verification is mandatory there, and the verifyContributions " +
-        "flag disables it only in dev / CI.",
+        "init:ceremony publishes ptauUrl, so a missing one means corrupt " +
+        "circuit state. Recovery is reset:ceremony; do not re-run init:ceremony " +
+        "on a live ceremony, it wipes contributions. Verification is mandatory " +
+        "in production (the verifyContributions flag disables it only in dev / CI).",
     );
   }
 
