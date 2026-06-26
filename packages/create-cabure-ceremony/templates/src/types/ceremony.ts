@@ -170,7 +170,9 @@ export interface CeremonyConfig {
   slug: string;
   description: string;
   targetContributions: number;
-  endDate: string | null;
+  // Required: init:ceremony commits the finalization beacon target as
+  // endDate + buffer, so a ceremony with no endDate has nothing to commit to.
+  endDate: string;
   queueTimeoutSeconds: number;
   // Seconds added to the endDate deadline to fix the finalization beacon
   // target (H-2). Larger values push the target slot further past the close,
