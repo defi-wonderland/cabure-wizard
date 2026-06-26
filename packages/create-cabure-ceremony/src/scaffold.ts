@@ -209,6 +209,10 @@ export const ceremonyConfig: CeremonyConfig = {
     "Contribute your randomness to strengthen the ceremony and improve system security.",
   targetContributions: ${context.targetContributions},
   endDate: ${JSON.stringify(context.endDate)},
+  // Seconds between endDate and the finalization beacon target slot, so the
+  // target's RANDAO is not yet on chain at init. Non-negative integer, at most
+  // 2592000 (30 days).
+  beaconBufferSeconds: 3600,
   queueTimeoutSeconds: 300,
   // Production always pairing-verifies contributions regardless of this flag;
   // it only disables the check in dev / CI.

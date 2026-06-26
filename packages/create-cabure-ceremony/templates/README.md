@@ -111,10 +111,16 @@ npm run setup:ptau -- --verify # also run snarkjs ptau verification
 
 The finalization beacon is committed in advance, at `init:ceremony`, as the
 RANDAO reveal of the first block at or after the finalized Ethereum slot for
-`endDate + buffer` (buffer is one hour by default, configurable via
-`beaconBufferSeconds`). Because the target is fixed before any contribution, the
+`endDate + buffer`. Because the target is fixed before any contribution, the
 operator cannot re-roll the beacon, and anyone can recompute it from the
 published `endDate` and buffer.
+
+The buffer is set by `beaconBufferSeconds` in `ceremony.config.ts` (defaults to
+`3600`, one hour). It must be a non-negative integer no larger than `2592000`
+(30 days), and `endDate + beaconBufferSeconds` must still be in the future at
+`init:ceremony` — otherwise the target slot would already be on chain and the
+operator could grind it. A larger buffer pushes the target slot further past the
+ceremony close, so its RANDAO is less predictable at init.
 
 ```bash
 npm run finalize:ceremony   # use the committed beacon (errors until its slot is finalized; rerun later)
