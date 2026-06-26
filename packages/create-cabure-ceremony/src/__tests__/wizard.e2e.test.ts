@@ -138,6 +138,18 @@ describe("wizard scaffold e2e", async () => {
         path.join(outputDirectory, "ceremony.config.ts"),
         "utf8",
       );
+      const workerClient = await readFile(
+        path.join(outputDirectory, "src", "lib", "worker-client.ts"),
+        "utf8",
+      );
+      const contributionFlow = await readFile(
+        path.join(outputDirectory, "src", "hooks", "useContributionFlow.ts"),
+        "utf8",
+      );
+      const finalizeScript = await readFile(
+        path.join(outputDirectory, "scripts", "finalize-ceremony.ts"),
+        "utf8",
+      );
       const copiedR1cs = await readFile(
         path.join(outputDirectory, "circuits", "deposit.r1cs"),
         "utf8",
@@ -150,6 +162,20 @@ describe("wizard scaffold e2e", async () => {
       );
       expect(generatedConfig).toContain('id: "core"');
       expect(generatedConfig).toContain('id: "all"');
+      expect(generatedConfig).toContain(
+        'participantContributionsPrefix: "ceremony:contributions:participants"',
+      );
+      expect(workerClient).toContain("contributionHash: msg.contributionHash");
+      expect(workerClient).toContain("zkeyHash: msg.zkeyHash");
+      expect(contributionFlow).toContain(
+        "contributionHash: result.contributionHash",
+      );
+      expect(contributionFlow).toContain("result.zkeyHash");
+      expect(finalizeScript).toContain(
+        "const beaconResult = await applyBeacon(currentZkey, beaconHex);",
+      );
+      expect(finalizeScript).toContain("const finalZkey = beaconResult.zkey");
+      expect(finalizeScript).toContain("finalZkeyHash: beaconResult.zkeyHash");
       expect(copiedR1cs).toBe("deposit-r1cs");
     },
   );

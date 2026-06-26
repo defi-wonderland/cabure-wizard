@@ -53,7 +53,9 @@ export function VerifyScreen({
           value={input}
           onChange={(event) => setInput(event.target.value)}
           placeholder={copy.verify.placeholder}
-          className={styles.textarea}
+          className={`${styles.textarea} ${status === "error" ? styles.textareaError : ""}`}
+          aria-invalid={status === "error"}
+          aria-describedby={status === "error" ? "receipt-input-error" : undefined}
         />
       </div>
 
@@ -83,7 +85,30 @@ export function VerifyScreen({
       )}
 
       {status === "error" && error && (
-        <div className="card">{error}</div>
+        <div
+          id="receipt-input-error"
+          role="alert"
+          className={styles.errorCard}
+        >
+          <svg
+            className={styles.errorIcon}
+            viewBox="0 0 16 16"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <circle cx="8" cy="8" r="7" />
+            <line x1="8" y1="4.5" x2="8" y2="8.5" />
+            <circle cx="8" cy="11.25" r="0.5" fill="currentColor" />
+          </svg>
+          <div className={styles.errorBody}>
+            <span className={styles.errorLabel}>{copy.verify.errorLabel}</span>
+            <span>{error}</span>
+          </div>
+        </div>
       )}
 
       <Button variant="secondary" size="small" onClick={onBack}>

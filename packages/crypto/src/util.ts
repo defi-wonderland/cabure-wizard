@@ -30,11 +30,3 @@ export async function readFileAsBytes(path: string): Promise<Uint8Array> {
   const buf = await readFile(path);
   return new Uint8Array(buf);
 }
-
-/** Convert a Uint8Array to a 0x-prefixed hex string */
-export function toHex(bytes: Uint8Array): string {
-  const hex = Array.from(bytes)
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-  return `0x${hex}`;
-}

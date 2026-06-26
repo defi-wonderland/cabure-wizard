@@ -20,6 +20,15 @@ import type { ClientCircuitConfig } from "@/lib/ceremony-config";
 import { runContribution } from "@/lib/worker-client";
 import { deriveEntropy, sha256 } from "@/utils/entropy";
 
+// Server receipt plus the contributor's OWN h_k, computed client-side
+// (`result.contributionHash` from contribute(), not the server's
+// `serverContributionHash`). The attestation publishes this so it is the
+// contributor's own statement and can surface an operator that recorded a
+// different hash. See CompleteScreen.
+export interface ContributionReceiptWithClient extends ReceiptResponse {
+  clientHk: string;
+}
+
 export interface ContributionFlowState {
   circuitRuns: CircuitRunItem[];
   currentCircuitIndex: number;
@@ -30,7 +39,7 @@ export interface ContributionFlowState {
   contributionError: string | null;
   queueError: string | null;
   finalizeReady: boolean;
-  receipts: ReceiptResponse[];
+  receipts: ContributionReceiptWithClient[];
 }
 
 export interface JoinOptions {
@@ -63,6 +72,7 @@ export function useContributionFlow(options: {
   const [circuitRuns, setCircuitRuns] = useState<CircuitRunItem[]>([]);
   const [resolvedCircuitIds, setResolvedCircuitIds] = useState<string[]>([]);
   const [currentCircuitIndex, setCurrentCircuitIndex] = useState(0);
+  const [flowRunId, setFlowRunId] = useState(0);
   const [finalizeReady, setFinalizeReady] = useState(false);
   const [queueError, setQueueError] = useState<string | null>(null);
   const [contributionPhase, setContributionPhase] =
@@ -71,7 +81,7 @@ export function useContributionFlow(options: {
   const [contributionError, setContributionError] = useState<string | null>(
     null,
   );
-  const [receipts, setReceipts] = useState<ReceiptResponse[]>([]);
+  const [receipts, setReceipts] = useState<ContributionReceiptWithClient[]>([]);
 
   const contributionAbortRef = useRef<AbortController | null>(null);
 
@@ -149,6 +159,20 @@ export function useContributionFlow(options: {
         signal: controller.signal,
       });
 
+      // Refresh our queue entry now that the long compute is done, BEFORE the
+      // upload and submit. Both prune the queue and reject anyone not at the front,
+      // and a compute longer than queueTimeoutSeconds would otherwise have aged our
+      // entry out. Bumping joinedAt (see the queue POST) keeps it alive through
+      // upload + verify.
+      try {
+        await joinQueue({ circuitIds: [circuitId], signal: controller.signal });
+      } catch (error) {
+        // If the user cancelled, re-throw so the mutation exits here. Otherwise the
+        // next state update would flash the UI to "uploading" after a cancel. Any
+        // other error is best-effort: a later step may be rejected and retried.
+        if (controller.signal.aborted) throw error;
+      }
+
       setContributionPhase("uploading");
       setContributionProgress(85);
 
@@ -158,16 +182,27 @@ export function useContributionFlow(options: {
         signal: controller.signal,
       });
 
+      // The submit POST runs the mandatory server-side verifyChain, seconds on
+      // large circuits. Distinct phase so the contributor sees verification, not
+      // a frozen "Upload".
+      setContributionPhase("verifying");
       setContributionProgress(92);
 
       const receipt = await submitContribution({
         circuitId,
-        contributionHash: result.hash,
+        contributionHash: result.contributionHash,
         blobUrl,
         signal: controller.signal,
       });
+      if (receipt.contributionHash.toLowerCase() !== result.zkeyHash.toLowerCase()) {
+        throw new Error(
+          "Receipt hash mismatch: the coordinator stored a different zkey than the client uploaded.",
+        );
+      }
 
-      return receipt;
+      // Attach the contributor's own h_k for the attestation (client-computed,
+      // not the server's serverContributionHash).
+      return { ...receipt, clientHk: result.contributionHash };
     },
     onSuccess: (receipt) => {
       const circuitId = receipt.circuitId;
@@ -235,9 +270,14 @@ export function useContributionFlow(options: {
     !!currentCircuitId &&
     !contributeMutation.isPending &&
     !finalizeReady;
+  const queuePositionQueryKey = [
+    "queuePosition",
+    flowRunId,
+    currentCircuitId,
+  ] as const;
 
   const queueQuery = useQuery({
-    queryKey: ["queuePosition", currentCircuitId],
+    queryKey: queuePositionQueryKey,
     queryFn: ({ signal }) =>
       getQueuePosition({
         circuitId: currentCircuitId!,
@@ -297,10 +337,18 @@ export function useContributionFlow(options: {
     joinOptions: JoinOptions,
     allCircuits: ClientCircuitConfig[],
   ) => {
+    setCircuitRuns([]);
+    setResolvedCircuitIds([]);
     setQueueError(null);
     setCurrentCircuitIndex(0);
     setFinalizeReady(false);
+    setContributionPhase("downloading");
+    setContributionProgress(0);
     setContributionError(null);
+    setReceipts([]);
+    contributeMutation.reset();
+    queryClient.removeQueries({ queryKey: ["queuePosition"] });
+    setFlowRunId((value) => value + 1);
 
     const result = await joinQueue(joinOptions);
 
@@ -332,7 +380,7 @@ export function useContributionFlow(options: {
     setQueueError(null);
     contributeMutation.reset();
     queryClient.resetQueries({
-      queryKey: ["queuePosition", currentCircuitId],
+      queryKey: queuePositionQueryKey,
     });
   };
 
@@ -348,11 +396,14 @@ export function useContributionFlow(options: {
     setResolvedCircuitIds([]);
     setQueueError(null);
     setCurrentCircuitIndex(0);
+    setFlowRunId((value) => value + 1);
     setFinalizeReady(false);
+    setContributionPhase("downloading");
     setContributionProgress(0);
     setContributionError(null);
     setReceipts([]);
     contributeMutation.reset();
+    queryClient.removeQueries({ queryKey: ["queuePosition"] });
   };
 
   return {

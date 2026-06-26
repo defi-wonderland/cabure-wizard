@@ -1,7 +1,13 @@
 {
   "name": "@wonderland/cabure-crypto",
-  "version": "1.0.0",
+  "version": "2.0.0-beta.0",
   "description": "Typed exports for all Groth16 Phase 2 ceremony operations",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/defi-wonderland/cabure-wizard.git",
+    "directory": "packages/crypto"
+  },
+  "author": "Wonderland",
   "type": "module",
   "main": "./dist/cjs/index.cjs",
   "module": "./dist/esm/index.js",
@@ -29,6 +35,16 @@
         "types": "./dist/worker/protocol.d.cts",
         "default": "./dist/worker/protocol.cjs"
       }
+    },
+    "./entropy": {
+      "import": {
+        "types": "./dist/esm/entropy.d.ts",
+        "default": "./dist/entropy/index.js"
+      },
+      "require": {
+        "types": "./dist/entropy/index.d.cts",
+        "default": "./dist/entropy/index.cjs"
+      }
     }
   },
   "files": [
@@ -37,9 +53,11 @@
   "scripts": {
     "build": "node build.mjs",
     "test": "vitest run",
+    "audit": "pnpm audit --prod --audit-level high",
     "clean": "rm -rf dist"
   },
   "dependencies": {
+    "ffjavascript": "0.3.1",
     "snarkjs": "0.7.5"
   },
   "devDependencies": {

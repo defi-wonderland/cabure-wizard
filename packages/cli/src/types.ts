@@ -41,6 +41,11 @@ export interface ReceiptResponse {
   contributionIndex: number;
   contributionHash: string;
   clientContributionHash: string | null;
+  // Genuine contribution hash (h_k) the chain folds over; published in the
+  // attestation.
+  serverContributionHash: string;
+  // h_{k-1}: predecessor hash for the attestation; null for the first.
+  previousContributionHash: string | null;
   chainHash: string;
   timestamp: number;
 }

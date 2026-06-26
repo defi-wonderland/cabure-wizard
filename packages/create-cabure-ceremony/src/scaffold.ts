@@ -211,6 +211,8 @@ export const ceremonyConfig: CeremonyConfig = {
   targetContributions: ${context.targetContributions},
   endDate: ${context.endDate ? JSON.stringify(context.endDate) : "null"},
   queueTimeoutSeconds: 300,
+  // Production always pairing-verifies contributions regardless of this flag;
+  // it only disables the check in dev / CI.
   verifyContributions: false,
   tiersEnabled: ${context.tiers.length > 0},
   tiers: [
@@ -227,6 +229,8 @@ ${circuitEntries}
     manifestPath: "ceremony:manifest",
     circuitStatePrefix: "ceremony:circuits",
     receiptsPath: "ceremony:receipts",
+    participantContributionsPrefix: "ceremony:contributions:participants",
+    participantsIndexPath: "ceremony:contributions:participants:index",
     zkeyPrefix: ${JSON.stringify(`${context.projectSlug}/zkeys`)},
   },
   copy: defaultCopy,

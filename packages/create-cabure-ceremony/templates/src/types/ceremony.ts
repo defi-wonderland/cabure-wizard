@@ -56,6 +56,11 @@ export interface CeremonyCopy {
     authNote: string;
     githubCta: string;
     beginCta: string;
+    eligibilityLoadingCta: string;
+    downloadReceiptsCta: string;
+    downloadingReceiptsCta: string;
+    alreadyContributedTitle: string;
+    alreadyContributedDescription: string;
     endedSubtitle: string;
     endedDescription: string;
     verifyCta: string;
@@ -75,8 +80,13 @@ export interface CeremonyCopy {
     title: string;
     description: string;
     cta: string;
+    joiningCta: string;
     tierLabelPrefix: string;
     timeSuffix: string;
+    pillWillRun: string;
+    pillAlreadyContributed: string;
+    pillTargetReached: string;
+    pillNextAvailable: string;
   };
   progress: {
     title: string;
@@ -96,11 +106,13 @@ export interface CeremonyCopy {
       downloading: string;
       computing: string;
       uploading: string;
+      verifying: string;
     };
     phaseStatus: {
       downloading: string;
       computing: string;
       uploading: string;
+      verifying: string;
     };
     finalizeCta: string;
     retryCta: string;
@@ -128,6 +140,13 @@ export interface CeremonyCopy {
     thankYouTitle: string;
     thankYouBody: string;
     restartCta: string;
+    attestationTitle: string;
+    attestationBody: string;
+    attestationPublishCta: string;
+    attestationPublishingCta: string;
+    attestationViewCta: string;
+    attestationError: string;
+    attestationSignInError: string;
   };
   verify: {
     title: string;
@@ -139,6 +158,9 @@ export interface CeremonyCopy {
     note: string;
     successTitle: string;
     invalidReceipt: string;
+    duplicateReceipt: string;
+    hashMismatch: string;
+    errorLabel: string;
     backCta: string;
   };
 }
@@ -162,6 +184,8 @@ export interface CeremonyConfig {
     manifestPath: string;
     circuitStatePrefix: string;
     receiptsPath: string;
+    participantContributionsPrefix: string;
+    participantsIndexPath: string;
     zkeyPrefix: string;
   };
   copy: CeremonyCopy;

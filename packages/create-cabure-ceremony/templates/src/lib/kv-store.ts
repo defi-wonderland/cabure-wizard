@@ -42,28 +42,154 @@ export async function listRange<T>(key: string): Promise<T[]> {
   return await redis().lrange<T>(key, 0, -1);
 }
 
-export async function listClear(key: string): Promise<void> {
-  await redis().del(key);
+export async function setIsMember(
+  key: string,
+  member: string,
+): Promise<boolean> {
+  const result = await redis().sismember(key, member);
+  return Boolean(result);
 }
 
+export async function setMembers(key: string): Promise<string[]> {
+  return await redis().smembers(key);
+}
+
+export async function listClear(key: string): Promise<number> {
+  return redis().del(key);
+}
+
+// Fence: commit only while the caller still holds the per-circuit lock. KEYS[1]
+// is the lock key, ARGV[1] the caller's token. The four writes run only if the
+// lock still holds that token, all in one atomic server-side step. See
+// writeContribution for why a plain locked write is not enough.
+const COMMIT_CONTRIBUTION_SCRIPT = `
+  if redis.call("get", KEYS[1]) ~= ARGV[1] then
+    return 0
+  end
+  redis.call("set", KEYS[2], ARGV[2])
+  redis.call("rpush", KEYS[3], ARGV[3])
+  redis.call("sadd", KEYS[4], ARGV[4])
+  redis.call("sadd", KEYS[5], ARGV[5])
+  return 1
+`;
+
+/**
+ * Commit a contribution, but only while the caller still holds the per-circuit
+ * lock. Returns false when the lock was lost, so the caller rejects and the
+ * client retries. The queue routes take the same lock, so these writes cannot
+ * race a concurrent queue update.
+ *
+ * The lock has a TTL. A process can stall after acquiring it — a GC pause, a
+ * slow KV round trip — until the TTL expires and a second writer takes the
+ * lock. A plain write would still land and overwrite that second writer,
+ * dropping a contribution. The token check makes the advance atomic: the
+ * stalled writer sees a different token (or none) and writes nothing. This is
+ * the append-only head advance the continuity gate (C-1) builds on.
+ *
+ * The ARGV values must serialize the way the client's defaultSerializer does,
+ * or the readers (getJson, listRange, sismember, smembers) will not parse them.
+ * Objects go in as JSON strings; plain string set members go in raw.
+ */
+export async function writeContribution<TCircuit, TReceipt>(options: {
+  lockKey: string;
+  lockToken: string;
+  circuitStateKey: string;
+  circuitState: TCircuit;
+  receiptsKey: string;
+  receipt: TReceipt;
+  participantContributionsKey: string;
+  circuitId: string;
+  participantsIndexKey: string;
+  participantId: string;
+}): Promise<boolean> {
+  const result = await redis().eval(
+    COMMIT_CONTRIBUTION_SCRIPT,
+    [
+      options.lockKey,
+      options.circuitStateKey,
+      options.receiptsKey,
+      options.participantContributionsKey,
+      options.participantsIndexKey,
+    ],
+    [
+      options.lockToken,
+      JSON.stringify(options.circuitState),
+      JSON.stringify(options.receipt),
+      options.circuitId,
+      options.participantId,
+    ],
+  );
+  return Number(result) === 1;
+}
+
+// Fence for a circuit-state-only write: the same lock-token check as
+// writeContribution, without the contribution side effects. Used to persist a
+// queue advance when the continuity gate rejects a submission. Returns false if
+// the lock was lost, so the caller drops the change.
+const COMMIT_CIRCUIT_STATE_SCRIPT = `
+  if redis.call("get", KEYS[1]) ~= ARGV[1] then
+    return 0
+  end
+  redis.call("set", KEYS[2], ARGV[2])
+  return 1
+`;
+
+export async function writeCircuitStateFenced<TCircuit>(options: {
+  lockKey: string;
+  lockToken: string;
+  circuitStateKey: string;
+  circuitState: TCircuit;
+}): Promise<boolean> {
+  const result = await redis().eval(
+    COMMIT_CIRCUIT_STATE_SCRIPT,
+    [options.lockKey, options.circuitStateKey],
+    [options.lockToken, JSON.stringify(options.circuitState)],
+  );
+  return Number(result) === 1;
+}
+
+export async function clearParticipantContributions(options: {
+  participantsIndexKey: string;
+  participantContributionsPrefix: string;
+}): Promise<number> {
+  const client = redis();
+  const participants = await client.smembers(options.participantsIndexKey);
+  if (participants.length > 0) {
+    const keys = participants.map(
+      (participantId) =>
+        `${options.participantContributionsPrefix}:${participantId}`,
+    );
+    await client.del(...keys);
+  }
+  await client.del(options.participantsIndexKey);
+  return participants.length;
+}
+
+// Acquire a single-holder key by SET NX with a TTL. Used both for the brief
+// per-circuit commit lock (default TTL) and for the longer-lived verify slot
+// that bounds one in-flight verify per participant (caller passes its own TTL).
 export async function acquireLock(
   key: string,
   token: string,
+  ttlSeconds: number = LOCK_TTL_SECONDS,
 ): Promise<boolean> {
   const result = await redis().set(key, token, {
     nx: true,
-    ex: LOCK_TTL_SECONDS,
+    ex: ttlSeconds,
   });
   return result === "OK";
 }
 
+// Release a lock only if the caller still holds it (token match), so a stalled
+// holder whose TTL expired cannot delete a lock a second writer now owns.
+const RELEASE_LOCK_SCRIPT = `
+  if redis.call("get", KEYS[1]) == ARGV[1] then
+    return redis.call("del", KEYS[1])
+  else
+    return 0
+  end
+`;
+
 export async function releaseLock(key: string, token: string): Promise<void> {
-  const script = `
-    if redis.call("get", KEYS[1]) == ARGV[1] then
-      return redis.call("del", KEYS[1])
-    else
-      return 0
-    end
-  `;
-  await redis().eval(script, [key], [token]);
+  await redis().eval(RELEASE_LOCK_SCRIPT, [key], [token]);
 }

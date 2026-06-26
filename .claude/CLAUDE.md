@@ -41,15 +41,25 @@ contribute(
   entropy: Uint8Array,
   name?: string,
 ): Promise<ContributionResult>
-// ContributionResult = { zkey: Uint8Array; hash: string }
+// ContributionResult = {
+//   zkey: Uint8Array;
+//   contributionHash: string;  // snarkjs Blake2b hash over the contribution pubkey
+//   zkeyHash: string;          // SHA-256 of the new zkey binary
+// }
 
 verify(r1cs: Uint8Array, ptau: Uint8Array, zkey: Uint8Array): Promise<boolean>
 
 verifyChain(
+  ptau: Uint8Array,
+  initialZkey: Uint8Array,
+  latestZkey: Uint8Array,
+): Promise<boolean>
+
+verifyChainForCircuit(
   r1cs: Uint8Array,
   ptau: Uint8Array,
   initialZkey: Uint8Array,
-  contributions: Uint8Array[],
+  latestZkey: Uint8Array,
 ): Promise<boolean>
 
 generateEntropy(sources?: EntropySource[]): Promise<Uint8Array>
@@ -58,7 +68,12 @@ applyBeacon(
   zkey: Uint8Array,
   beaconHash: string,
   numIterationsExp?: number,
-): Promise<Uint8Array>
+): Promise<BeaconResult>
+// BeaconResult = {
+//   zkey: Uint8Array;
+//   contributionHash: string;  // snarkjs Blake2b hash for the beacon contribution
+//   zkeyHash: string;          // SHA-256 of the finalized zkey binary
+// }
 
 exportVerificationKey(zkey: Uint8Array): Promise<object>
 ```
@@ -129,8 +144,8 @@ Operator scaffolds → runs `setup:ptau` → runs `init:ceremony` → deploys to
 
 ## Verification
 
-- Per-contribution BN254 pairing checks are optional, configurable via `verifyContributions` in `ceremony.config.ts` (default: `false` due to serverless timeouts)
-- The finalize script always verifies the full contribution chain before applying the beacon
+- Per-contribution BN254 pairing checks are **mandatory in production** (C-1b); the `verifyContributions` flag in `ceremony.config.ts` only disables them outside production (local dev / CI). Large circuits that exceed the serverless time limit should verify on an external worker, not skip the check.
+- The finalize script verifies the full contribution chain (genesis → latest, with the pinned genesis hash checked first) before applying the beacon, then verifies the finalized zkey
 - SHA-256 hash chain from genesis to latest
 - SHA-256 integrity check on every zkey download (genesis hash seeded at init)
 - Ethereum RANDAO beacon for finalization randomness

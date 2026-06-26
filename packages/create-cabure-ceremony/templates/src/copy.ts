@@ -23,10 +23,15 @@ export const defaultCopy: CeremonyCopy = {
       circuitsLabel: "Circuits",
       progressLabel: "Progress",
     },
-    authNote:
-      "Sign in with GitHub to prevent spam and join the queue.",
+    authNote: "Sign in with GitHub to prevent spam and join the queue.",
     githubCta: "CONTINUE WITH GITHUB",
     beginCta: "BEGIN CONTRIBUTION",
+    eligibilityLoadingCta: "CHECKING ELIGIBILITY...",
+    downloadReceiptsCta: "DOWNLOAD MY RECEIPTS",
+    downloadingReceiptsCta: "PREPARING DOWNLOAD...",
+    alreadyContributedTitle: "You have already contributed",
+    alreadyContributedDescription:
+      "This GitHub account has contributed to every available circuit. You can still verify your receipts.",
     endedSubtitle: "This ceremony has concluded",
     endedDescription:
       "Thank you to everyone who contributed. The ceremony has reached its target. You can still verify existing receipts below.",
@@ -50,8 +55,13 @@ export const defaultCopy: CeremonyCopy = {
     description:
       "Choose how many circuits to contribute to. More circuits = stronger ceremony.",
     cta: "JOIN QUEUE",
+    joiningCta: "JOINING QUEUE...",
     tierLabelPrefix: "Tier",
     timeSuffix: "min",
+    pillWillRun: "will run",
+    pillAlreadyContributed: "already contributed",
+    pillTargetReached: "target reached",
+    pillNextAvailable: "next available",
   },
   progress: {
     title: "Contribution in progress",
@@ -71,11 +81,13 @@ export const defaultCopy: CeremonyCopy = {
       downloading: "Download",
       computing: "Compute",
       uploading: "Upload",
+      verifying: "Verify",
     },
     phaseStatus: {
       downloading: "Downloading zkey...",
       computing: "Computing contribution...",
       uploading: "Uploading result...",
+      verifying: "Verifying contribution on the server...",
     },
     finalizeCta: "FINALIZE CONTRIBUTION",
     retryCta: "Retry",
@@ -110,6 +122,15 @@ export const defaultCopy: CeremonyCopy = {
     thankYouBody:
       "Only one honest participant is needed. You might be that one.",
     restartCta: "CONTRIBUTE AGAIN (DIFFERENT TIER)",
+    attestationTitle: "Publish an attestation (optional)",
+    attestationBody:
+      "Publish a public GitHub Gist — one click, using your GitHub login — leaving a timestamped record that your contribution happened. Voluntary; it proves inclusion, not honesty.",
+    attestationPublishCta: "Publish as Gist",
+    attestationPublishingCta: "Publishing…",
+    attestationViewCta: "View Gist",
+    attestationError: "Could not publish the Gist. Please try again.",
+    attestationSignInError:
+      "Sign in with GitHub again to grant Gist access, then retry.",
   },
   verify: {
     title: "Verify a receipt",
@@ -120,9 +141,14 @@ export const defaultCopy: CeremonyCopy = {
       '{"circuitId":"multiplier","participantId":"...","contributionIndex":1}',
     cta: "VERIFY RECEIPT",
     verifyingCta: "VERIFYING...",
-    note: "This PoC verifies receipt presence in the coordinator state. Full cryptographic verification is not implemented yet.",
+    note: "This check confirms that the receipt's contribution hash matches the coordinator's record.",
     successTitle: "Receipt verified",
     invalidReceipt: "Receipt JSON is missing required fields.",
+    duplicateReceipt:
+      "Receipt list contains duplicate entries for the same contribution.",
+    hashMismatch:
+      "Submitted hash does not match the coordinator's record for {{circuitId}} #{{contributionIndex}}.",
+    errorLabel: "Error",
     backCta: "BACK TO LANDING",
   },
 };

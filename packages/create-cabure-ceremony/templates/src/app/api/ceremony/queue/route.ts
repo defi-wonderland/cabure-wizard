@@ -4,14 +4,24 @@ import {
   getAllCircuitStates,
   getCircuitState,
   getManifest,
+  getParticipantContributedCircuitIds,
   isCeremonyActive,
+  kvKey,
   pruneExpiredEntries,
-  circuitStatePath,
   selectCircuitsForTier,
 } from "@/lib/ceremony-state";
-import { getCeremonyConfig, type TierId } from "@/lib/ceremony-config";
+import {
+  getCeremonyConfig,
+  type CeremonyCircuitConfig,
+  type CeremonyTierConfig,
+  type TierId,
+} from "@/lib/ceremony-config";
 import { getParticipant } from "@/lib/participant-auth";
-import { acquireLock, releaseLock, setJson } from "@/lib/kv-store";
+import {
+  acquireLock,
+  releaseLock,
+  writeCircuitStateFenced,
+} from "@/lib/kv-store";
 
 type QueuePosition = {
   participantId: string;
@@ -44,7 +54,27 @@ export async function POST(request: NextRequest) {
   }
 
   let resolvedIds: string[];
-  if (payload.tierId && config.tiersEnabled && config.tiers) {
+  if (payload.tierId) {
+    if (!config.tiersEnabled || !config.tiers || config.tiers.length === 0) {
+      return NextResponse.json(
+        { error: "This ceremony does not have tiers configured" },
+        { status: 400 },
+      );
+    }
+    const tierExists = config.tiers.some(
+      (t: CeremonyTierConfig) => t.id === payload.tierId,
+    );
+    if (!tierExists) {
+      const availableTiers = config.tiers
+        .map((t: CeremonyTierConfig) => t.id)
+        .join(", ");
+      return NextResponse.json(
+        {
+          error: `Invalid tier '${payload.tierId}'. Available tiers are: ${availableTiers}`,
+        },
+        { status: 400 },
+      );
+    }
     resolvedIds = selectCircuitsForTier(
       payload.tierId,
       config.tiers,
@@ -77,6 +107,38 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  const contributedCircuitIds =
+    await getParticipantContributedCircuitIds(participantId);
+  const isCircuitEligible = (circuitConfig: CeremonyCircuitConfig): boolean => {
+    if (contributedCircuitIds.has(circuitConfig.id)) {
+      return false;
+    }
+
+    const circuit = allCircuits.find((state) => state.id === circuitConfig.id);
+    return (
+      !circuit || circuit.totalContributions < circuitConfig.targetContributions
+    );
+  };
+  const eligibleResolvedIds = resolvedIds.filter((circuitId) => {
+    const circuitConfig = config.circuits.find((c) => c.id === circuitId);
+    return circuitConfig ? isCircuitEligible(circuitConfig) : false;
+  });
+
+  if (eligibleResolvedIds.length === 0) {
+    const fallbackCircuitId = config.circuits.find(isCircuitEligible)?.id;
+
+    if (!fallbackCircuitId) {
+      return NextResponse.json(
+        { error: "You have already contributed to every available circuit." },
+        { status: 403 },
+      );
+    }
+
+    resolvedIds = [fallbackCircuitId];
+  } else {
+    resolvedIds = eligibleResolvedIds;
+  }
+
   const now = Date.now();
   const positions: QueuePosition[] = [];
   for (const circuitId of resolvedIds) {
@@ -92,15 +154,25 @@ export async function POST(request: NextRequest) {
 
     try {
       const circuit = await getCircuitState(circuitId);
-      const key = circuitStatePath(config.storage.circuitStatePrefix, circuitId);
+      const key = kvKey(config.storage.circuitStatePrefix, circuitId);
 
-      const pruned = pruneExpiredEntries(
+      // Refresh our own entry BEFORE pruning. A join request proves the caller is
+      // alive, so their entry is exempt from the timeout: a contributor whose
+      // compute ran longer than queueTimeoutSeconds would otherwise be pruned here
+      // and re-added at the back, losing their front-of-queue turn — the exact case
+      // this refresh exists to protect. Other stale entries are still pruned below.
+      const existing = circuit.queue.find(
+        (entry) => entry.participantId === participantId,
+      );
+      if (existing) {
+        existing.joinedAt = now;
+      }
+
+      circuit.queue = pruneExpiredEntries(
         circuit.queue,
         config.queueTimeoutSeconds,
         now,
       );
-      const prunedCount = circuit.queue.length - pruned.length;
-      circuit.queue = pruned;
 
       let index = circuit.queue.findIndex(
         (entry) => entry.participantId === participantId,
@@ -112,9 +184,22 @@ export async function POST(request: NextRequest) {
           joinedAt: now,
         });
         index = circuit.queue.length - 1;
-        await setJson(key, circuit);
-      } else if (prunedCount > 0) {
-        await setJson(key, circuit);
+      }
+
+      // Fenced: the state blob also holds the contribution head, so a stale write
+      // (expired lock) could revert a contribution that committed in the gap and
+      // brick finalize. The fence drops it on lost lock; the client retries.
+      const written = await writeCircuitStateFenced({
+        lockKey,
+        lockToken,
+        circuitStateKey: key,
+        circuitState: circuit,
+      });
+      if (!written) {
+        return NextResponse.json(
+          { error: "Circuit queue busy. Please retry." },
+          { status: 409 },
+        );
       }
 
       positions.push({
@@ -124,7 +209,15 @@ export async function POST(request: NextRequest) {
         estimatedWaitSeconds: (index + 1) * 60,
       });
     } finally {
-      await releaseLock(lockKey, lockToken);
+      // Best-effort: a failed release is not fatal (the lock TTL expires it).
+      // Throwing here would override the computed response with a 500.
+      await releaseLock(lockKey, lockToken).catch((error) => {
+        console.error(
+          "Failed to release queue lock for circuit:",
+          circuitId,
+          error,
+        );
+      });
     }
   }
 
@@ -157,21 +250,17 @@ export async function GET(request: NextRequest) {
   }
   const circuit = await getCircuitState(circuitId);
 
-  const now = Date.now();
+  // Read-only: prune in memory for an accurate position but do NOT persist.
+  // Persisting would overwrite the whole circuit-state key and could revert a
+  // concurrent contribution commit. The POST and contribute paths prune under
+  // the lock, so expired entries are cleaned there.
   const pruned = pruneExpiredEntries(
     circuit.queue,
     config.queueTimeoutSeconds,
-    now,
+    Date.now(),
   );
-  if (pruned.length < circuit.queue.length) {
-    circuit.queue = pruned;
-    await setJson(
-      circuitStatePath(config.storage.circuitStatePrefix, circuitId),
-      circuit,
-    );
-  }
 
-  const index = circuit.queue.findIndex(
+  const index = pruned.findIndex(
     (entry) => entry.participantId === participantId,
   );
 

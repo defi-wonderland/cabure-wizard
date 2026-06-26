@@ -19,6 +19,12 @@ jobs:
       - run: pnpm install
       - run: pnpm --filter @wonderland/cabure-crypto build
       - run: pnpm --filter @wonderland/cabure-crypto test
+      # Catches high-severity advisories in the prod install graph (e.g. if
+      # the underscore override is removed or snarkjs picks up a new vuln).
+      # See packages/crypto/README.md and the project IR report L-2.
+      # `pnpm audit` does not support `--filter`, so we invoke the script
+      # which runs `pnpm audit` at the workspace root.
+      - run: pnpm --filter @wonderland/cabure-crypto run audit
 
   create-cabure-ceremony:
     needs: [crypto]

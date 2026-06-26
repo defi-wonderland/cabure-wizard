@@ -40,19 +40,37 @@ generateInitialZkey(ptau: Uint8Array, r1cs: Uint8Array): Promise<Uint8Array>
 
 // Apply a contribution to a zkey using provided entropy
 contribute(prevZkey: Uint8Array, entropy: Uint8Array, name?: string): Promise<ContributionResult>
-// ContributionResult = { zkey: Uint8Array; hash: string }
+// ContributionResult = {
+//   zkey: Uint8Array;
+//   contributionHash: string;  // snarkjs Blake2b hash over the contribution pubkey
+//   zkeyHash: string;          // SHA-256 of the new zkey binary
+// }
 
 // Verify a zkey against the original circuit and Powers of Tau
 verify(r1cs: Uint8Array, ptau: Uint8Array, zkey: Uint8Array): Promise<boolean>
 
-// Verify the full contribution chain from genesis
-verifyChain(r1cs: Uint8Array, ptau: Uint8Array, initialZkey: Uint8Array, contributions: Uint8Array[]): Promise<boolean>
+// Verify the full contribution chain from genesis (snarkjs walks the
+// transcript embedded in latestZkey; intermediates are not needed).
+// initialZkey is taken as trusted. For circuit-bound verification use
+// verifyChainForCircuit below, which also confirms initialZkey is a valid
+// genesis for (r1cs, ptau).
+verifyChain(ptau: Uint8Array, initialZkey: Uint8Array, latestZkey: Uint8Array): Promise<boolean>
+
+// Same as verifyChain but first validates initialZkey against (r1cs, ptau),
+// closing the empty-chain footgun where verifyChain returns true for any
+// two byte-equal inputs.
+verifyChainForCircuit(r1cs: Uint8Array, ptau: Uint8Array, initialZkey: Uint8Array, latestZkey: Uint8Array): Promise<boolean>
 
 // Generate entropy from available sources (CSPRNG + optional mouse/click data)
 generateEntropy(sources?: EntropySource[]): Promise<Uint8Array>
 
 // Apply a beacon to finalize the ceremony (2^N rounds of SHA-256)
-applyBeacon(zkey: Uint8Array, beaconHash: string, numIterationsExp?: number): Promise<Uint8Array>
+applyBeacon(zkey: Uint8Array, beaconHash: string, numIterationsExp?: number): Promise<BeaconResult>
+// BeaconResult = {
+//   zkey: Uint8Array;
+//   contributionHash: string;  // snarkjs Blake2b hash for the beacon contribution
+//   zkeyHash: string;          // SHA-256 of the finalized zkey binary
+// }
 
 // Extract the Groth16 verification key from a finalized zkey
 exportVerificationKey(zkey: Uint8Array): Promise<object>
