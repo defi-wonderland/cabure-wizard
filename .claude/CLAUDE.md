@@ -122,7 +122,7 @@ API routes live under `src/app/api/ceremony/` in the generated project.
 
 1. **Project name** — Displayed in the ceremony UI
 2. **Target contributions** — Select from 100 (default) / 500 / 1,000 / custom
-3. **End date** — Required YYYY-MM-DD deadline (the finalization beacon target is committed at init as endDate + buffer)
+3. **End date** — Required YYYY-MM-DD deadline, read as 23:59:59 UTC (the finalization beacon target is committed at init as endDate + buffer)
 4. **Circuit artifacts path** — Optional path to .r1cs files; if provided, files are copied into `circuits/`
 
 The target contributions step defaults to 100 when the user presses Enter.

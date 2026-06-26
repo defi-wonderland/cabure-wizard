@@ -69,9 +69,12 @@ export async function runWizardQuestions(
 
   const endDate = await askWithValidation(
     rl,
-    `${STEP_PADDING}3) End date (required YYYY-MM-DD): `,
+    `${STEP_PADDING}3) End date — deadline, YYYY-MM-DD, read as 23:59:59 UTC (required): `,
     validateEndDate,
   );
+  // Echo the exact instant so the operator confirms the UTC end-of-day they
+  // committed to, not a local-timezone reading of the date.
+  rl.write(`${DETAIL_PADDING}→ deadline: ${endDate} 23:59:59 UTC\n`);
 
   let circuitArtifactsPath: string | null = null;
   for (;;) {

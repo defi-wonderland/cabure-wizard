@@ -15,7 +15,7 @@ CLI wizard that scaffolds a deploy-ready Groth16 Phase 2 trusted setup ceremony 
 
 1. Project name
 2. Target contributions (`100`, `500`, `1000`, or custom)
-3. End date (optional `YYYY-MM-DD`)
+3. End date (required `YYYY-MM-DD`, read as 23:59:59 UTC)
 4. Circuit artifacts path (optional)
    - If provided, `.r1cs` files are discovered and copied into `circuits/`
    - If skipped, `circuits/` remains empty
