@@ -106,11 +106,18 @@ export async function getManifest(): Promise<ManifestState> {
   // and assumes present; validate it here so the cast cannot hand back a
   // manifest that lies about the type. A missing/malformed commitment means a
   // corrupt manifest, not a supported older ceremony.
+  // Match the invariants init:ceremony enforces when it writes the commitment:
+  // cutoffTimeMs is a positive ms timestamp and bufferSeconds is a non-negative
+  // integer count of seconds. A weaker finite-only check would let a negative or
+  // fractional value from a corrupt/hand-edited manifest through to the beacon
+  // target computation.
   const c = manifest.beaconCommitment;
   if (
     !c ||
-    !Number.isFinite(c.cutoffTimeMs) ||
-    !Number.isFinite(c.bufferSeconds)
+    !Number.isInteger(c.cutoffTimeMs) ||
+    c.cutoffTimeMs <= 0 ||
+    !Number.isInteger(c.bufferSeconds) ||
+    c.bufferSeconds < 0
   ) {
     throw new Error(
       "Manifest is missing a valid beaconCommitment (corrupt manifest). " +
