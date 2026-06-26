@@ -59,7 +59,7 @@ interface ManifestState {
   endDate: string | null;
   startedAt: number;
   circuits: Array<{ id: string }>;
-  beaconCommitment?: { cutoffTimeMs: number; bufferSeconds: number };
+  beaconCommitment: { cutoffTimeMs: number; bufferSeconds: number };
   // Resolved beacon, persisted at seal time (beaconHash is 0x-prefixed). A
   // recovery run reuses it so the beacon is locked once finalization starts and
   // cannot be re-rolled. Cleared only by reset:ceremony.
@@ -233,12 +233,18 @@ async function resolveBeacon(
     return persisted;
   }
 
+  // init:ceremony always commits beaconCommitment, so a manifest without it is
+  // corrupt, not a supported older ceremony. Do NOT advise re-running
+  // init:ceremony here: it overwrites circuit state and clears receipts, which
+  // would wipe an in-progress ceremony. The only non-destructive way forward is
+  // a forced manual beacon.
   const commitment = manifest.beaconCommitment;
   if (!commitment) {
     throw new Error(
-      "Manifest has no beaconCommitment. This ceremony was initialized before " +
-        "the beacon was committed at init; re-run init:ceremony, or finalize " +
-        "manually with --beacon <hex> --unverifiable.",
+      "Manifest has no beaconCommitment (corrupt or hand-edited manifest). " +
+        "Finalize manually with --force --beacon <hex> --unverifiable, or run " +
+        "reset:ceremony to start over. Do not re-run init:ceremony on a live " +
+        "ceremony; it wipes contributions.",
     );
   }
 

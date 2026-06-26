@@ -84,7 +84,7 @@ export interface ManifestState {
   endDate: string | null;
   startedAt: number;
   circuits: Array<{ id: string }>;
-  beaconCommitment?: BeaconCommitment;
+  beaconCommitment: BeaconCommitment;
   // Resolved beacon, persisted at seal time so an interrupted finalize reuses
   // the same value on recovery and can never re-roll it. See finalize-ceremony.
   beaconHash?: string;
