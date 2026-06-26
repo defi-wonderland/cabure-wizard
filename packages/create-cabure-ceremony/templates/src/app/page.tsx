@@ -126,7 +126,8 @@ export default function CeremonyPage() {
         !receipt?.circuitId ||
         !receipt.participantId ||
         receipt.contributionIndex == null ||
-        !receipt.contributionHash
+        typeof receipt.contributionHash !== "string" ||
+        !/^0x[0-9a-fA-F]+$/.test(receipt.contributionHash)
       ) {
         throw new Error(config.copy.verify.invalidReceipt);
       }
