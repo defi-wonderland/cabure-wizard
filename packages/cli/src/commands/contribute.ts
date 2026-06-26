@@ -94,6 +94,18 @@ export async function contributeCommand(
   // server-reported value, so it is the contributor's own statement.
   const records: Array<{ receipt: ReceiptResponse; clientHk: string }> = [];
 
+  // Headless entropy comes only from the OS CSPRNG (generateEntropy with no
+  // extra sources — there is no mouse/UI entropy in a CLI run). Modern
+  // kernels block getrandom until the pool is seeded, so a normal host is
+  // fine. The real risk is a CLONED VM/container image: a snapshot taken
+  // after boot can carry RNG state, so contributors started from the same
+  // image could draw correlated entropy. Run on a freshly, independently
+  // seeded host. Warn once per invocation, before the per-circuit loop.
+  console.warn(
+    "Note: entropy is drawn from the OS RNG only. Run on a properly seeded " +
+      "host — not a cloned VM/container snapshot that may share RNG state.",
+  );
+
   for (let i = 0; i < circuitIds.length; i++) {
     const circuitId = circuitIds[i];
     const label = `[${i + 1}/${circuitIds.length}] ${circuitId}`;
