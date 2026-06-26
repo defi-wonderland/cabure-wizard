@@ -113,6 +113,18 @@ function beaconApiBase(): string {
 // because a sealed run reuses the persisted beacon (see resolveBeacon).
 const BEACON_FETCH_TIMEOUT_MS = 30_000;
 
+// origin + path only. BEACON_API_URL may carry credentials (basic-auth userinfo
+// or an ?apikey= query param); never put the full URL in an error or log. URL's
+// origin drops userinfo, and dropping the search drops a key in the query.
+function safeUrlLabel(url: string): string {
+  try {
+    const u = new URL(url);
+    return `${u.origin}${u.pathname}`;
+  } catch {
+    return "the beacon node";
+  }
+}
+
 async function beaconFetch(url: string): Promise<Response> {
   try {
     return await fetch(url, {
@@ -122,8 +134,8 @@ async function beaconFetch(url: string): Promise<Response> {
     if (error instanceof Error && error.name === "TimeoutError") {
       throw new Error(
         `Beacon API request timed out after ` +
-          `${BEACON_FETCH_TIMEOUT_MS / 1000}s (${url}). Retry, or set ` +
-          "BEACON_API_URL to a different node.",
+          `${BEACON_FETCH_TIMEOUT_MS / 1000}s (${safeUrlLabel(url)}). Retry, ` +
+          "or set BEACON_API_URL to a different node.",
       );
     }
     throw error;
