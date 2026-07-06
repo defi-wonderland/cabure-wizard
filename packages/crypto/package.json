@@ -1,6 +1,6 @@
 {
   "name": "@wonderland/cabure-crypto",
-  "version": "2.0.0-beta.0",
+  "version": "2.0.0",
   "description": "Typed exports for all Groth16 Phase 2 ceremony operations",
   "repository": {
     "type": "git",
