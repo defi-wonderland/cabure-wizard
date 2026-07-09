@@ -15,10 +15,17 @@ const shared = {
 };
 
 // ESM
+// A transitive dep (web-worker, via ffjavascript) uses require() for node
+// built-ins (url, vm, worker_threads). Bundled into ESM, esbuild rewrites
+// these to a __require shim that throws in a pure-ESM context. Recreate a
+// real require() via createRequire so those calls resolve at runtime.
 await build({
   ...shared,
   format: "esm",
   outfile: "dist/esm/index.js",
+  banner: {
+    js: 'import { createRequire as __cr } from "module";\nconst require = __cr(import.meta.url);',
+  },
 });
 
 // CJS

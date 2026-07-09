@@ -1,6 +1,6 @@
 {
   "name": "@wonderland/create-cabure-ceremony",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "CLI wizard that scaffolds a fully deployable ceremony project",
   "repository": {
     "type": "git",

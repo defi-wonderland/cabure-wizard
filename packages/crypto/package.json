@@ -1,6 +1,6 @@
 {
   "name": "@wonderland/cabure-crypto",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "Typed exports for all Groth16 Phase 2 ceremony operations",
   "repository": {
     "type": "git",
@@ -52,6 +52,7 @@
   ],
   "scripts": {
     "build": "node build.mjs",
+    "pretest": "node build.mjs",
     "test": "vitest run",
     "audit": "pnpm audit --prod --audit-level high",
     "clean": "rm -rf dist"
