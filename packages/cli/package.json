@@ -23,7 +23,7 @@
     "commander": "13.1.0"
   },
   "devDependencies": {
-    "esbuild": "0.25.12",
+    "esbuild": "0.28.1",
     "vitest": "4.1.2"
   },
   "license": "MIT"

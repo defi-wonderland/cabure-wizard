@@ -61,7 +61,7 @@
     "snarkjs": "0.7.5"
   },
   "devDependencies": {
-    "esbuild": "0.25.12",
+    "esbuild": "0.28.1",
     "typescript": "5.9.3",
     "vitest": "4.1.2",
     "@types/node": "22.19.11",
